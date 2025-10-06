@@ -1,0 +1,12 @@
+# --- Core database + utilities ---
+psycopg[binary] >=3.1,<4.0       # PostgreSQL driver
+python-dotenv >=1.0.1            # Load .env files
+requests >=2.31.0                # HTTP requests (for ESPN feed)
+
+# --- Optional: timezone + typing ---
+tzdata >=2023.3                  # Ensures ZoneInfo works cross-platform
+typing_extensions >=4.8.0        # Backwards compatibility if needed
+
+# --- FastAPI / API stack (optional for later) ---
+fastapi >=0.115.0
+uvicorn[standard] >=0.30.0
