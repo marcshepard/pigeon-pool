@@ -64,9 +64,9 @@ npm run dev
 Note: You can also use the frontend.cmd script on windows so you don't have to remember the syntax above
 
 ### 4. Subsequent runs
-From windows, you can run these two commands in separate terminals:
+From windows, you can run these two commands in separate terminals (or use the more verbose syntax above):
 ```cmd
 backend.cmd
 frontend.cmd
 ```
-Alternatively, use the commands above
+Once those are running, point your browser to http://localhost:5173
