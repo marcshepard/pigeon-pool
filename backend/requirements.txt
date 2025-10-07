@@ -1,12 +1,25 @@
-# --- Core database + utilities ---
-psycopg[binary] >=3.1,<4.0       # PostgreSQL driver
-python-dotenv >=1.0.1            # Load .env files
-requests >=2.31.0                # HTTP requests (for ESPN feed)
+# ===============================
+# Pigeon Pool backend dependencies
+# ===============================
 
-# --- Optional: timezone + typing ---
-tzdata >=2023.3                  # Ensures ZoneInfo works cross-platform
-typing_extensions >=4.8.0        # Backwards compatibility if needed
+# --- Core database + environment ---
+psycopg[binary] >=3.1,<4.0        # PostgreSQL driver (modern async support)
+python-dotenv >=1.0.1              # Load .env files for local config/secrets
+requests >=2.31.0                  # HTTP requests (for ESPN data import)
 
-# --- FastAPI / API stack (optional for later) ---
-fastapi >=0.115.0
-uvicorn[standard] >=0.30.0
+# --- Utilities & typing ---
+tzdata >=2023.3                    # Cross-platform timezone data (Windows safe)
+typing_extensions >=4.8.0          # Typing back-compat for older Python builds
+
+# --- API stack ---
+fastapi >=0.115.0                  # Web framework for building REST APIs
+uvicorn[standard] >=0.30.0         # ASGI server with auto-reload and watchgod
+
+# --- Authentication & security ---
+passlib[bcrypt] >=1.7.4            # Secure password hashing and verification
+bcrypt >=3.2,<4                    # ensure compatibility with passlib
+PyJWT >=2.9.0                      # JWT signing/verification (sessions, resets)
+
+# --- Data models & validation ---
+pydantic >=2.9.0                   # Schema validation and settings management
+email-validator >=2.2.0            # RFC-compliant email validation for EmailStr
