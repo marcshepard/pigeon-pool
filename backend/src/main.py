@@ -6,14 +6,14 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 # Import before other modules so env vars are available early
-from .env_loader import load_environment
+from .settings import get_settings
+from .logger import configure_from_env
 from .auth import router as auth_router
-from .logger import set_level
+from .picks import router as picks_router
 
-load_environment()
-
-# Set log level
-set_level(os.getenv("LOGGING_LEVEL", "info"))
+# Early initialization
+get_settings()          # forces env load/validation once
+configure_from_env()    # picks up LOGGING_LEVEL
 
 app = FastAPI(title="Pigeon Pool API", version="0.1.0")
 
@@ -33,3 +33,4 @@ def ping():
 
 # Register routes
 app.include_router(auth_router)
+app.include_router(picks_router)

@@ -9,13 +9,12 @@ from typing import List, Iterable
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
-# --- Replace these imports with your project's actual dependencies ---
-# Expect: get_db() -> AsyncSession and require_user() -> object with pigeon_number:int
-from .deps import get_db, require_user  # type: ignore
+from .deps import get_db
+from .auth import require_user
 
 router = APIRouter(prefix="/picks", tags=["picks"])
 
@@ -38,11 +37,14 @@ class PickOut(BaseModel):
     created_at: datetime
 
 class PicksBulkIn(BaseModel):
+    """Input model for bulk upsert of picks"""
     week_number: int = Field(..., ge=1, le=18)
     picks: List[PickIn]
 
-    @validator("picks")
+    @field_validator("picks")
+    @classmethod
     def no_duplicates(cls, v: List[PickIn]):
+        """Ensure no duplicate game_id in payload"""
         seen = set()
         for p in v:
             if p.game_id in seen:
@@ -144,7 +146,7 @@ async def get_my_picks_for_week(
     db: AsyncSession = Depends(get_db),
     me=Depends(require_user),
 ):
-    # Return existing picks regardless of lock status (read-only after lock)
+    """ Return existing picks regardless of lock status (read-only after lock) """
     result = await db.execute(
         GET_PICKS_FOR_WEEK_SQL,
         {"pigeon_number": me.pigeon_number, "week_number": week_number},
@@ -173,7 +175,7 @@ async def upsert_picks_bulk(
     db: AsyncSession = Depends(get_db),
     me=Depends(require_user),
 ):
-    # App-layer guard (DB trigger will also enforce)
+    """ App-layer guard (DB trigger will also enforce) """
     await _ensure_week_unlocked(db, payload.week_number)
     await _ensure_all_games_in_week(db, payload.week_number, (p.game_id for p in payload.picks))
 
@@ -216,7 +218,7 @@ async def upsert_single_pick(
     db: AsyncSession = Depends(get_db),
     me=Depends(require_user),
 ):
-    # Ensure URL game_id and body game_id match (helps client bugs)
+    """ Ensure URL game_id and body game_id match (helps client bugs) """
     if pick.game_id != game_id:
         raise HTTPException(status_code=400, detail="Body game_id does not match URL game_id")
 
@@ -242,4 +244,3 @@ async def upsert_single_pick(
         predicted_margin=row[3],
         created_at=row[4],
     )
-

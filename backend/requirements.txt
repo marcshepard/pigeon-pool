@@ -3,7 +3,8 @@
 # ===============================
 
 # --- Core database + environment ---
-psycopg[binary] >=3.1,<4.0        # PostgreSQL driver (modern async support)
+psycopg[binary] >=3.1,<4.0         # PostgreSQL driver (modern async support)
+SQLAlchemy[asyncio] >=2.0,<3.0     # ORM + async engine support
 python-dotenv >=1.0.1              # Load .env files for local config/secrets
 requests >=2.31.0                  # HTTP requests (for ESPN data import)
 

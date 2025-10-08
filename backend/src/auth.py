@@ -16,30 +16,19 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from passlib.hash import bcrypt
 from pydantic import BaseModel, EmailStr
 
-from .env_loader import load_environment
+from .settings import get_settings
 from .logger import debug, info, warn, error
 
-# Load env once (safe to call multiple times)
-load_environment()
-
 # --- Config ---
-DB_CFG = {
-    "host": os.getenv("POSTGRES_HOST"),
-    "port": int(os.getenv("POSTGRES_PORT")),
-    "dbname": os.getenv("POSTGRES_DB"),
-    "user": os.getenv("POSTGRES_USER"),
-    "password": os.getenv("POSTGRES_PASSWORD"),
-}
-JWT_SECRET = os.getenv("JWT_SECRET")
-JWT_ALG = "HS256"
-RESET_TTL_MINUTES = int(os.environ.get("RESET_TTL_MINUTES", "30")) # password reset token validity
-
-SESSION_MINUTES = 60                 # idle/absolute expiry for simplicity
-SLIDE_THRESHOLD_SECONDS = 15 * 60    # re-issue cookie if < 15 min left
-
-# Origins from env
-API_ORIGIN = os.getenv("API_ORIGIN", "http://localhost:8000")
-FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "http://localhost:5173")
+S = get_settings()
+DB_CFG = S.psycopg_kwargs()
+JWT_SECRET = S.jwt_secret
+JWT_ALG = S.jwt_alg
+API_ORIGIN = S.api_origin
+FRONTEND_ORIGIN = S.frontend_origin
+RESET_TTL_MINUTES = S.reset_ttl_minutes
+SESSION_MINUTES = S.session_minutes
+SLIDE_THRESHOLD_SECONDS = S.slide_threshold_seconds
 
 def _origin_tuple(url: str):
     p = urlparse(url)
@@ -405,3 +394,35 @@ def confirm_password_reset(payload: PasswordResetConfirmIn, response: Response):
     set_session_cookie(response, token, exp_ts)
 
     return {"ok": True}
+
+# --- FastAPI dependency used by routes ---
+# --- Lightweight dependency for other routers ---
+class AuthUser(BaseModel):
+    """ Minimal user info for auth dependencies """
+    pigeon_number: int
+    email: Optional[EmailStr] = None
+    is_admin: bool = False
+
+def require_user(user: MeOut = Depends(current_user)) -> AuthUser:
+    """
+    Minimal auth dependency for feature routers.
+    Reuses cookie-based session validation from current_user,
+    but returns a small payload with just what's commonly needed.
+    """
+    return AuthUser(
+        pigeon_number=user.pigeon_number,
+        email=user.email,
+        is_admin=user.is_admin,
+    )
+
+def require_admin(user: MeOut = Depends(current_user)) -> AuthUser:
+    """
+    Optional: restrict endpoints to admins.
+    """
+    if not user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin only")
+    return AuthUser(
+        pigeon_number=user.pigeon_number,
+        email=user.email,
+        is_admin=True,
+    )
