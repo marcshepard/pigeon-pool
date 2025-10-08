@@ -2,6 +2,12 @@
  * Home page component.
  */
 
+import { Typography, Box } from "@mui/material";
+
 export default function HomePage() {
-  return <div>Welcome to the Home Page!</div>;
+    return (
+        <Box>
+            <Typography variant="body1">This will be the home page</Typography>
+        </Box>
+    )
 }

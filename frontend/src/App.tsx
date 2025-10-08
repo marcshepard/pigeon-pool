@@ -17,8 +17,16 @@ import LoginPage from "./pages/Login";
 import PasswordResetConfirmPage from "./pages/PasswordResetConfirmPage";
 import HomePage from "./pages/Home";
 import PicksPage from "./pages/Picks";
+import AllPicksPage from "./pages/AllPicksPage";
+import YearToDatePage from "./pages/YearToDatePage";
+import AboutPage from "./pages/AboutPage";
 
 import type { NavItem } from "./components/ResponsiveNav";
+import HomeIcon from "@mui/icons-material/Home";
+import ListAltIcon from "@mui/icons-material/ListAlt";
+import EmojiEventsIcon from "@mui/icons-material/EmojiEvents";
+import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
+import EditNoteIcon from "@mui/icons-material/EditNote";
 
 // ---- optional theme ----
 const theme = createTheme({
@@ -39,8 +47,11 @@ function Brand() {
 }
 
 const navItems: NavItem[] = [
-  { path: "/", label: "Home", icon: "home" },
-  { path: "/picks", label: "Enter Picks", icon: "picks" },
+  { path: "/", label: "Home", icon: <HomeIcon fontSize="small" /> },
+  { path: "/picks", label: "Enter Picks", icon: <EditNoteIcon fontSize="small" /> },
+  { path: "/all-picks", label: "All Picks", icon: <ListAltIcon fontSize="small" /> },
+  { path: "/year-to-date", label: "Year-to-Date", icon: <EmojiEventsIcon fontSize="small" /> },
+  { path: "/about", label: "About", icon: <InfoOutlinedIcon fontSize="small" /> },
 ];
 
 function PrivateShell() {
@@ -75,6 +86,9 @@ function PrivateShell() {
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/picks" element={<PicksPage />} />
+        <Route path="/all-picks" element={<AllPicksPage />} />
+        <Route path="/year-to-date" element={<YearToDatePage />} />
+        <Route path="/about" element={<AboutPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </ResponsiveNav>

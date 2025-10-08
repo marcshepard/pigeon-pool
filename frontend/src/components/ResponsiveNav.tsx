@@ -20,15 +20,14 @@ import {
   useTheme,
   Divider,
 } from "@mui/material";
-import HomeIcon from "@mui/icons-material/Home";
 import MenuIcon from "@mui/icons-material/Menu";
-import SportsFootballIcon from "@mui/icons-material/SportsFootball";
+
 
 // ---- Types ----
 export type NavItem = {
   path: string;
   label: string;
-  icon?: "home" | "picks";
+  icon?: ReactNode;
 };
 
 type ResponsiveNavProps = {
@@ -42,11 +41,7 @@ type ResponsiveNavProps = {
 // ---- Constants ----
 const DRAWER_WIDTH_PX = 280;
 
-// Simple icon map using MUI icons
-function ItemIcon({ kind }: { kind?: NavItem["icon"] }) {
-  if (kind === "picks") return <SportsFootballIcon fontSize="small" />;
-  return <HomeIcon fontSize="small" />; // default
-}
+
 
 /**
  * Responsive left nav with AppBar.
@@ -129,7 +124,7 @@ export default function ResponsiveNav({
               }}
             >
               <ListItemIcon sx={{ minWidth: 36 }}>
-                <ItemIcon kind={item.icon} />
+                {item.icon}
               </ListItemIcon>
               <ListItemText primary={item.label} />
             </ListItemButton>
