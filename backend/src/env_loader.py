@@ -11,6 +11,14 @@ from dotenv import load_dotenv
 
 from .logger import info, error
 
+def _require(name: str) -> str:
+    """ Verify that required env vars is set, else raise. """
+    val = os.getenv(name)
+    if val is None or val == "":
+        raise RuntimeError(f"Missing required env var: {name}")
+    print ("[DEBUG] Env var found:", name, "=", val)
+    return val
+
 def load_environment():
     """
     Load environment variables from:
@@ -41,3 +49,17 @@ def load_environment():
             info(f"(Optional env not found: {f.name})")
 
     info(f"Environment: {env_name}")
+
+    # Verify required vars
+        # Validate core backend vars early
+    _require("POSTGRES_HOST")
+    _require("POSTGRES_PORT")
+    _require("POSTGRES_DB")
+    _require("POSTGRES_USER")
+    # password may be injected at runtime; warn if missing in dev
+    if os.getenv("APP_ENV", "development") == "development" and not os.getenv("POSTGRES_PASSWORD"):
+        print("[WARN] POSTGRES_PASSWORD not set (dev)")
+
+    _require("JWT_SECRET")
+    _require("API_ORIGIN")
+    _require("FRONTEND_ORIGIN")

@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 import os
 import binascii
 from typing import Optional, Tuple
+from urllib.parse import urlparse
 
 import jwt
 import psycopg
@@ -36,11 +37,45 @@ RESET_TTL_MINUTES = int(os.environ.get("RESET_TTL_MINUTES", "30")) # password re
 SESSION_MINUTES = 60                 # idle/absolute expiry for simplicity
 SLIDE_THRESHOLD_SECONDS = 15 * 60    # re-issue cookie if < 15 min left
 
-COOKIE_NAME = "session"
-COOKIE_SECURE = False                # set True in prod (HTTPS)
-COOKIE_SAMESITE = "lax"
-COOKIE_DOMAIN = None                 # set to your domain in prod (e.g., ".example.com")
+# Origins from env
+_API_ORIGIN = os.getenv("API_ORIGIN", "http://localhost:8000")
+_FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "http://localhost:5173")
+
+def _origin_tuple(url: str):
+    p = urlparse(url)
+    port = p.port or (443 if p.scheme == "https" else 80)
+    return (p.scheme, p.hostname, port)
+
+ENV = os.getenv("APP_ENV", "development").lower()
+_FE = _origin_tuple(_FRONTEND_ORIGIN)
+_API = _origin_tuple(_API_ORIGIN)
+CROSS_SITE = _FE != _API
+API_SCHEME = _origin_tuple(_API_ORIGIN)[0]
+
+# Cookie flags that “just work” in both modes
+COOKIE_NAME = os.getenv("COOKIE_NAME", "session")
+COOKIE_DOMAIN = os.getenv("COOKIE_DOMAIN") or None   # keep None unless you really need it
 COOKIE_PATH = "/"
+
+if CROSS_SITE:
+    if API_SCHEME == "https":
+        # Cross-site over HTTPS → modern, allowed
+        COOKIE_SAMESITE = "none"
+        COOKIE_SECURE = True
+    elif ENV == "development":
+        # Dev mode: let the app start; you should use the Vite proxy so the browser sees same-origin.
+        warn("Dev mode: CROSS_SITE over HTTP detected; using SameSite=Lax, Secure=False. Use the Vite proxy for the FE.")
+        COOKIE_SAMESITE = "lax"
+        COOKIE_SECURE = False
+    else:
+        # Prod or non-dev without HTTPS → fail fast
+        raise RuntimeError(
+            "CROSS_SITE requires HTTPS (Secure cookies). Run API over HTTPS or use a dev proxy."
+        )
+else:
+    # Same-origin (e.g., via Vite proxy in dev)
+    COOKIE_SAMESITE = "lax"
+    COOKIE_SECURE = _origin_tuple(_API_ORIGIN)[0] == "https"
 
 
 # --- DB helper ---

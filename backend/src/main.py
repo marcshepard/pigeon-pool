@@ -15,16 +15,12 @@ load_environment()
 # Set log level
 set_level(os.getenv("LOGGING_LEVEL", "info"))
 
-app = FastAPI(
-    title="Pigeon Pool API",
-    version="0.1.0",
-    description="FastAPI backend for Pigeon Pool",
-)
+app = FastAPI(title="Pigeon Pool API", version="0.1.0")
 
 # Allow frontend dev origin (adjust later for production)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=[os.getenv("FRONTEND_ORIGIN")],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
