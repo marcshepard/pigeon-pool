@@ -63,6 +63,14 @@ npm run dev
 ```
 Note: You can also use the frontend.cmd script on windows so you don't have to remember the syntax above
 
+Note: the first time you sign in, you will need to go through password reset. Emailing the reset URL is
+not currently implemented, but in the backend logs, yhou will see something like:
+```
+DEBUG (auth.py:350): password-reset: dev link url=http://localhost:5173/reset-password?token=xxx
+```
+Type that link into a browser to complete the password reset
+
+
 ### 4. Subsequent runs
 From windows, you can run these two commands in separate terminals (or use the more verbose syntax above):
 ```cmd
