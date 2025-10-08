@@ -138,3 +138,67 @@ export class Ok {
   }
 }
 
+/** Which weeks are most interesting to the user */
+export class ScheduleCurrent {
+  next_picks_week: number | null; // Next unlocked week that users can still make picks for
+  live_week: number | null;       // In-progress week, or null between MNF and TNF kickoff
+
+  constructor(data: unknown) {
+    if (!isRecord(data)) {
+      throw new DataValidationError("Invalid ScheduleCurrent payload (not an object)");
+    }
+    this.next_picks_week = data.next_picks_week === null ? null : Number(data.next_picks_week);
+    this.live_week = data.live_week === null ? null : Number(data.live_week);
+  }
+}
+
+/** Game row as returned by GET /schedule/{week_number}/games */
+export class Game {
+  game_id: number;
+  week_number: number;
+  kickoff_at: string; // ISO string from the API (UTC)
+  home_abbr: string;
+  away_abbr: string;
+  status: "scheduled" | "in_progress" | "final";
+  home_score: number | null;
+  away_score: number | null;
+
+  constructor(data: unknown) {
+    if (!isRecord(data)) {
+      throw new DataValidationError("Invalid Game payload (not an object)");
+    }
+    const {
+      game_id,
+      week_number,
+      kickoff_at,
+      home_abbr,
+      away_abbr,
+      status,
+      home_score,
+      away_score,
+    } = data;
+    if (!isNumber(game_id)) throw new DataValidationError("game_id must be number");
+    if (!isNumber(week_number)) throw new DataValidationError("week_number must be number");
+    if (!isString(kickoff_at)) throw new DataValidationError("kickoff_at must be string");
+    if (!isString(home_abbr)) throw new DataValidationError("home_abbr must be string");
+    if (!isString(away_abbr)) throw new DataValidationError("away_abbr must be string");
+    if (status !== "scheduled" && status !== "in_progress" && status !== "final") {
+      throw new DataValidationError("status must be 'scheduled', 'in_progress', or 'final'");
+    }
+    if (home_score !== null && !isNumber(home_score)) {
+      throw new DataValidationError("home_score must be number or null");
+    }
+    if (away_score !== null && !isNumber(away_score)) {
+      throw new DataValidationError("away_score must be number or null");
+    }
+    this.game_id = game_id;
+    this.week_number = week_number;
+    this.kickoff_at = kickoff_at;
+    this.home_abbr = home_abbr;
+    this.away_abbr = away_abbr;
+    this.status = status;
+    this.home_score = home_score;
+    this.away_score = away_score;
+  }
+}
+

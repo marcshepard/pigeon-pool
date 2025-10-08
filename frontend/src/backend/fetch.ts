@@ -3,7 +3,13 @@
  */
 
 import {
-  Me, Ok, LoginPayload, PasswordResetConfirm, PasswordResetRequest
+  Me,
+  Ok,
+  LoginPayload,
+  PasswordResetConfirm,
+  PasswordResetRequest,
+  ScheduleCurrent,
+  Game,
 } from "./types";
 
 // Base URL for API calls, from env or default to relative /api (for dev with proxy)
@@ -73,5 +79,29 @@ export async function apiConfirmPasswordReset(p: PasswordResetConfirm): Promise<
     method: "POST",
     body: JSON.stringify(p),
     factory: (d) => new Ok(d),
+  });
+}
+
+/** GET /schedule/current → { next_picks_week, live_week } */
+export function getScheduleCurrent(): Promise<ScheduleCurrent> {
+  return apiFetch("/schedule/current", {
+    method: "GET",
+    factory: (d) => new ScheduleCurrent(d),
+  });
+}
+
+/** GET /schedule/{week_number}/games → Game[] */
+export function getGamesForWeek(weekNumber: number): Promise<Game[]> {
+  if (!Number.isInteger(weekNumber) || weekNumber < 1 || weekNumber > 18) {
+    return Promise.reject(new Error(`Invalid weekNumber: ${weekNumber}`));
+  }
+  return apiFetch(`/schedule/${weekNumber}/games`, {
+    method: "GET",
+    factory: (d) => {
+      if (!Array.isArray(d)) {
+        throw new Error("Expected an array");
+      }
+      return d.map((item) => new Game(item));
+    },
   });
 }
