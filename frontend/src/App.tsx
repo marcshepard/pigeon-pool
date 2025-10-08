@@ -5,6 +5,7 @@
 // src/App.tsx
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { CssBaseline, ThemeProvider, createTheme, LinearProgress, Box } from "@mui/material";
+import UserMenuAvatar from "./components/UserMenuAvatar";
 
 // auth
 import { AuthProvider } from "./auth/AuthContext";
@@ -59,8 +60,17 @@ function PrivateShell() {
   }
 
   // Signed in → render the app shell with routes
+  const userMenu = state.status === "signedIn" ? (
+    <UserMenuAvatar user={state.user} onSignOut={signOut} />
+  ) : null;
+
   return (
-    <ResponsiveNav title="Pigeon Pool" brand={<Brand />} navItems={navItems} onSignOut={signOut}>
+    <ResponsiveNav
+      title="Pigeon Pool"
+      brand={<Brand />}
+      navItems={navItems}
+      userMenu={userMenu}
+    >
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/picks" element={<PicksPage />} />

@@ -19,12 +19,10 @@ import {
   useMediaQuery,
   useTheme,
   Divider,
-  Button,
 } from "@mui/material";
-import MenuIcon from "@mui/icons-material/Menu";
 import HomeIcon from "@mui/icons-material/Home";
+import MenuIcon from "@mui/icons-material/Menu";
 import SportsFootballIcon from "@mui/icons-material/SportsFootball";
-import LogoutIcon from "@mui/icons-material/Logout";
 
 // ---- Types ----
 export type NavItem = {
@@ -36,8 +34,8 @@ export type NavItem = {
 type ResponsiveNavProps = {
   title: string;          // Page title shown in the app bar
   brand: ReactNode;       // Brand element (e.g., logo) to show over the drawer
-  navItems: NavItem[];   // TODO - Not sure what this is for yet
-  onSignOut: () => void;  // Sign-out function
+  navItems: NavItem[];
+  userMenu: ReactNode;    // Avatar/menu to show on the right of the AppBar
   children: ReactNode;    // Main page content
 };
 
@@ -60,7 +58,7 @@ export default function ResponsiveNav({
   title,
   brand,
   navItems,
-  onSignOut,
+  userMenu,
   children,
 }: ResponsiveNavProps) {
   const theme = useTheme();
@@ -138,21 +136,10 @@ export default function ResponsiveNav({
           );
         })}
       </List>
-
-      {onSignOut && (
-        <Box sx={{ p: 2 }}>
-          <Button
-            fullWidth
-            variant="outlined"
-            startIcon={<LogoutIcon />}
-            onClick={onSignOut}
-          >
-            Sign out
-          </Button>
-        </Box>
-      )}
     </Box>
   );
+
+
 
   return (
     <Box sx={{ display: "flex", minHeight: "100dvh" }}>
@@ -221,6 +208,7 @@ export default function ResponsiveNav({
             >
               {title ?? items.find(i => i.path === location.pathname)?.label ?? "Pigeon Pool"}
             </Typography>
+            {userMenu}
           </Toolbar>
         </AppBar>
 
