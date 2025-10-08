@@ -8,9 +8,11 @@ import { Box, Button, Stack, TextField, Typography } from "@mui/material";
 import { AppSnackbar } from "../components/CommonComponents";
 import { useAuth } from "../auth/useAuth";
 import { LoginPayload } from "../backend/types";
+import { useNavigate } from "react-router-dom";
 
 export default function LoginPage() {
-  const { signIn } = useAuth(); // <-- pulls in apiLogin via context
+  const { signIn } = useAuth();  // pulls in apiLogin via context
+  const navigate = useNavigate();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -28,8 +30,7 @@ export default function LoginPage() {
     try {
       const payload = new LoginPayload({ email, password });
       await signIn(payload); // <-- this triggers POST /api/auth/login
-      setSnack({ open: true, message: "Signed in successfully", severity: "success" });
-      // The PrivateShell will route you into the app after AuthContext refreshes.
+      navigate("/", { replace: true });
     } catch (err) {
       const message = err instanceof Error ? err.message : "An unexpected error occurred";
       setSnack({ open: true, message, severity: "error" });
