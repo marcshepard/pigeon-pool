@@ -3,7 +3,7 @@
  */
 
 import {
-  Me, Ok, LoginPayload, PasswordResetConfirm, PasswordResetRequest, DataValidationError,
+  Me, Ok, LoginPayload, PasswordResetConfirm, PasswordResetRequest
 } from "./types";
 
 // Base URL for API calls, from env or default to relative /api (for dev with proxy)
@@ -27,6 +27,9 @@ export async function apiFetch<T>(
   });
 
   if (!res.ok) {
+    if (res.status === 401 && onUnauthorized) {
+      onUnauthorized();
+    }
     const text = await res.text();
     throw new Error(`API error ${res.status}: ${text}`);
   }

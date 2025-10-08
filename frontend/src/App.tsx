@@ -14,6 +14,7 @@ import { useAuth } from "./auth/useAuth";
 // shell + pages
 import ResponsiveNav from "./components/ResponsiveNav";
 import LoginPage from "./pages/Login";
+import PasswordResetConfirmPage from "./pages/PasswordResetConfirmPage";
 import HomePage from "./pages/Home";
 import PicksPage from "./pages/Picks";
 
@@ -89,6 +90,7 @@ export default function App() {
           <Routes>
             {/* Public routes */}
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/reset-password" element={<PasswordResetConfirmPage />} />
             {/* Private app */}
             <Route path="/*" element={<PrivateShell />} />
           </Routes>
