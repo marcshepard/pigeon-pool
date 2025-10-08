@@ -16,6 +16,8 @@ import LoginPage from "./pages/Login";
 import HomePage from "./pages/Home";
 import PicksPage from "./pages/Picks";
 
+import type { NavItem } from "./components/ResponsiveNav";
+
 // ---- optional theme ----
 const theme = createTheme({
   palette: {
@@ -23,6 +25,21 @@ const theme = createTheme({
     primary: { main: "#1976d2" },
   },
 });
+
+function Brand() {
+  return (
+      <img
+        src="/pigeon.png"
+        alt="Pigeon logo"
+        style={{ height: 48, width: "auto", display: "block" }}
+      />
+  );
+}
+
+const navItems: NavItem[] = [
+  { path: "/", label: "Home", icon: "home" },
+  { path: "/picks", label: "Enter Picks", icon: "picks" },
+];
 
 function PrivateShell() {
   const { state, signOut } = useAuth();
@@ -43,7 +60,7 @@ function PrivateShell() {
 
   // Signed in → render the app shell with routes
   return (
-    <ResponsiveNav title="Pigeon Pool" onSignOut={signOut}>
+    <ResponsiveNav title="Pigeon Pool" brand={<Brand />} navItems={navItems} onSignOut={signOut}>
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/picks" element={<PicksPage />} />

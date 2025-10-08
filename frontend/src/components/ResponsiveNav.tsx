@@ -34,16 +34,11 @@ export type NavItem = {
 };
 
 type ResponsiveNavProps = {
-  /** Page title shown in the app bar (optional) */
-  title?: string;
-  /** Nav items to render in the sidebar */
-  navItems?: NavItem[];
-  /** Optional sign-out handler; when omitted, the button is hidden */
-  onSignOut?: () => void;
-  /** Main page content */
-  children: ReactNode;
-  /** Optional brand (text or <img/>) shown in the left side of the bar */
-  brand?: ReactNode;
+  title: string;          // Page title shown in the app bar
+  brand: ReactNode;       // Brand element (e.g., logo) to show over the drawer
+  navItems: NavItem[];   // TODO - Not sure what this is for yet
+  onSignOut: () => void;  // Sign-out function
+  children: ReactNode;    // Main page content
 };
 
 // ---- Constants ----
@@ -63,10 +58,10 @@ function ItemIcon({ kind }: { kind?: NavItem["icon"] }) {
  */
 export default function ResponsiveNav({
   title,
+  brand,
   navItems,
   onSignOut,
   children,
-  brand,
 }: ResponsiveNavProps) {
   const theme = useTheme();
   const isDesktop = useMediaQuery(theme.breakpoints.up("md"), { noSsr: true });
@@ -104,18 +99,14 @@ export default function ResponsiveNav({
         sx={{
           display: "flex",
           alignItems: "center",
-          gap: 1,
+          justifyContent: "center",
           px: 2,
           py: 2,
           textDecoration: "none",
           color: "inherit",
         }}
       >
-        {brand ?? (
-          <Typography variant="h6" component="div">
-            Pigeon Pool
-          </Typography>
-        )}
+        {brand}
       </Box>
 
       <Divider />
