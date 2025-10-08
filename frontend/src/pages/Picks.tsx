@@ -7,7 +7,6 @@ import {
   Box,
   Typography,
   Stack,
-  CircularProgress,
   Alert,
   FormControl,
   RadioGroup,
@@ -19,7 +18,8 @@ import {
   MenuItem,
   InputLabel,
 } from "@mui/material";
-import { getScheduleCurrent, getGamesForWeek } from "../backend/fetch";
+import { getScheduleCurrent, getGamesForWeek, getMyPicksForWeek, upsertPicksBulk } from "../backend/fetch";
+import { AppSnackbar, Loading } from "../components/CommonComponents";
 import type { Game, ScheduleCurrent } from "../backend/types";
 
 type PickDraft = {
@@ -33,7 +33,12 @@ export default function PicksPage() {
   const [games, setGames] = useState<Game[] | null>(null);
   const [draft, setDraft] = useState<Record<number, PickDraft>>({});
   const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+  const [loadingError, setLoadingError] = useState<string>("");
+  const [snackbar, setSnackbar] = useState<{
+    open: boolean;
+    message: string;
+    severity?: "success" | "error" | "info" | "warning";
+  }>({ open: false, message: "" });
 
   // Load schedule/current once
   useEffect(() => {
@@ -44,14 +49,16 @@ export default function PicksPage() {
         if (cancelled) return;
         setCurrent(sc);
         // Default to next_picks_week (if null, pick the next reasonable option)
-        const defaultWeek =
-          Number.isInteger(sc.next_picks_week) && sc.next_picks_week! >= 1
-            ? (sc.next_picks_week as number)
-            : // fallback: if season not started or unknown, choose 1
-              1;
-        setWeek(defaultWeek);
-      } catch (e: any) {
-        if (!cancelled) setErr(e?.message ?? "Failed to load schedule");
+          let defaultWeek = 1;
+          if (typeof sc.next_picks_week === "number" && sc.next_picks_week >= 1) {
+            defaultWeek = sc.next_picks_week;
+          }
+          setWeek(defaultWeek);
+      } catch (e: unknown) {
+        if (!cancelled) {
+          const message = e instanceof Error ? e.message : "Failed to load schedule";
+          setLoadingError(message);
+        }
       }
     })();
     return () => {
@@ -73,11 +80,13 @@ export default function PicksPage() {
     if (!week) return;
     let cancelled = false;
     setLoading(true);
-    setErr(null);
+  // setErr(null);
     setGames(null);
     setDraft({});
-    getGamesForWeek(week)
-      .then((gs) => {
+
+    // Fetch games and user's picks in parallel
+    Promise.all([getGamesForWeek(week), getMyPicksForWeek(week)])
+      .then(([gs, picks]) => {
         if (cancelled) return;
         // Sort by kickoff_at ascending, then by game_id
         const sorted = [...gs].sort((a, b) => {
@@ -86,15 +95,35 @@ export default function PicksPage() {
           if (at !== bt) return at - bt;
           return a.game_id - b.game_id;
         });
-        // Initialize draft defaults
+        // Map picks by game_id for quick lookup
+        const picksByGame: Record<number, { picked_home: boolean; predicted_margin: number }> = {};
+        for (const p of picks) {
+          picksByGame[p.game_id] = {
+            picked_home: p.picked_home,
+            predicted_margin: p.predicted_margin,
+          };
+        }
+        // Initialize draft with picks if present, else defaults
         const initialDraft: Record<number, PickDraft> = {};
         for (const g of sorted) {
-          initialDraft[g.game_id] = { picked_home: null, predicted_margin: 0 };
+          if (picksByGame[g.game_id]) {
+            initialDraft[g.game_id] = {
+              picked_home: picksByGame[g.game_id].picked_home,
+              predicted_margin: picksByGame[g.game_id].predicted_margin,
+            };
+          } else {
+            initialDraft[g.game_id] = { picked_home: null, predicted_margin: 0 };
+          }
         }
         setGames(sorted);
         setDraft(initialDraft);
       })
-      .catch((e: any) => !cancelled && setErr(e?.message ?? "Failed to load games"))
+      .catch((e: unknown) => {
+        if (!cancelled) {
+          const message = e instanceof Error ? e.message : "Failed to load games or picks";
+          setLoadingError(message);
+        }
+      })
       .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;
@@ -112,7 +141,13 @@ export default function PicksPage() {
   };
 
   const handleMargin = (gameId: number, value: string) => {
-    const n = Math.max(0, Number.isNaN(Number(value)) ? 0 : Math.floor(Number(value)));
+    // Accept only up to 2 digits, or empty string
+    let n = 0;
+    if (value === "") {
+      n = 0;
+    } else {
+      n = Math.max(0, Math.min(99, Number(value.replace(/[^0-9]/g, ""))));
+    }
     setDraft((d) => ({
       ...d,
       [gameId]: {
@@ -122,12 +157,71 @@ export default function PicksPage() {
     }));
   };
 
-  const handleSubmit = () => {
-    // For now, just show the draft in console and alert.
-    // Later, map this to your /picks/bulk payload.
-    // payload: { week_number: week!, picks: [{ game_id, picked_home, predicted_margin }, ...] }
-    console.log("Draft picks", { week, draft });
-    alert("Submit not implemented yet.");
+  const handleSubmit = async () => {
+    if (!week || !games) return;
+  // setSubmitStatus("submitting");
+  // setErr(null);
+    // Validate: all games must have a pick and margin
+    const incomplete = games.find((g) => {
+      const d = draft[g.game_id];
+      return !d || d.picked_home === null || isNaN(d.predicted_margin) || d.predicted_margin < 0;
+    });
+    if (incomplete) {
+      setSnackbar({
+        open: true,
+        message: "Please make a pick and margin for every game.",
+        severity: "warning",
+      });
+  // setSubmitStatus("idle");
+      return;
+    }
+    const picks = games.map((g) => ({
+      game_id: g.game_id,
+      picked_home: draft[g.game_id].picked_home!,
+      predicted_margin: draft[g.game_id].predicted_margin,
+    }));
+    try {
+      await upsertPicksBulk({ week_number: week, picks });
+  // setSubmitStatus("success");
+      setSnackbar({
+        open: true,
+        message: "Picks submitted!",
+        severity: "success",
+      });
+      // Optionally, reload picks to reflect any server-side changes
+      const newPicks = await getMyPicksForWeek(week);
+      const picksByGame: Record<number, { picked_home: boolean; predicted_margin: number }> = {};
+      for (const p of newPicks) {
+        picksByGame[p.game_id] = {
+          picked_home: p.picked_home,
+          predicted_margin: p.predicted_margin,
+        };
+      }
+      setDraft((prev) => {
+        const updated: Record<number, PickDraft> = { ...prev };
+        for (const g of games) {
+          if (picksByGame[g.game_id]) {
+            updated[g.game_id] = {
+              picked_home: picksByGame[g.game_id].picked_home,
+              predicted_margin: picksByGame[g.game_id].predicted_margin,
+            };
+          }
+        }
+        return updated;
+      });
+    } catch (e: unknown) {
+      let msg = "Failed to submit picks";
+      if (e instanceof Error) msg = e.message;
+  // setErr(msg);
+      setSnackbar({
+        open: true,
+        message: msg,
+        severity: "error",
+      });
+  // setSubmitStatus("idle");
+      return;
+    }
+  // setTimeout(() => setSubmitStatus("idle"), 2000);
   };
 
   const titleWeek =
@@ -157,16 +251,15 @@ export default function PicksPage() {
         </FormControl>
       </Stack>
 
-      {err && (
-        <Alert severity="error" sx={{ mb: 2 }}>
-          {err}
-        </Alert>
-      )}
+      <AppSnackbar
+        open={snackbar.open}
+        message={snackbar.message}
+        severity={snackbar.severity}
+        onClose={() => setSnackbar((s) => ({ ...s, open: false }))}
+      />
 
       {loading && (
-        <Stack alignItems="center" sx={{ py: 6 }}>
-          <CircularProgress />
-        </Stack>
+        <Loading error={loadingError} />
       )}
 
       {!loading && games && games.length === 0 && (
@@ -229,11 +322,19 @@ export default function PicksPage() {
                     {/* Margin */}
                     <TextField
                       label="Margin"
-                      type="number"
+                      type="text"
                       size="small"
-                      inputProps={{ min: 0, step: 1 }}
-                      value={d?.predicted_margin ?? 0}
-                      onChange={(e) => handleMargin(g.game_id, e.target.value)}
+                      inputProps={{ inputMode: "numeric", pattern: "\\d{1,2}", maxLength: 2 }}
+                      value={
+                        typeof d?.predicted_margin === "number" && d.predicted_margin >= 0
+                          ? String(d.predicted_margin)
+                          : ""
+                      }
+                      onChange={(e) => {
+                        // Only allow up to 2 digits, numeric only
+                        const val = e.target.value.replace(/[^0-9]/g, "").slice(0, 2);
+                        handleMargin(g.game_id, val);
+                      }}
                       sx={{ width: 100 }}
                     />
                   </Stack>

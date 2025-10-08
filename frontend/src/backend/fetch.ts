@@ -10,6 +10,9 @@ import {
   PasswordResetRequest,
   ScheduleCurrent,
   Game,
+  PickIn,
+  PickOut,
+  PicksBulkIn,
 } from "./types";
 
 // Base URL for API calls, from env or default to relative /api (for dev with proxy)
@@ -103,5 +106,52 @@ export function getGamesForWeek(weekNumber: number): Promise<Game[]> {
       }
       return d.map((item) => new Game(item));
     },
+  });
+}
+
+/**
+ * GET /picks/{week_number} → PickOut[]
+ */
+export function getMyPicksForWeek(weekNumber: number): Promise<PickOut[]> {
+  if (!Number.isInteger(weekNumber) || weekNumber < 1 || weekNumber > 18) {
+    return Promise.reject(new Error(`Invalid weekNumber: ${weekNumber}`));
+  }
+  return apiFetch(`/picks/${weekNumber}`, {
+    method: "GET",
+    factory: (d) => {
+      if (!Array.isArray(d)) throw new Error("Expected array");
+      return d.map((item) => new PickOut(item));
+    },
+  });
+}
+
+/**
+ * POST /picks/bulk → PickOut[]
+ * @param payload PicksBulkIn
+ */
+export function upsertPicksBulk(payload: PicksBulkIn): Promise<PickOut[]> {
+  return apiFetch(`/picks/bulk`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+    factory: (d) => {
+      if (!Array.isArray(d)) throw new Error("Expected array");
+      return d.map((item) => new PickOut(item));
+    },
+  });
+}
+
+/**
+ * PUT /picks/{game_id} → PickOut
+ * @param gameId number
+ * @param pick PickIn
+ */
+export function upsertSinglePick(gameId: number, pick: PickIn): Promise<PickOut> {
+  if (!Number.isInteger(gameId)) {
+    return Promise.reject(new Error("Invalid gameId"));
+  }
+  return apiFetch(`/picks/${gameId}`, {
+    method: "PUT",
+    body: JSON.stringify(pick),
+    factory: (d) => new PickOut(d),
   });
 }

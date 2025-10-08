@@ -1,3 +1,61 @@
+// ---- Picks API types ----
+export class PickIn {
+  game_id: number;
+  picked_home: boolean;
+  predicted_margin: number;
+
+  constructor(data: unknown) {
+    if (!isRecord(data)) throw new DataValidationError("Invalid PickIn payload (not an object)");
+    if (!isNumber(data.game_id)) throw new DataValidationError("game_id must be number");
+    if (!isBoolean(data.picked_home)) throw new DataValidationError("picked_home must be boolean");
+    if (!isNumber(data.predicted_margin) || data.predicted_margin < 0) throw new DataValidationError("predicted_margin must be non-negative number");
+    this.game_id = data.game_id;
+    this.picked_home = data.picked_home;
+    this.predicted_margin = data.predicted_margin;
+  }
+}
+
+export class PickOut {
+  pigeon_number: number;
+  game_id: number;
+  picked_home: boolean;
+  predicted_margin: number;
+  created_at: string;
+
+  constructor(data: unknown) {
+    if (!isRecord(data)) throw new DataValidationError("Invalid PickOut payload (not an object)");
+    if (!isNumber(data.pigeon_number)) throw new DataValidationError("pigeon_number must be number");
+    if (!isNumber(data.game_id)) throw new DataValidationError("game_id must be number");
+    if (!isBoolean(data.picked_home)) throw new DataValidationError("picked_home must be boolean");
+    if (!isNumber(data.predicted_margin)) throw new DataValidationError("predicted_margin must be number");
+    if (!isString(data.created_at)) throw new DataValidationError("created_at must be string");
+    this.pigeon_number = data.pigeon_number;
+    this.game_id = data.game_id;
+    this.picked_home = data.picked_home;
+    this.predicted_margin = data.predicted_margin;
+    this.created_at = data.created_at;
+  }
+}
+
+export class PicksBulkIn {
+  week_number: number;
+  picks: PickIn[];
+
+  constructor(data: unknown) {
+    if (!isRecord(data)) throw new DataValidationError("Invalid PicksBulkIn payload (not an object)");
+    if (!isNumber(data.week_number) || data.week_number < 1 || data.week_number > 18) throw new DataValidationError("week_number must be 1-18");
+    if (!Array.isArray(data.picks)) throw new DataValidationError("picks must be array");
+    // Check for duplicate game_id
+    const seen = new Set<number>();
+    this.picks = data.picks.map((p) => {
+      const pick = new PickIn(p);
+      if (seen.has(pick.game_id)) throw new DataValidationError(`Duplicate game_id ${pick.game_id} in picks`);
+      seen.add(pick.game_id);
+      return pick;
+    });
+    this.week_number = data.week_number;
+  }
+}
 /**
  * Data types returned from the backend API
  */
