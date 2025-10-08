@@ -5,11 +5,11 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-# Import before other modules so env vars are available early
 from .settings import get_settings
 from .logger import configure_from_env
 from .auth import router as auth_router
 from .picks import router as picks_router
+from .schedule import router as schedule_router
 
 # Early initialization
 get_settings()          # forces env load/validation once
@@ -34,3 +34,4 @@ def ping():
 # Register routes
 app.include_router(auth_router)
 app.include_router(picks_router)
+app.include_router(schedule_router)

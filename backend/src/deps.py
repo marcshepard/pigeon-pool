@@ -2,7 +2,6 @@
 Database connection and session management using SQLAlchemy with async support
 """
 
-# backend/src/deps.py
 from __future__ import annotations
 from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
