@@ -38,8 +38,8 @@ SESSION_MINUTES = 60                 # idle/absolute expiry for simplicity
 SLIDE_THRESHOLD_SECONDS = 15 * 60    # re-issue cookie if < 15 min left
 
 # Origins from env
-_API_ORIGIN = os.getenv("API_ORIGIN", "http://localhost:8000")
-_FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "http://localhost:5173")
+API_ORIGIN = os.getenv("API_ORIGIN", "http://localhost:8000")
+FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "http://localhost:5173")
 
 def _origin_tuple(url: str):
     p = urlparse(url)
@@ -47,10 +47,10 @@ def _origin_tuple(url: str):
     return (p.scheme, p.hostname, port)
 
 ENV = os.getenv("APP_ENV", "development").lower()
-_FE = _origin_tuple(_FRONTEND_ORIGIN)
-_API = _origin_tuple(_API_ORIGIN)
+_FE = _origin_tuple(FRONTEND_ORIGIN)
+_API = _origin_tuple(API_ORIGIN)
 CROSS_SITE = _FE != _API
-API_SCHEME = _origin_tuple(_API_ORIGIN)[0]
+API_SCHEME = _origin_tuple(API_ORIGIN)[0]
 
 # Cookie flags that “just work” in both modes
 COOKIE_NAME = os.getenv("COOKIE_NAME", "session")
@@ -75,7 +75,7 @@ if CROSS_SITE:
 else:
     # Same-origin (e.g., via Vite proxy in dev)
     COOKIE_SAMESITE = "lax"
-    COOKIE_SECURE = _origin_tuple(_API_ORIGIN)[0] == "https"
+    COOKIE_SECURE = _origin_tuple(API_ORIGIN)[0] == "https"
 
 
 # --- DB helper ---
@@ -339,7 +339,7 @@ def request_password_reset(payload: PasswordResetRequestIn):
 
             pn, _ = row
             token, exp_ts = make_reset_token(pn)
-            reset_url = f"https://your-frontend/reset-password?token={token}"
+            reset_url = f"{FRONTEND_ORIGIN}/reset-password?token={token}"
 
             debug(
                 "password-reset: token generated",
