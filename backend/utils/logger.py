@@ -31,17 +31,25 @@ def set_level(level: str):
     if level in LOG_LEVELS:
         _LOG_LEVEL = level
 
-def debug(msg, **kw):
+def _emit(msg: str, **kw):
+    """Print message with optional key=value fields; avoid printing {}."""
+    if kw:
+        kv = " ".join(f"{k}={v}" for k, v in kw.items())
+        print(f"{msg} {kv}", file=sys.stderr)
+    else:
+        print(msg, file=sys.stderr)
+
+def debug(msg: str, **kw):
     if _LOG_LEVEL == "debug":
-        print(msg, kw, file=sys.stderr)
+        _emit(msg, **kw)
 
-def info(msg, **kw):
+def info(msg: str, **kw):
     if _LOG_LEVEL in ("debug", "info"):
-        print(msg, kw, file=sys.stderr)
+        _emit(msg, **kw)
 
-def warn(msg, **kw):
+def warn(msg: str, **kw):
     if _LOG_LEVEL in ("debug", "info", "warn"):
-        print(msg, kw, file=sys.stderr)
+        _emit(msg, **kw)
 
-def error(msg, **kw):
-    print(msg, kw, file=sys.stderr)
+def error(msg: str, **kw):
+    _emit(msg, **kw)

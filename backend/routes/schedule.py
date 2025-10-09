@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .deps import get_db
+from backend.utils.db import get_db
 
 router = APIRouter(prefix="/schedule", tags=["schedule"])
 

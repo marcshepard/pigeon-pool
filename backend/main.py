@@ -5,15 +5,15 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .settings import get_settings
-from .logger import configure_from_env
-from .auth import router as auth_router
-from .picks import router as picks_router
-from .schedule import router as schedule_router
+from backend.utils.settings import get_settings
+from backend.utils.logger import configure_from_env
+from backend.routes.auth import router as auth_router
+from backend.routes.picks import router as picks_router
+from backend.routes.schedule import router as schedule_router
 
 # Early initialization
-get_settings()          # forces env load/validation once
-configure_from_env()    # picks up LOGGING_LEVEL
+get_settings()          # forces env load/validation early
+configure_from_env()    # configure logging level after picking up LOGGING_LEVEL from env
 
 app = FastAPI(title="Pigeon Pool API", version="0.1.0")
 

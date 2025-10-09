@@ -9,12 +9,13 @@ CREATE TABLE IF NOT EXISTS teams (
 -- === WEEKS ===
 CREATE TABLE IF NOT EXISTS weeks (
   week_number INT PRIMARY KEY CHECK (week_number BETWEEN 1 AND 18),
-  lock_at     TIMESTAMPTZ NOT NULL,
+  lock_at     TIMESTAMPTZ NOT NULL
 );
 
 -- === GAMES ===
 CREATE TABLE IF NOT EXISTS games (
   game_id     BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  espn_event_id BIGINT UNIQUE,
   week_number INT NOT NULL REFERENCES weeks(week_number) ON DELETE CASCADE,
   kickoff_at  TIMESTAMPTZ NOT NULL,
   home_abbr   TEXT NOT NULL REFERENCES teams(abbr),
@@ -22,6 +23,7 @@ CREATE TABLE IF NOT EXISTS games (
   status      TEXT NOT NULL CHECK (status IN ('scheduled','in_progress','final')),
   home_score  INT,
   away_score  INT,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   CONSTRAINT games_no_self CHECK (home_abbr <> away_abbr),
   CONSTRAINT games_unique_per_week UNIQUE (week_number, home_abbr, away_abbr)
 );

@@ -71,7 +71,6 @@ export default function LoginPage() {
     >
       <Typography variant="h4" gutterBottom>Pigeon Pool</Typography>
       <Typography variant="body1" gutterBottom>Sign in to your account</Typography>
-
       <Stack component="form" gap={2} onSubmit={handleLogin}>
         <TextField
           label="Email"

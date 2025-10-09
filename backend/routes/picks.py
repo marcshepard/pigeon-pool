@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
-from .deps import get_db
+from backend.utils.db import get_db
 from .auth import require_user
 
 router = APIRouter(prefix="/picks", tags=["picks"])

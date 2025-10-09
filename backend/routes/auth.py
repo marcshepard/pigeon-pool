@@ -16,8 +16,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from passlib.hash import bcrypt
 from pydantic import BaseModel, EmailStr
 
-from .settings import get_settings
-from .logger import debug, info, warn, error
+from backend.utils.settings import get_settings
+from backend.utils.logger import debug, info, warn, error
 
 # --- Config ---
 S = get_settings()
@@ -336,7 +336,7 @@ def request_password_reset(payload: PasswordResetRequestIn):
                 exp=int(exp_ts),
             )
             # TODO: send the email here (use your mailer abstraction)  # pylint: disable=fixme
-            debug("password-reset: dev link", url=reset_url)
+            debug(f"password-reset: reset link = {reset_url}")
 
             return {"ok": True}
 

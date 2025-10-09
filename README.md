@@ -28,29 +28,34 @@ Note: there is no .env.production.local; production secrets are stored as Azure 
 1. Install PostgreSQL, take all the defaults (they should match backend/.env), create a DB called "pigeon_pool", note the password
 2. Run database/schema.sql to create the DB schema
 3. Run database/users.sql to populate the DB with users
-4. Create backend/.env.development.local and add the line POSTGRES_PASSWORD=<your password>
-5. Create and activate an anaconda environment
+
+### 2. Backend API setup
+1. Create a backend/.env.development.local file and add these lines:
+```env
+POSTGRES_PASSWORD=whatever password you used when installing postgresql
+JWT_SECRET=any string you like
+```
+Note: this file constains secrets and will be .gitignored. Never check in secrets.
+
+2. Create and activate an anaconda environment
 ```bash
 conda create -n pigeon python=3.12
 conda activate pigeon
 pip install -r backend/requirements.txt
 ```
-6. dbmanagement.py to populate the DB with the NFL schedule
+
+3. Run the backend cli to populate the DB with the NFL schedule
 ```bash
-cd backend
-dbmanagement.py
+python -m backend.cli load-schedule
+```
+Note: the CLI has other command line options available. To see them all:
+```bash
+python -m backend.cli -h
 ```
 
-
-### 2. Backend API setup
-0. Your conda environment should be set up and activated already, per step 5 in DB setup above
-1. Define additional secrets in backend/.env.development.local
-```env
-JWT_SECRET=<pick any string>
-```
-2. Start the server 
+4. Start the server
 ```bash
-uvicorn backend.src.main:app --reload --port 8000
+uvicorn backend.main:app --reload --port 8000
 ```
 Note: You can also use the backend.cmd script on windows so you don't have to remember the syntax above
 
@@ -66,7 +71,7 @@ Note: You can also use the frontend.cmd script on windows so you don't have to r
 Note: the first time you sign in, you will need to go through password reset. Emailing the reset URL is
 not currently implemented, but in the backend logs, yhou will see something like:
 ```
-DEBUG (auth.py:350): password-reset: dev link url=http://localhost:5173/reset-password?token=xxx
+DEBUG (auth.py:350): password-reset: reset link = http://localhost:5173/reset-password?token=xxx
 ```
 Type that link into a browser to complete the password reset
 
