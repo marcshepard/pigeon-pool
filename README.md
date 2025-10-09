@@ -46,7 +46,7 @@ pip install -r backend/requirements.txt
 
 3. Run the backend cli to populate the DB with the NFL schedule
 ```bash
-python -m backend.cli load-schedule
+python -m backend.cli sync-schedule
 ```
 Note: the CLI has other command line options available. To see them all:
 ```bash
