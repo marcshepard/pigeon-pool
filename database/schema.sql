@@ -73,14 +73,104 @@ BEGIN
   RETURN COALESCE(NEW, OLD);
 END$$;
 
+-- === PICKS FILLED VIEW ===
+-- Synthesizes "home team by 0" picks for games a player hasn't picked yet
+-- (so the UI can show a full slate of picks for each player)
+CREATE OR REPLACE VIEW v_picks_filled AS
+SELECT
+  pl.pigeon_number,
+  g.game_id,
+  g.week_number,
+  COALESCE(p.picked_home, TRUE)   AS picked_home,       -- default to home
+  COALESCE(p.predicted_margin, 0) AS predicted_margin,  -- default to 0
+  p.created_at
+FROM players pl
+CROSS JOIN games g
+LEFT JOIN picks p
+  ON p.pigeon_number = pl.pigeon_number
+ AND p.game_id       = g.game_id;
+
+-- === WEEKLY LEADERBOAD VIEW ===
+-- Shows total points and rank per player per week:
+-- * Games not yet started are ignored
+-- * Points per game are calculated as the difference between predicted margin and actual margin, plus 7 pt penalty if the pick was wrong
+-- * A pick of 0 (imbued if pick was not made) always incurs a 7 pt penalty
+-- * Rank is based on total points per week; lower is better
+CREATE OR REPLACE VIEW v_weekly_leaderboard AS
+WITH base AS (
+  SELECT
+    f.pigeon_number,
+    g.week_number,
+    g.game_id,
+    g.home_score,
+    g.away_score,
+    f.predicted_margin,
+    f.picked_home
+  FROM v_picks_filled f
+  JOIN games g ON g.game_id = f.game_id
+  WHERE g.kickoff_at <= now()
+),
+scored AS (
+  SELECT
+    b.*,
+    CASE
+      WHEN b.home_score IS NULL OR b.away_score IS NULL THEN 0
+      ELSE ABS(b.home_score - b.away_score)
+    END AS actual_margin,
+    CASE
+      WHEN b.home_score IS NULL OR b.away_score IS NULL THEN NULL
+      WHEN b.home_score >  b.away_score THEN TRUE
+      WHEN b.home_score <  b.away_score THEN FALSE
+      ELSE NULL  -- tie
+    END AS home_won
+  FROM base b
+),
+per_game AS (
+  SELECT
+    s.pigeon_number,
+    s.week_number,
+    s.game_id,
+    ABS(s.predicted_margin - s.actual_margin) AS margin_diff,
+    CASE
+      WHEN s.predicted_margin = 0 THEN 7
+      WHEN s.home_won IS NULL THEN 0
+      WHEN s.picked_home <> s.home_won THEN 7
+      ELSE 0
+    END AS penalty
+  FROM scored s
+),
+totals AS (
+  SELECT
+    pigeon_number,
+    week_number,
+    SUM(margin_diff + penalty)::INT AS total_points
+  FROM per_game
+  GROUP BY pigeon_number, week_number
+)
+SELECT
+  t.pigeon_number,
+  t.week_number,
+  t.total_points,
+  RANK()       OVER (PARTITION BY t.week_number ORDER BY t.total_points ASC)  AS rank
+FROM totals t;
+
+-- === OBSOLETE ====
+DROP VIEW IF EXISTS v_player_week_leaderboard;
+DROP VIEW IF EXISTS v_player_week_points;
+
+
+-- Trigger the lock check on picks insert/update/delete
+DROP TRIGGER IF EXISTS trg_picks_insert_lock ON picks;
 CREATE TRIGGER trg_picks_insert_lock
   BEFORE INSERT ON picks
   FOR EACH ROW EXECUTE FUNCTION deny_picks_after_lock();
 
+DROP TRIGGER IF EXISTS trg_picks_update_lock ON picks;
 CREATE TRIGGER trg_picks_update_lock
   BEFORE UPDATE ON picks
   FOR EACH ROW EXECUTE FUNCTION deny_picks_after_lock();
 
+DROP TRIGGER IF EXISTS trg_picks_delete_lock ON picks;
 CREATE TRIGGER trg_picks_delete_lock
   BEFORE DELETE ON picks
   FOR EACH ROW EXECUTE FUNCTION deny_picks_after_lock();

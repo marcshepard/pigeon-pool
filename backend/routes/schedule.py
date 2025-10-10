@@ -75,12 +75,13 @@ MY_PICKS_FOR_WEEK_SQL = text("""
 # ---------- Helpers ----------
 
 def _is_locked(lock_at: datetime) -> bool:
+    """ Is the week locked (i.e. lock_at is in the past) """
     return lock_at <= datetime.now(timezone.utc)
 
 
 # ---------- Endpoints ----------
 
-@router.get("/current", summary="Get current live and next-picks week numbers")
+@router.get("/current_weeks", summary="Get current live and next-picks week numbers")
 async def get_current_weeks(db: AsyncSession = Depends(get_db)):
     """ Next unlocked week (for entering picks) """
     next_row = (await db.execute(text("""

@@ -1,1 +1,1 @@
-SELECT * FROM games WHERE week_number = 5 ORDER BY kickoff_at;
+SELECT * FROM games WHERE week_number = 6 ORDER BY kickoff_at;

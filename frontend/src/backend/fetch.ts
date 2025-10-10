@@ -85,9 +85,9 @@ export async function apiConfirmPasswordReset(p: PasswordResetConfirm): Promise<
   });
 }
 
-/** GET /schedule/current → { next_picks_week, live_week } */
+/** GET /schedule/current_weeks → { next_picks_week, live_week } */
 export function getScheduleCurrent(): Promise<ScheduleCurrent> {
-  return apiFetch("/schedule/current", {
+  return apiFetch("/schedule/current_weeks", {
     method: "GET",
     factory: (d) => new ScheduleCurrent(d),
   });

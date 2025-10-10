@@ -33,7 +33,7 @@ class PickOut(BaseModel):
     game_id: int
     picked_home: bool
     predicted_margin: int
-    created_at: datetime
+    created_at: datetime | None = None # None if no pick submitted (predicted_margin will be 0)
 
 class PicksBulkIn(BaseModel):
     """Input model for bulk upsert of picks"""
@@ -87,7 +87,7 @@ UPSERT_PICK_SQL = text("""
 
 GET_PICKS_FOR_WEEK_SQL = text("""
     SELECT p.pigeon_number, p.game_id, p.picked_home, p.predicted_margin, p.created_at
-    FROM picks p
+    FROM v_picks_filled p
     JOIN games g ON g.game_id = p.game_id
     WHERE p.pigeon_number = :pigeon_number
       AND g.week_number = :week_number

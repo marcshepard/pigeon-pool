@@ -24,7 +24,7 @@ export class PickOut {
   game_id: number;
   picked_home: boolean;
   predicted_margin: number;
-  created_at: string;
+  created_at: string | null; // ISO string from the API (UTC), or null if no pick submitted
 
   constructor(data: unknown) {
     if (!isRecord(data)) throw new DataValidationError("Invalid PickOut payload (not an object)");
@@ -32,7 +32,7 @@ export class PickOut {
     if (!isNumber(data.game_id)) throw new DataValidationError("game_id must be number");
     if (!isBoolean(data.picked_home)) throw new DataValidationError("picked_home must be boolean");
     if (!isNumber(data.predicted_margin)) throw new DataValidationError("predicted_margin must be number");
-    if (!isString(data.created_at)) throw new DataValidationError("created_at must be string");
+    if (!(isString(data.created_at) || data.created_at === null)) throw new DataValidationError("created_at must be string or null");
     this.pigeon_number = data.pigeon_number;
     this.game_id = data.game_id;
     this.picked_home = data.picked_home;
