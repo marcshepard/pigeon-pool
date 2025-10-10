@@ -1,9 +1,158 @@
-import { Typography, Box } from "@mui/material";
+/**
+ * Show year-to-date statistics
+ */
 
-export default function YearToDatePage() {
-    return (
-        <Box>
-            <Typography variant="body1">This page will show a summary of results and wins for completed weeks</Typography>
-        </Box>
-    )
+import { useEffect, useMemo, useState } from "react";
+import { Box, Stack, Typography, Alert, Button } from "@mui/material";
+import { AppSnackbar, DataGridLite } from "../components/CommonComponents";
+import { getResultsYtd } from "../backend/fetch";
+import type { ColumnDef, Severity } from "../components/CommonComponents";
+
+type Row = {
+  pigeon_number: number;
+  pigeon_name: string;
+  byWeek: Record<number, { rank: number; total_points: number }>;
+  pointsYtd: number;
+  yearRank: number; // computed client-side by pointsYtd asc
+};
+
+export default function YtdPage() {
+  const [rows, setRows] = useState<Row[]>([]);
+  const [weeks, setWeeks] = useState<number[]>([]);
+  const [snack, setSnack] = useState({ open: false, message: "", severity: "info" as Severity });
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => { load(); }, []);
+  async function load() {
+    setLoading(true);
+    try {
+      const data = await getResultsYtd();
+      const allWeeks = Array.from(new Set(data.flatMap(d => d.weeks_locked))).sort((a, b) => a - b);
+
+      // prepare base without yearRank
+      const temp: Row[] = data.map(d => {
+        const byWeek: Row["byWeek"] = {};
+        for (const bw of d.by_week) {
+          byWeek[bw.week_number] = { rank: bw.rank, total_points: bw.total_points };
+        }
+        return {
+          pigeon_number: d.pigeon_number,
+          pigeon_name: d.pigeon_name,
+          byWeek,
+          pointsYtd: d.total_points_ytd,
+          yearRank: Number.POSITIVE_INFINITY,
+        };
+      });
+
+      // compute YEAR rank by pointsYtd asc (ties get same number)
+      const sorted = [...temp].sort((a, b) => a.pointsYtd - b.pointsYtd || a.pigeon_number - b.pigeon_number);
+      let rank = 0, prevPts: number | null = null, shown = 0;
+      const counts: Record<number, number> = {};
+      for (const r of sorted) {
+        shown++;
+        if (prevPts === null || r.pointsYtd !== prevPts) {
+          rank = shown;
+          prevPts = r.pointsYtd;
+        }
+        r.yearRank = rank;
+        counts[rank] = (counts[rank] ?? 0) + 1;
+      }
+
+      // apply tie prefix formatting at render time via counts
+      setRows(temp);
+      setWeeks(allWeeks);
+      setTieCounts(counts);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e ?? "");
+      setSnack({ open: true, message: msg || "Failed to load YTD", severity: "error" });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // rank tie counts (for "T" rendering)
+  const [tieCounts, setTieCounts] = useState<Record<number, number>>({});
+
+  const columns: ColumnDef<Row>[] = useMemo(() => {
+    const cols: ColumnDef<Row>[] = [
+      {
+        key: "pigeon",
+        header: "Pigeon",
+        pin: "left",
+        width: 160,
+        valueGetter: (r) => r.pigeon_number, // sort by pigeon number
+        renderCell: (r) => `${r.pigeon_number} ${r.pigeon_name}`, // render pigeon number + name
+      },
+    ];
+
+    // week columns (rank cells)
+    for (const w of weeks) {
+      cols.push({
+        key: `w_${w}`,
+        header: `W${w}`,
+        align: "center",
+        valueGetter: (r) => r.byWeek[w]?.rank ?? Number.POSITIVE_INFINITY,
+        renderCell: (r) => {
+          const rk = r.byWeek[w]?.rank;
+          if (rk == null) return "—";
+          // (Optional) if you have per-week tie info, you could prefix "T"; here we just show number.
+          return String(rk);
+        },
+      });
+    }
+
+    // summary columns
+    cols.push(
+      {
+        key: "pointsYtd",
+        header: "POINTS",
+        width: 100,
+        align: "right",
+        valueGetter: (r) => r.pointsYtd,
+        renderCell: (r) => r.pointsYtd,
+      },
+      {
+        key: "yearRank",
+        header: "YEAR",
+        width: 80,
+        align: "center",
+        valueGetter: (r) => r.yearRank,
+        renderCell: (r) => {
+          const rk = r.yearRank;
+          const tied = tieCounts[rk] > 1;
+          return tied ? `T${rk}` : String(rk);
+        },
+      }
+    );
+
+    return cols;
+  }, [weeks, tieCounts]);
+
+  return (
+    <Box sx={{ p: 2 }}>
+      <Stack direction="row" justifyContent="space-between" alignItems="center" className="print-hide" sx={{ mb: 2 }}>
+        <Typography variant="h6">Year to Date</Typography>
+        <Button variant="outlined" onClick={() => window.print()}>Print</Button>
+      </Stack>
+
+      {loading ? (
+        <Alert severity="info">Loading…</Alert>
+      ) : (
+        <DataGridLite<Row>
+          rows={rows}
+          columns={columns}
+          defaultSort={{ key: "pigeon", dir: "asc" }}
+          printTitle="Pigeon Pool — Year to Date"
+        />
+      )}
+
+      <AppSnackbar
+        open={snack.open}
+        message={snack.message}
+        severity={snack.severity}
+        onClose={() => setSnack(s => ({ ...s, open: false }))}
+      />
+    </Box>
+  );
 }
+

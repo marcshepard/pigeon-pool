@@ -5,6 +5,7 @@
 import {
   Me,
   Ok,
+  LeaderboardRow,
   LoginPayload,
   PasswordResetConfirm,
   PasswordResetRequest,
@@ -12,6 +13,8 @@ import {
   Game,
   PickOut,
   PicksBulkIn,
+  WeekPicksRow,
+  YtdRow
 } from "./types";
 
 // Base URL for API calls, from env or default to relative /api (for dev with proxy)
@@ -61,9 +64,10 @@ export async function apiFetch<T>(
   return init.factory(json);
 }
 
-// ---- Endpoint helpers ----
+// =============================
+// Auth fetch wrappers
+// =============================
 
-// ---- Auth endpoints ----
 export async function apiLogin(payload: LoginPayload): Promise<Me> {
   return apiFetch("/auth/login", {
     method: "POST",
@@ -102,7 +106,9 @@ export async function apiConfirmPasswordReset(p: PasswordResetConfirm): Promise<
   });
 }
 
-// ---- Scheduling endpoints (not authenticated) ----
+// =============================
+// Schedule fetch wrappers
+// =============================
 export function getScheduleCurrent(): Promise<ScheduleCurrent> {
   return apiFetch("/schedule/current_weeks", {
     method: "GET",
@@ -125,7 +131,9 @@ export function getGamesForWeek(weekNumber: number): Promise<Game[]> {
   });
 }
 
-// ---- Picks endpoints (authenticated) ----
+// =============================
+// Picks fetch wrappers
+// =============================
 export function getMyPicksForWeek(weekNumber: number): Promise<PickOut[]> {
   if (!Number.isInteger(weekNumber) || weekNumber < 1 || weekNumber > 18) {
     return Promise.reject(new Error(`Invalid weekNumber: ${weekNumber}`));
@@ -150,6 +158,64 @@ export function setMyPicks(payload: PicksBulkIn): Promise<PickOut[]> {
     factory: (d) => {
       if (!Array.isArray(d)) throw new Error("Expected array");
       return d.map((item) => new PickOut(item));
+    },
+  });
+}
+
+// =============================
+// Results / Leaderboard fetches
+// =============================
+
+/**
+ * Fetch all picks (joined with game metadata) for a locked week.
+ * Backend will return 409 if the week is not locked.
+ */
+export function getResultsWeekPicks(week: number): Promise<WeekPicksRow[]> {
+  return apiFetch(`/results/weeks/${week}/picks`, {
+    method: "GET",
+    factory: (data: unknown) => {
+      if (!Array.isArray(data)) throw new Error("Invalid payload: expected array");
+      return data.map((row) => new WeekPicksRow(row));
+    },
+  });
+}
+
+/**
+ * Fetch leaderboard rows for a specific locked week.
+ * Works for live (locked but ongoing) weeks since the view ignores not-started games.
+ */
+export function getResultsWeekLeaderboard(week: number): Promise<LeaderboardRow[]> {
+  return apiFetch(`/results/weeks/${week}/leaderboard`, {
+    method: "GET",
+    factory: (data: unknown) => {
+      if (!Array.isArray(data)) throw new Error("Invalid payload: expected array");
+      return data.map((row) => new LeaderboardRow(row));
+    },
+  });
+}
+
+/**
+ * Fetch leaderboard rows across all locked weeks (concatenated).
+ */
+export function getResultsAllLeaderboards(): Promise<LeaderboardRow[]> {
+  return apiFetch(`/results/leaderboard`, {
+    method: "GET",
+    factory: (data: unknown) => {
+      if (!Array.isArray(data)) throw new Error("Invalid payload: expected array");
+      return data.map((row) => new LeaderboardRow(row));
+    },
+  });
+}
+
+/**
+ * Fetch Year-To-Date aggregates per player (locked weeks only).
+ */
+export function getResultsYtd(): Promise<YtdRow[]> {
+  return apiFetch(`/results/ytd`, {
+    method: "GET",
+    factory: (data: unknown) => {
+      if (!Array.isArray(data)) throw new Error("Invalid payload: expected array");
+      return data.map((row) => new YtdRow(row));
     },
   });
 }

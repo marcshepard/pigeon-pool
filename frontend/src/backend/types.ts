@@ -2,73 +2,6 @@
  * Data types returned from the backend API
  */
 
-// ---- Picks API types ----
-export class PickIn {
-  game_id: number;
-  picked_home: boolean;
-  predicted_margin: number;
-
-  constructor(data: unknown) {
-    if (!isRecord(data)) throw new DataValidationError("Invalid PickIn payload (not an object)");
-    if (!isNumber(data.game_id)) throw new DataValidationError("game_id must be number");
-    if (!isBoolean(data.picked_home)) throw new DataValidationError("picked_home must be boolean");
-    if (!isNumber(data.predicted_margin) || data.predicted_margin < 0) throw new DataValidationError("predicted_margin must be non-negative number");
-    this.game_id = data.game_id;
-    this.picked_home = data.picked_home;
-    this.predicted_margin = data.predicted_margin;
-  }
-}
-
-export class PickOut {
-  pigeon_number: number;
-  game_id: number;
-  picked_home: boolean;
-  predicted_margin: number;
-  created_at: string | null; // ISO string from the API (UTC), or null if no pick submitted
-
-  constructor(data: unknown) {
-    if (!isRecord(data)) throw new DataValidationError("Invalid PickOut payload (not an object)");
-    if (!isNumber(data.pigeon_number)) throw new DataValidationError("pigeon_number must be number");
-    if (!isNumber(data.game_id)) throw new DataValidationError("game_id must be number");
-    if (!isBoolean(data.picked_home)) throw new DataValidationError("picked_home must be boolean");
-    if (!isNumber(data.predicted_margin)) throw new DataValidationError("predicted_margin must be number");
-    if (!(isString(data.created_at) || data.created_at === null)) throw new DataValidationError("created_at must be string or null");
-    this.pigeon_number = data.pigeon_number;
-    this.game_id = data.game_id;
-    this.picked_home = data.picked_home;
-    this.predicted_margin = data.predicted_margin;
-    this.created_at = data.created_at;
-  }
-}
-
-export class PicksBulkIn {
-  week_number: number;
-  picks: PickIn[];
-
-  constructor(data: unknown) {
-    if (!isRecord(data)) throw new DataValidationError("Invalid PicksBulkIn payload (not an object)");
-    if (!isNumber(data.week_number) || data.week_number < 1 || data.week_number > 18) throw new DataValidationError("week_number must be 1-18");
-    if (!Array.isArray(data.picks)) throw new DataValidationError("picks must be array");
-    // Check for duplicate game_id
-    const seen = new Set<number>();
-    this.picks = data.picks.map((p) => {
-      const pick = new PickIn(p);
-      if (seen.has(pick.game_id)) throw new DataValidationError(`Duplicate game_id ${pick.game_id} in picks`);
-      seen.add(pick.game_id);
-      return pick;
-    });
-    this.week_number = data.week_number;
-  }
-}
-
-// ---- Errors ----
-export class DataValidationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "DataValidationError";
-  }
-}
-
 // ---- Narrowing helpers ----
 function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === "object" && x !== null && !Array.isArray(x);
@@ -83,7 +16,43 @@ function isBoolean(x: unknown): x is boolean {
   return typeof x === "boolean";
 }
 
-// ---- SessionInfo ----
+// =============================
+// Generic types
+// =============================
+// ---- Generic API error wrapper (optional) ----
+export class ApiError {
+  detail: string;
+
+  constructor(data: unknown) {
+    if (!isRecord(data) || !isString(data.detail)) {
+      throw new DataValidationError("Invalid ApiError data");
+    }
+    this.detail = data.detail;
+  }
+}
+
+export class DataValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "DataValidationError";
+  }
+}
+
+// ---- Ok ----
+export class Ok {
+  ok: true;
+
+  constructor(data: unknown) {
+    if (!isRecord(data) || data.ok !== true) {
+      throw new DataValidationError("Invalid Ok response");
+    }
+    this.ok = true;
+  }
+}
+
+// =============================
+// Login types
+// =============================
 export class SessionInfo {
   expires_at: string;
 
@@ -171,29 +140,9 @@ export class PasswordResetConfirm {
   }
 }
 
-// ---- Generic API error wrapper (optional) ----
-export class ApiError {
-  detail: string;
-
-  constructor(data: unknown) {
-    if (!isRecord(data) || !isString(data.detail)) {
-      throw new DataValidationError("Invalid ApiError data");
-    }
-    this.detail = data.detail;
-  }
-}
-
-// ---- Ok ----
-export class Ok {
-  ok: true;
-
-  constructor(data: unknown) {
-    if (!isRecord(data) || data.ok !== true) {
-      throw new DataValidationError("Invalid Ok response");
-    }
-    this.ok = true;
-  }
-}
+// =============================
+// Game schedule types
+// =============================
 
 /** Which weeks are most interesting to the user */
 export class ScheduleCurrent {
@@ -259,3 +208,195 @@ export class Game {
   }
 }
 
+// =============================
+// Picks types
+// =============================
+// ---- Picks API types ----
+export class PickIn {
+  game_id: number;
+  picked_home: boolean;
+  predicted_margin: number;
+
+  constructor(data: unknown) {
+    if (!isRecord(data)) throw new DataValidationError("Invalid PickIn payload (not an object)");
+    if (!isNumber(data.game_id)) throw new DataValidationError("game_id must be number");
+    if (!isBoolean(data.picked_home)) throw new DataValidationError("picked_home must be boolean");
+    if (!isNumber(data.predicted_margin) || data.predicted_margin < 0) throw new DataValidationError("predicted_margin must be non-negative number");
+    this.game_id = data.game_id;
+    this.picked_home = data.picked_home;
+    this.predicted_margin = data.predicted_margin;
+  }
+}
+
+export class PickOut {
+  pigeon_number: number;
+  game_id: number;
+  picked_home: boolean;
+  predicted_margin: number;
+  created_at: string | null; // ISO string from the API (UTC), or null if no pick submitted
+
+  constructor(data: unknown) {
+    if (!isRecord(data)) throw new DataValidationError("Invalid PickOut payload (not an object)");
+    if (!isNumber(data.pigeon_number)) throw new DataValidationError("pigeon_number must be number");
+    if (!isNumber(data.game_id)) throw new DataValidationError("game_id must be number");
+    if (!isBoolean(data.picked_home)) throw new DataValidationError("picked_home must be boolean");
+    if (!isNumber(data.predicted_margin)) throw new DataValidationError("predicted_margin must be number");
+    if (!(isString(data.created_at) || data.created_at === null)) throw new DataValidationError("created_at must be string or null");
+    this.pigeon_number = data.pigeon_number;
+    this.game_id = data.game_id;
+    this.picked_home = data.picked_home;
+    this.predicted_margin = data.predicted_margin;
+    this.created_at = data.created_at;
+  }
+}
+
+export class PicksBulkIn {
+  week_number: number;
+  picks: PickIn[];
+
+  constructor(data: unknown) {
+    if (!isRecord(data)) throw new DataValidationError("Invalid PicksBulkIn payload (not an object)");
+    if (!isNumber(data.week_number) || data.week_number < 1 || data.week_number > 18) throw new DataValidationError("week_number must be 1-18");
+    if (!Array.isArray(data.picks)) throw new DataValidationError("picks must be array");
+    // Check for duplicate game_id
+    const seen = new Set<number>();
+    this.picks = data.picks.map((p) => {
+      const pick = new PickIn(p);
+      if (seen.has(pick.game_id)) throw new DataValidationError(`Duplicate game_id ${pick.game_id} in picks`);
+      seen.add(pick.game_id);
+      return pick;
+    });
+    this.week_number = data.week_number;
+  }
+}
+
+// =============================
+// Results / Leaderboard types
+// =============================
+
+/** Read-only pick row for a locked week (joined with game metadata). */
+export class WeekPicksRow {
+  pigeon_number: number;
+  pigeon_name: string;
+  game_id: number;
+  week_number: number;
+  picked_home: boolean;
+  predicted_margin: number;
+  home_abbr: string;
+  away_abbr: string;
+  kickoff_at: string; // ISO-8601 (UTC)
+  status: "scheduled" | "in_progress" | "final";
+  home_score: number | null;
+  away_score: number | null;
+
+  constructor(data: unknown) {
+    if (!isRecord(data)) throw new DataValidationError("Invalid WeekPicksRow (not an object)");
+    if (!isNumber(data.pigeon_number)) throw new DataValidationError("pigeon_number must be number");
+    if (!isString(data.pigeon_name)) throw new DataValidationError("pigeon_name must be string");
+    if (!isNumber(data.game_id)) throw new DataValidationError("game_id must be number");
+    if (!isNumber(data.week_number)) throw new DataValidationError("week_number must be number");
+    if (!isBoolean(data.picked_home)) throw new DataValidationError("picked_home must be boolean");
+    if (!isNumber(data.predicted_margin)) throw new DataValidationError("predicted_margin must be number");
+    if (!isString(data.home_abbr)) throw new DataValidationError("home_abbr must be string");
+    if (!isString(data.away_abbr)) throw new DataValidationError("away_abbr must be string");
+    if (!isString(data.kickoff_at)) throw new DataValidationError("kickoff_at must be string");
+
+    if (!isString(data.status)) throw new DataValidationError("status must be string");
+    const status = data.status as string;
+    if (!["scheduled", "in_progress", "final"].includes(status)) {
+      throw new DataValidationError("status must be one of scheduled|in_progress|final");
+    }
+
+    const hs = data.home_score;
+    const as = data.away_score;
+    if (!(hs === null || typeof hs === "number")) throw new DataValidationError("home_score must be number|null");
+    if (!(as === null || typeof as === "number")) throw new DataValidationError("away_score must be number|null");
+
+    this.pigeon_number = data.pigeon_number;
+    this.pigeon_name = data.pigeon_name;
+    this.game_id = data.game_id;
+    this.week_number = data.week_number;
+    this.picked_home = data.picked_home;
+    this.predicted_margin = data.predicted_margin;
+    this.home_abbr = data.home_abbr;
+    this.away_abbr = data.away_abbr;
+    this.kickoff_at = data.kickoff_at;
+    this.status = status as WeekPicksRow["status"];
+    this.home_score = hs ?? null;
+    this.away_score = as ?? null;
+  }
+}
+
+/** Leaderboard row for one week (lower total_points is better). */
+export class LeaderboardRow {
+  pigeon_number: number;
+  pigeon_name: string;
+  week_number: number;
+  total_points: number;
+  rank: number;
+
+  constructor(data: unknown) {
+    if (!isRecord(data)) throw new DataValidationError("Invalid LeaderboardRow (not an object)");
+    if (!isNumber(data.pigeon_number)) throw new DataValidationError("pigeon_number must be number");
+    if (!isString(data.pigeon_name)) throw new DataValidationError("pigeon_name must be string");
+    if (!isNumber(data.week_number)) throw new DataValidationError("week_number must be number");
+    if (!isNumber(data.total_points)) throw new DataValidationError("total_points must be number");
+    if (!isNumber(data.rank)) throw new DataValidationError("rank must be number");
+
+    this.pigeon_number = data.pigeon_number;
+    this.pigeon_name = data.pigeon_name;
+    this.week_number = data.week_number;
+    this.total_points = data.total_points;
+    this.rank = data.rank;
+  }
+}
+
+/** Per-week breakdown element used inside YtdRow.by_week. */
+export class YtdByWeek {
+  week_number: number;
+  total_points: number;
+  rank: number;
+
+  constructor(data: unknown) {
+    if (!isRecord(data)) throw new DataValidationError("Invalid YtdByWeek (not an object)");
+    if (!isNumber(data.week_number)) throw new DataValidationError("week_number must be number");
+    if (!isNumber(data.total_points)) throw new DataValidationError("total_points must be number");
+    if (!isNumber(data.rank)) throw new DataValidationError("rank must be number");
+    this.week_number = data.week_number;
+    this.total_points = data.total_points;
+    this.rank = data.rank;
+  }
+}
+
+/** Year-to-date aggregate for a player across locked weeks. */
+export class YtdRow {
+  pigeon_number: number;
+  pigeon_name: string;
+  total_points_ytd: number;
+  average_rank: number;
+  wins: number;
+  weeks_locked: number[];
+  by_week: YtdByWeek[];
+
+  constructor(data: unknown) {
+    if (!isRecord(data)) throw new DataValidationError("Invalid YtdRow (not an object)");
+    if (!isNumber(data.pigeon_number)) throw new DataValidationError("pigeon_number must be number");
+    if (!isString(data.pigeon_name)) throw new DataValidationError("pigeon_name must be string");
+    if (!isNumber(data.total_points_ytd)) throw new DataValidationError("total_points_ytd must be number");
+    if (!isNumber(data.average_rank)) throw new DataValidationError("average_rank must be number");
+    if (!isNumber(data.wins)) throw new DataValidationError("wins must be number");
+    if (!Array.isArray(data.weeks_locked)) throw new DataValidationError("weeks_locked must be number[]");
+    if (!Array.isArray(data.by_week)) throw new DataValidationError("by_week must be array");
+
+    this.pigeon_number = data.pigeon_number;
+    this.pigeon_name = data.pigeon_name;
+    this.total_points_ytd = data.total_points_ytd;
+    this.average_rank = data.average_rank;
+    this.wins = data.wins;
+    this.weeks_locked = (data.weeks_locked as unknown[]).map((n) => {
+      if (typeof n !== "number") throw new DataValidationError("weeks_locked entries must be numbers");
+      return n;
+    });
+    this.by_week = (data.by_week as unknown[]).map((bw) => new YtdByWeek(bw));
+  }
+}

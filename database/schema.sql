@@ -76,6 +76,7 @@ END$$;
 -- === PICKS FILLED VIEW ===
 -- Synthesizes "home team by 0" picks for games a player hasn't picked yet
 -- (so the UI can show a full slate of picks for each player)
+
 CREATE OR REPLACE VIEW v_picks_filled AS
 SELECT
   pl.pigeon_number,
@@ -108,7 +109,7 @@ WITH base AS (
     f.picked_home
   FROM v_picks_filled f
   JOIN games g ON g.game_id = f.game_id
-  WHERE g.kickoff_at <= now()
+  WHERE g.kickoff_at <= now()          -- ignore not-started games
 ),
 scored AS (
   SELECT
@@ -132,9 +133,9 @@ per_game AS (
     s.game_id,
     ABS(s.predicted_margin - s.actual_margin) AS margin_diff,
     CASE
-      WHEN s.predicted_margin = 0 THEN 7
-      WHEN s.home_won IS NULL THEN 0
-      WHEN s.picked_home <> s.home_won THEN 7
+      WHEN s.predicted_margin = 0 THEN 7             -- 0 margin always +7
+      WHEN s.home_won IS NULL THEN 0                 -- tie/unknown: no wrong-side penalty
+      WHEN s.picked_home <> s.home_won THEN 7        -- wrong side
       ELSE 0
     END AS penalty
   FROM scored s
@@ -149,14 +150,34 @@ totals AS (
 )
 SELECT
   t.pigeon_number,
+  p.pigeon_name,
   t.week_number,
   t.total_points,
-  RANK()       OVER (PARTITION BY t.week_number ORDER BY t.total_points ASC)  AS rank
-FROM totals t;
+  RANK() OVER (PARTITION BY t.week_number ORDER BY t.total_points ASC) AS rank
+FROM totals t
+JOIN players p ON p.pigeon_number = t.pigeon_number;
 
--- === OBSOLETE ====
-DROP VIEW IF EXISTS v_player_week_leaderboard;
-DROP VIEW IF EXISTS v_player_week_points;
+-- Convenience view for "all picks for a locked week" (privacy: only locked weeks).
+-- Join includes pigeon_name and full game context in one place.
+CREATE OR REPLACE VIEW v_week_picks_with_names AS
+SELECT
+  pl.pigeon_number,
+  pl.pigeon_name,
+  g.game_id,
+  g.week_number,
+  f.picked_home,
+  f.predicted_margin,
+  g.home_abbr,
+  g.away_abbr,
+  g.kickoff_at,
+  g.status,
+  g.home_score,
+  g.away_score
+FROM v_picks_filled f
+JOIN games   g  ON g.game_id = f.game_id
+JOIN weeks   w  ON w.week_number = g.week_number
+JOIN players pl ON pl.pigeon_number = f.pigeon_number
+WHERE w.lock_at <= now();
 
 
 -- Trigger the lock check on picks insert/update/delete

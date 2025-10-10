@@ -17,7 +17,7 @@ import LoginPage from "./pages/Login";
 import PasswordResetConfirmPage from "./pages/PasswordResetConfirmPage";
 import HomePage from "./pages/Home";
 import PicksPage from "./pages/Picks";
-import AllPicksPage from "./pages/AllPicksPage";
+import ResultsPage from "./pages/ResultsPage";
 import YearToDatePage from "./pages/YearToDatePage";
 import AboutPage from "./pages/AboutPage";
 
@@ -49,7 +49,7 @@ function Brand() {
 const navItems: NavItem[] = [
   { path: "/", label: "Home", icon: <HomeIcon fontSize="small" /> },
   { path: "/picks", label: "Enter Picks", icon: <EditNoteIcon fontSize="small" /> },
-  { path: "/all-picks", label: "All Picks", icon: <ListAltIcon fontSize="small" /> },
+  { path: "/results", label: "Results", icon: <ListAltIcon fontSize="small" /> },
   { path: "/year-to-date", label: "Year-to-Date", icon: <EmojiEventsIcon fontSize="small" /> },
   { path: "/about", label: "About", icon: <InfoOutlinedIcon fontSize="small" /> },
 ];
@@ -86,7 +86,7 @@ function PrivateShell() {
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/picks" element={<PicksPage />} />
-        <Route path="/all-picks" element={<AllPicksPage />} />
+        <Route path="/results" element={<ResultsPage />} />
         <Route path="/year-to-date" element={<YearToDatePage />} />
         <Route path="/about" element={<AboutPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
