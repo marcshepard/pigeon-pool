@@ -18,13 +18,8 @@ import {
 // Base URL for API calls, from env or default to relative /api (for dev with proxy)
 const BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") || "/api";
 
-export type UnauthorizedHandler = () => void;
-let onUnauthorized: UnauthorizedHandler | null = null;
-export function setUnauthorizedHandler(handler: UnauthorizedHandler) {
-  onUnauthorized = handler;
-}
-
 // Generic JSON fetch with type-safe factory & no `any`
+// Redirect to the login page on 401 with session expired message unless they are already on that page
 export async function apiFetch<T>(
   path: string,
   init: RequestInit & { factory: (data: unknown) => T }
@@ -32,16 +27,37 @@ export async function apiFetch<T>(
   const res = await fetch(`${BASE}${path}`, {
     ...init,
     headers: { "Content-Type": "application/json", ...(init.headers || {}) },
-    credentials: "include", // cookie auth
+    credentials: "include",
   });
 
   if (!res.ok) {
-    if (res.status === 401 && onUnauthorized) {
-      onUnauthorized();
+    if (res.status === 401) {
+      // Only redirect if we're not already on the login page.
+      const loginPath = "/login";
+      const onLoginPage = location.pathname.startsWith(loginPath);
+
+      if (!onLoginPage) {
+        const returnTo = encodeURIComponent(location.pathname + location.search);
+        const reason = "session_expired";
+        // replace() avoids cluttering history with multiple failed redirects
+        location.replace(`${loginPath}?reason=${reason}&returnTo=${returnTo}`);
+      }
+
+      // Bubble an error so callers on /login can render form-level feedback.
+      throw new Error("Unauthorized");
     }
-    const text = await res.text();
-    throw new Error(`API error ${res.status}: ${text}`);
+
+    // Build a readable error message for snackbars
+    let message = res.statusText || "Request failed";
+    try {
+      const text = await res.text();
+      message = text || message;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(`API error ${res.status}: ${message}`);
   }
+
   const json = await res.json();
   return init.factory(json);
 }

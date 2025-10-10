@@ -1,1 +1,1 @@
-select * from v_picks_filled where pigeon_number = 57 and week_number = 6;
+select * from v_picks_filled where pigeon_number = 57 and week_number = 8;

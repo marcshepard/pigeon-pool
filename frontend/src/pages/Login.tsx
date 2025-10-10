@@ -4,16 +4,20 @@
 
 // src/pages/Login.tsx
 import { useState } from "react";
-import { Box, Button, Stack, TextField, Typography, Link } from "@mui/material";
+import { Alert, Box, Button, Stack, TextField, Typography, Link } from "@mui/material";
 import { AppSnackbar } from "../components/CommonComponents";
 import PasswordResetRequestForm from "./PasswordResetRequestForm";
 import { useAuth } from "../auth/useAuth";
 import { LoginPayload } from "../backend/types";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 export default function LoginPage() {
   const { signIn } = useAuth();  // pulls in apiLogin via context
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const reason = searchParams.get("reason");
+  const returnToParam = searchParams.get("returnTo") || "/";
+  const returnTo = returnToParam.startsWith("/") ? returnToParam : "/";   // only allow same-origin relative paths
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -24,7 +28,6 @@ export default function LoginPage() {
     message: "",
     severity: "info" as "success" | "error" | "info" | "warning",
   });
-  const [showReset, setShowReset] = useState(false);
   const [showResetForm, setShowResetForm] = useState(false);
 
   async function handleLogin(e: React.FormEvent<HTMLFormElement>) {
@@ -32,27 +35,26 @@ export default function LoginPage() {
     setBusy(true);
     try {
       const payload = new LoginPayload({ email, password });
-      await signIn(payload); // <-- this triggers POST /api/auth/login
-      navigate("/", { replace: true });
+      await signIn(payload); // This triggers POST /api/auth/login
+      navigate(returnTo, { replace: true });
   } catch (err) {
-      // Check for 401 Unauthorized (invalid login)
-      let status: unknown = undefined;
-      let message: unknown = undefined;
-      if (typeof err === "object" && err !== null) {
-        if ("status" in err) status = (err as { status?: unknown }).status;
-        if ("message" in err) message = (err as { message?: unknown }).message;
-      }
-      if (status === 401 || (typeof message === "string" && message.toLowerCase().includes("401"))) {
+      const msg = err instanceof Error ? err.message : String(err ?? "");
+      const isUnauthorized =
+        msg.toLowerCase().includes("unauthorized") ||
+        msg.toLowerCase().includes("invalid"); // in case backend returns INVALID_CREDENTIALS
+
+      if (isUnauthorized) {
         setSnack({
           open: true,
           message: "Incorrect email or password. Please try again.",
           severity: "error",
         });
-        setShowReset(true);
       } else {
-        const fallback = err instanceof Error ? err.message : "An unexpected error occurred";
-        setSnack({ open: true, message: fallback, severity: "error" });
-        setShowReset(false);
+        setSnack({
+          open: true,
+          message: msg || "An unexpected error occurred",
+          severity: "error",
+        });
       }
     } finally {
       setBusy(false);
@@ -70,7 +72,13 @@ export default function LoginPage() {
       sx={{ maxWidth: 400, mx: "auto", mt: 2, p: 3 }}
     >
       <Typography variant="h4" gutterBottom>Pigeon Pool</Typography>
-      <Typography variant="body1" gutterBottom>Sign in to your account</Typography>
+      {reason === "session_expired" ?
+        <Alert severity="info" sx={{ mb: 2 }}>
+          Your session timed out. Please sign in again.
+        </Alert>
+        :
+        <Typography variant="body1" gutterBottom>Sign in to your account</Typography>
+      }
       <Stack component="form" gap={2} onSubmit={handleLogin}>
         <TextField
           label="Email"
@@ -101,16 +109,14 @@ export default function LoginPage() {
         onClose={() => setSnack((s) => ({ ...s, open: false }))}
       />
 
-      {showReset && (
-        <Box mt={2}>
-          <Typography variant="body2" color="text.secondary">
-            Forgot your password?{' '}
-            <Link href="#" underline="hover" onClick={e => { e.preventDefault(); setShowResetForm(true); }}>
-              Reset password
-            </Link>
-          </Typography>
-        </Box>
-      )}
+      <Box mt={2}>
+        <Typography variant="body2" color="text.secondary">
+          Forgot your password?{' '}
+          <Link href="#" underline="hover" onClick={e => { e.preventDefault(); setShowResetForm(true); }}>
+            Reset password
+          </Link>
+        </Typography>
+      </Box>
     </Box>
   );
 }
