@@ -10,6 +10,7 @@ import {
   Box,
   Button,
   CircularProgress,
+  GlobalStyles,
   IconButton,
   InputAdornment,
   Paper,
@@ -24,9 +25,7 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
-
-import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
-// components/PickCell.tsx
+import type { BoxProps } from "@mui/material";
 
 import Visibility from "@mui/icons-material/Visibility";
 import VisibilityOff from "@mui/icons-material/VisibilityOff";
@@ -206,93 +205,142 @@ export function DataGridLite<T>({
     return [...left, ...mid, ...right];
   }, [columns]);
 
+  // Ensure default sort applies once the desired column exists
+  React.useEffect(() => {
+    const hasCurrent = sortKey && orderedCols.some(c => c.key === sortKey);
+    const wantKey = defaultSort?.key ?? null;
+    const wantDir = defaultSort?.dir ?? "asc";
+
+    if (!hasCurrent && wantKey && orderedCols.some(c => c.key === wantKey)) {
+      setSortKey(wantKey);
+      setSortDir(wantDir);
+    }
+  }, [orderedCols, sortKey, defaultSort?.key, defaultSort?.dir]);
+
   const sortedRows = useMemo(() => {
     if (!allowSort || !sortKey) return rows;
     const col = orderedCols.find(c => c.key === sortKey);
-    if (!col || !col.valueGetter) return rows; // no-op if not sortable
+    if (!col || !col.valueGetter) return rows;
     const getVal = col.valueGetter;
     const cmp = col.sortComparator ?? defaultComparator;
 
-    const result = [...rows].sort((ra, rb) => {
+    return [...rows].sort((ra, rb) => {
       const a = getVal(ra);
       const b = getVal(rb);
       const s = cmp(a, b, ra, rb);
       return sortDir === "asc" ? s : -s;
     });
-    return result;
   }, [rows, sortKey, sortDir, allowSort, orderedCols]);
 
   const headerCell = (c: ColumnDef<T>) => {
     const isSorted = sortKey === c.key;
     const sortable = allowSort && (c.sortable ?? true) && !!c.valueGetter;
+
+    const caret = isSorted ? (sortDir === "asc" ? "^" : "v") : "";
+
+    const onToggle = () => {
+      if (!sortable) return;
+      if (!isSorted) {
+        setSortKey(c.key);
+        setSortDir("asc");
+      } else {
+        setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+      }
+    };
+
     return (
       <TableCell
         key={c.key}
         align={c.align ?? "left"}
+        component="th"
+        scope="col"
+        onClick={onToggle}
+        onKeyDown={(e) => {
+          if (!sortable) return;
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onToggle();
+          }
+        }}
+        tabIndex={sortable ? 0 : -1}
         sx={{
           position: "sticky",
           top: 0,
           zIndex: 2,
           backgroundColor: "background.default",
           fontWeight: 600,
-          width: c.width,
-          minWidth: c.width,
-          ...(c.pin === "left" ? { left: 0, zIndex: 3 } : {}),
-          ...(c.pin === "right" ? { right: 0, zIndex: 3 } : {}),
+          cursor: sortable ? "pointer" : "default",
+          userSelect: "none",
+          px: 0.5,
+          py: 0.25,
+          whiteSpace: "nowrap",
+          ...(c.width ? { width: c.width, minWidth: c.width } : {}),
+          ...(c.pin === "left"  && { left: 0,  zIndex: 5, boxShadow: "inset -1px 0 0 rgba(0,0,0,0.12)" }),
+          ...(c.pin === "right" && { right: 0, zIndex: 5, boxShadow: "inset  1px 0 0 rgba(0,0,0,0.12)" }),
         }}
         aria-sort={isSorted ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
       >
-        <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-          <Box component="span">{c.header}</Box>
-          {sortable && (
-            <Tooltip title={isSorted ? `Sorted ${sortDir}` : "Sort"}>
-              <IconButton
-                size="small"
-                onClick={() => {
-                  if (!isSorted) {
-                    setSortKey(c.key);
-                    setSortDir("asc");
-                  } else {
-                    setSortDir(d => (d === "asc" ? "desc" : "asc"));
-                  }
-                }}
-                aria-label="sort"
-                sx={{ ml: 0.5 }}
-              >
-                <ArrowUpwardIcon
-                  fontSize="inherit"
-                  sx={{
-                    transform: `rotate(${isSorted && sortDir === "desc" ? 180 : 0}deg)`,
-                    transition: "transform .15s",
-                    opacity: 0.9,
-                  }}
-                />
-              </IconButton>
-            </Tooltip>
-          )}
-        </Box>
+        <span>
+          {c.header}
+          {sortable && isSorted ? (
+            <span
+              style={{
+                marginLeft: 4,
+                fontSize: "1.05em",   // bump size; tweak to taste (e.g. 1.15em)
+                fontWeight: 700,       // bold
+                letterSpacing: "-0.02em",
+                verticalAlign: "baseline",
+                opacity: 0.95,
+              }}
+            >
+              {caret}
+            </span>
+          ) : null}
+        </span>
       </TableCell>
     );
   };
 
   const renderRow = (row: T, idx: number, pinned?: "top") => {
-    const bg = zebra && !pinned ? (idx % 2 === 0 ? "background.paper" : "action.hover") : "background.paper";
+    // Even/odd zebra flag for body rows
+    const isAlt = zebra && !pinned && idx % 2 === 1;
     const key = getRowId ? getRowId(row, idx) : idx;
+
     return (
-      <TableRow key={key} sx={{ backgroundColor: bg }}>
+      <TableRow key={key}>
         {orderedCols.map((c) => (
           <TableCell
             key={c.key}
             align={c.align ?? "left"}
             sx={{
-              position: (c.pin ? "sticky" : "static"),
+              position: c.pin ? "sticky" : "static",
               left: c.pin === "left" ? 0 : undefined,
               right: c.pin === "right" ? 0 : undefined,
               zIndex: c.pin ? 1 : 0,
-              backgroundColor: c.pin ? "background.paper" : undefined,
-              width: c.width,
-              minWidth: c.width,
+
+              // ✅ Use a SOLID background for zebra rows so pinned cells don't bleed
+              // light: grey[100] approximates the usual hover overlay on paper
+              // dark: grey[800]/[900] gives a subtle, solid alternate row
+              backgroundColor: (theme) =>
+                isAlt
+                  ? (theme.palette.mode === "light"
+                      ? theme.palette.grey[100]
+                      : theme.palette.grey[800])
+                  : theme.palette.background.paper,
+
+              // widths only if provided
+              ...(c.width ? { width: c.width, minWidth: c.width } : {}),
+
+              // compact & no text bleed
+              px: 0.5,
+              py: 0.25,
               whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+
+              // keep pinned shadows; bg remains the SAME solid zebra color
+              ...(c.pin === "left"  && { left: 0,  zIndex: 5, boxShadow: "inset -1px 0 0 rgba(0,0,0,0.12)" }),
+              ...(c.pin === "right" && { right: 0, zIndex: 5, boxShadow: "inset  1px 0 0 rgba(0,0,0,0.12)" }),
             }}
           >
             {c.renderCell ? c.renderCell(row) : ""}
@@ -311,6 +359,14 @@ export function DataGridLite<T>({
         borderRadius: 2,
         overflow: "auto",
         maxHeight: "75vh",
+
+        // Compactification
+        "& .MuiTableRow-root": { height: "auto" },                 // no fixed row height
+        "& .MuiTableCell-root": { px: 0.5, py: 0.25, lineHeight: 1.1, fontSize: "0.85rem" },
+        "& .MuiTableCell-head": { fontSize: "0.85rem", fontWeight: 600, lineHeight: 1.1 },
+        "& .MuiIconButton-root": { p: 0.25 },                      // shrink sort button padding
+        "& .MuiSvgIcon-root": { fontSize: "0.9rem" },              // smaller sort chevron
+
         ".print-hide": { "@media print": { display: "none !important" } },
         "@media print": {
           border: "none",
@@ -324,7 +380,12 @@ export function DataGridLite<T>({
           <strong>{printTitle}</strong>
         </Box>
       )}
-      <Table size={dense ? "small" : "medium"} stickyHeader>
+
+      <Table
+        size={dense ? "small" : "medium"}
+        stickyHeader
+        sx={{ tableLayout: "auto" }}
+      >
         <TableHead>
           <TableRow>{orderedCols.map(headerCell)}</TableRow>
         </TableHead>
@@ -344,6 +405,7 @@ export function DataGridLite<T>({
     </Box>
   );
 }
+
 
 export function PickCell({
   label,
@@ -379,4 +441,50 @@ export function PickCell({
       </Box>
     </Tooltip>
   );
+}
+
+/**
+ * Components for printing just parts of a page
+ */
+
+/**
+ * Injects global CSS so only elements inside `.print-area` are printed.
+ * Options let you tweak paper orientation and margins per page.
+ */
+export function PrintOnlyStyles({
+  areaClass = "print-area",
+  landscape = true,
+  margin = "10mm",
+}: {
+  areaClass?: string;
+  landscape?: boolean;
+  margin?: string;
+}) {
+  // Keep selectors dynamic so you can change the class if needed
+  const areaSel = `.${areaClass}`;
+  return (
+    <GlobalStyles
+      styles={{
+        "@media print": {
+          "body *": { visibility: "hidden" },
+          [`${areaSel}, ${areaSel} *`]: { visibility: "visible" },
+          [areaSel]: { position: "absolute", left: 0, top: 0, width: "100%" },
+          "@page": { size: landscape ? "landscape" : "auto", margin },
+        },
+      }}
+    />
+  );
+}
+
+/**
+ * Convenience wrapper that applies the correct class to the content that should print.
+ * Use together with <PrintOnlyStyles/>.
+ */
+export function PrintArea({
+  className,
+  areaClass = "print-area",
+  ...props
+}: BoxProps & { areaClass?: string }) {
+  const cls = className ? `${areaClass} ${className}` : areaClass;
+  return <Box className={cls} {...props} />;
 }

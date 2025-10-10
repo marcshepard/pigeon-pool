@@ -4,7 +4,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Box, Stack, Typography, Alert, Button, MenuItem, Select, FormControl, InputLabel } from "@mui/material";
-import { AppSnackbar, DataGridLite, PickCell } from "../components/CommonComponents";
+import {
+  AppSnackbar,
+  DataGridLite,
+  PickCell,
+  PrintOnlyStyles,
+  PrintArea,
+} from "../components/CommonComponents";
 import { getResultsWeekPicks, getResultsWeekLeaderboard } from "../backend/fetch";
 import type { ColumnDef, Severity } from "../components/CommonComponents";
 
@@ -19,7 +25,7 @@ type Row = {
 export default function ResultsPage() {
   const [week, setWeek] = useState<number>(1);
   const [rows, setRows] = useState<Row[]>([]);
-  const [games, setGames] = useState<{ game_id: number; home_abbr: string; away_abbr: string; kickoff_at: string }[]>([]);
+  const [games, setGames] = useState<{ game_id: number; home_abbr: string; away_abbr: string }[]>([]);
   const [snack, setSnack] = useState({ open: false, message: "", severity: "info" as Severity });
   const [loading, setLoading] = useState(false);
 
@@ -35,7 +41,7 @@ export default function ResultsPage() {
 
       // shape: per game metadata
       const gameOrder = [...new Map(
-        picks.map(p => [p.game_id, { game_id: p.game_id, home_abbr: p.home_abbr, away_abbr: p.away_abbr, kickoff_at: p.kickoff_at }])
+        picks.map(p => [p.game_id, { game_id: p.game_id, home_abbr: p.home_abbr, away_abbr: p.away_abbr}])
       ).values()];
       setGames(gameOrder);
 
@@ -92,7 +98,6 @@ export default function ResultsPage() {
         header: (
           <Box sx={{ textAlign: "center" }}>
             <div>{g.away_abbr} @ {g.home_abbr}</div>
-            <div style={{ opacity: 0.7, fontSize: 12 }}>{new Date(g.kickoff_at).toLocaleString()}</div>
           </Box>
         ),
         align: "center",
@@ -161,39 +166,58 @@ export default function ResultsPage() {
   }, [rows, games]);
 
   return (
-    <Box sx={{ p: 2 }}>
-      <Stack direction="row" justifyContent="space-between" alignItems="center" className="print-hide" sx={{ mb: 2 }}>
-        <Typography variant="h6">Results — Week {week}</Typography>
-        <Stack direction="row" gap={1} alignItems="center">
-          <FormControl size="small">
-            <InputLabel>Week</InputLabel>
-            <Select label="Week" value={week} onChange={(e) => setWeek(Number(e.target.value))} sx={{ minWidth: 120 }}>
-              {Array.from({ length: 18 }, (_, i) => i + 1).map(w => <MenuItem key={w} value={w}>Week {w}</MenuItem>)}
-            </Select>
-          </FormControl>
-          <Button variant="outlined" onClick={() => window.print()}>Print</Button>
+    <>
+      {/* Print only the grid (landscape, compact margins) */}
+      <PrintOnlyStyles areaClass="print-area" landscape margin="8mm" />
+
+      <Box sx={{ p: 2 }}>
+        {/* Toolbar + controls won't print (they're outside the PrintArea) */}
+        <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+          <Typography variant="h6">Results — Week {week}</Typography>
+          <Stack direction="row" gap={1} alignItems="center">
+            <FormControl size="small">
+              <InputLabel>Week</InputLabel>
+              <Select
+                label="Week"
+                value={week}
+                onChange={(e) => setWeek(Number(e.target.value))}
+                sx={{ minWidth: 120 }}
+              >
+                {Array.from({ length: 18 }, (_, i) => i + 1).map((w) => (
+                  <MenuItem key={w} value={w}>
+                    Week {w}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <Button variant="outlined" onClick={() => window.print()}>
+              Print
+            </Button>
+          </Stack>
         </Stack>
-      </Stack>
 
-      {loading ? (
-        <Alert severity="info">Loading…</Alert>
-      ) : (
-        <DataGridLite<Row>
-          rows={rows}
-          columns={columns}
-          pinnedTopRows={consensusRow ? [consensusRow] : []}
-          defaultSort={{ key: "pigeon", dir: "asc" }}
-          printTitle={`Results — Week ${week}`}
+        {loading ? (
+          <Alert severity="info">Loading…</Alert>
+        ) : (
+          <PrintArea>
+            <DataGridLite<Row>
+              rows={rows}
+              columns={columns}
+              pinnedTopRows={consensusRow ? [consensusRow] : []}
+              defaultSort={{ key: "pigeon", dir: "asc" }}
+              printTitle={`Results — Week ${week}`}
+            />
+          </PrintArea>
+        )}
+
+        <AppSnackbar
+          open={snack.open}
+          message={snack.message}
+          severity={snack.severity}
+          onClose={() => setSnack((s) => ({ ...s, open: false }))}
         />
-      )}
-
-      <AppSnackbar
-        open={snack.open}
-        message={snack.message}
-        severity={snack.severity}
-        onClose={() => setSnack(s => ({ ...s, open: false }))}
-      />
-    </Box>
+      </Box>
+    </>
   );
 }
 

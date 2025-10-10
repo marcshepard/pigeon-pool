@@ -4,9 +4,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Box, Stack, Typography, Alert, Button } from "@mui/material";
-import { AppSnackbar, DataGridLite } from "../components/CommonComponents";
-import { getResultsYtd } from "../backend/fetch";
+import {
+  AppSnackbar,
+  DataGridLite,
+  PrintOnlyStyles,
+  PrintArea,
+} from "../components/CommonComponents";
 import type { ColumnDef, Severity } from "../components/CommonComponents";
+import { getResultsYtd } from "../backend/fetch";
 
 type Row = {
   pigeon_number: number;
@@ -79,7 +84,6 @@ export default function YtdPage() {
         key: "pigeon",
         header: "Pigeon",
         pin: "left",
-        width: 160,
         valueGetter: (r) => r.pigeon_number, // sort by pigeon number
         renderCell: (r) => `${r.pigeon_number} ${r.pigeon_name}`, // render pigeon number + name
       },
@@ -90,7 +94,7 @@ export default function YtdPage() {
       cols.push({
         key: `w_${w}`,
         header: `W${w}`,
-        align: "center",
+        align: "left",
         valueGetter: (r) => r.byWeek[w]?.rank ?? Number.POSITIVE_INFINITY,
         renderCell: (r) => {
           const rk = r.byWeek[w]?.rank;
@@ -106,16 +110,14 @@ export default function YtdPage() {
       {
         key: "pointsYtd",
         header: "POINTS",
-        width: 100,
-        align: "right",
+        align: "left",
         valueGetter: (r) => r.pointsYtd,
         renderCell: (r) => r.pointsYtd,
       },
       {
         key: "yearRank",
         header: "YEAR",
-        width: 80,
-        align: "center",
+        align: "left",
         valueGetter: (r) => r.yearRank,
         renderCell: (r) => {
           const rk = r.yearRank;
@@ -129,30 +131,38 @@ export default function YtdPage() {
   }, [weeks, tieCounts]);
 
   return (
-    <Box sx={{ p: 2 }}>
-      <Stack direction="row" justifyContent="space-between" alignItems="center" className="print-hide" sx={{ mb: 2 }}>
-        <Typography variant="h6">Year to Date</Typography>
-        <Button variant="outlined" onClick={() => window.print()}>Print</Button>
-      </Stack>
+    <>
+      {/* Make only .print-area printable (landscape, small margins) */}
+      <PrintOnlyStyles areaClass="print-area" landscape margin="8mm" />
 
-      {loading ? (
-        <Alert severity="info">Loading…</Alert>
-      ) : (
-        <DataGridLite<Row>
-          rows={rows}
-          columns={columns}
-          defaultSort={{ key: "pigeon", dir: "asc" }}
-          printTitle="Pigeon Pool — Year to Date"
+      <Box sx={{ p: 2 }}>
+        {/* This toolbar won't print because it's outside PrintArea */}
+        <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+          <Typography variant="h6">Year to Date</Typography>
+          <Button variant="outlined" onClick={() => window.print()}>Print</Button>
+        </Stack>
+
+        {loading ? (
+          <Alert severity="info">Loading…</Alert>
+        ) : (
+          <PrintArea>
+            <DataGridLite<Row>
+              rows={rows}
+              columns={columns}
+              defaultSort={{ key: "pigeon", dir: "asc" }}
+              printTitle="Pigeon Pool — Year to Date"
+            />
+          </PrintArea>
+        )}
+
+        <AppSnackbar
+          open={snack.open}
+          message={snack.message}
+          severity={snack.severity}
+          onClose={() => setSnack(s => ({ ...s, open: false }))}
         />
-      )}
-
-      <AppSnackbar
-        open={snack.open}
-        message={snack.message}
-        severity={snack.severity}
-        onClose={() => setSnack(s => ({ ...s, open: false }))}
-      />
-    </Box>
+      </Box>
+    </>
   );
 }
 

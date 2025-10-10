@@ -215,7 +215,6 @@ export default function ResponsiveNav({
             mx: "auto",
             boxSizing: "border-box",
             p: { xs: 2, md: 3 },
-            maxWidth: 1200,
           }}
         >
           {children}
