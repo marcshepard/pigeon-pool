@@ -10,6 +10,7 @@ from backend.utils.logger import configure_from_env
 from backend.routes.auth import router as auth_router
 from backend.routes.picks import router as picks_router
 from backend.routes.schedule import router as schedule_router
+from backend.routes.results import router as results_router
 
 # Early initialization
 get_settings()          # forces env load/validation early
@@ -35,3 +36,4 @@ def ping():
 app.include_router(auth_router)
 app.include_router(picks_router)
 app.include_router(schedule_router)
+app.include_router(results_router)
