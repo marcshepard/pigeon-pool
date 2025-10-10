@@ -80,9 +80,9 @@ export default function PicksPage() {
     if (!week) return;
     let cancelled = false;
     setLoading(true);
-  // setErr(null);
     setGames(null);
     setDraft({});
+    setLoadingError("");
 
     // Fetch games and user's picks in parallel
     Promise.all([getGamesForWeek(week), getMyPicksForWeek(week)])
@@ -112,7 +112,7 @@ export default function PicksPage() {
               predicted_margin: picksByGame[g.game_id].predicted_margin,
             };
           } else {
-            initialDraft[g.game_id] = { picked_home: null, predicted_margin: 0 };
+            initialDraft[g.game_id] = { picked_home: true, predicted_margin: 3 };
           }
         }
         setGames(sorted);

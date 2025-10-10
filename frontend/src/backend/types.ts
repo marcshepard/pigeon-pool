@@ -1,3 +1,7 @@
+/**
+ * Data types returned from the backend API
+ */
+
 // ---- Picks API types ----
 export class PickIn {
   game_id: number;
@@ -56,11 +60,6 @@ export class PicksBulkIn {
     this.week_number = data.week_number;
   }
 }
-/**
- * Data types returned from the backend API
- */
-
-// src/backend/types.ts
 
 // ---- Errors ----
 export class DataValidationError extends Error {
