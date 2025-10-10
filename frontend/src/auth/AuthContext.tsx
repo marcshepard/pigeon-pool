@@ -8,7 +8,7 @@
 // src/auth/AuthContext.tsx
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { apiMe, apiLogin, apiLogout, setUnauthorizedHandler } from "../backend/fetch";
+import { apiMe, apiLogin, apiLogout } from "../backend/fetch";
 import type { AuthContextValue, AuthState } from "./AuthContextObjects";
 import { AuthCtx } from "./AuthContextObjects";
 import { LoginPayload } from "../backend/types";
@@ -40,7 +40,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     refresh();
-    setUnauthorizedHandler(() => setState({ status: "signedOut" }));
   }, []);
 
   const value = useMemo<AuthContextValue>(

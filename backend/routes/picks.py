@@ -164,10 +164,10 @@ async def get_my_picks_for_week(
 
 
 @router.post(
-    "/bulk",
+    "",
     response_model=List[PickOut],
     status_code=status.HTTP_201_CREATED,
-    summary="Create or update multiple picks for an unlocked week"
+    summary="Create or update picks for unlocked weeks"
 )
 async def upsert_picks_bulk(
     payload: PicksBulkIn,
@@ -204,42 +204,3 @@ async def upsert_picks_bulk(
     # Commit once for the batch
     await db.commit()
     return out
-
-
-@router.put(
-    "/{game_id}",
-    response_model=PickOut,
-    summary="Create or update a single pick if its week is unlocked"
-)
-async def upsert_single_pick(
-    game_id: int,
-    pick: PickIn,
-    db: AsyncSession = Depends(get_db),
-    me=Depends(require_user),
-):
-    """ Ensure URL game_id and body game_id match (helps client bugs) """
-    if pick.game_id != game_id:
-        raise HTTPException(status_code=400, detail="Body game_id does not match URL game_id")
-
-    # Ensure the corresponding week is unlocked
-    await _ensure_game_unlocked(db, game_id)
-
-    res = await db.execute(
-        UPSERT_PICK_SQL,
-        {
-            "pigeon_number": me.pigeon_number,
-            "game_id": game_id,
-            "picked_home": pick.picked_home,
-            "predicted_margin": pick.predicted_margin,
-        },
-    )
-    row = res.first()
-    await db.commit()
-
-    return PickOut(
-        pigeon_number=row[0],
-        game_id=row[1],
-        picked_home=row[2],
-        predicted_margin=row[3],
-        created_at=row[4],
-    )

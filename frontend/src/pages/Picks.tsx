@@ -8,7 +8,7 @@ import {
   Alert, Button, RadioGroup, FormControlLabel, Radio, TextField
 } from "@mui/material";
 import { AppSnackbar, Loading } from "../components/CommonComponents";
-import { getScheduleCurrent, getGamesForWeek, getMyPicksForWeek, upsertPicksBulk } from "../backend/fetch";
+import { getScheduleCurrent, getGamesForWeek, getMyPicksForWeek, setMyPicks } from "../backend/fetch";
 import type { ScheduleCurrent, Game } from "../backend/types";
 
 // UI-only type for in-progress edits per game (keyed by game_id elsewhere)
@@ -128,7 +128,7 @@ export default function PicksPage() {
     }));
 
     try {
-      await upsertPicksBulk({ week_number: week, picks });
+      await setMyPicks({ week_number: week, picks });
       setSnackbar({ open: true, message: "Picks submitted!", severity: "success" });
 
       // Re-fetch picks to reflect server-side normalization, if any

@@ -10,7 +10,6 @@ import {
   PasswordResetRequest,
   ScheduleCurrent,
   Game,
-  PickIn,
   PickOut,
   PicksBulkIn,
 } from "./types";
@@ -63,6 +62,8 @@ export async function apiFetch<T>(
 }
 
 // ---- Endpoint helpers ----
+
+// ---- Auth endpoints ----
 export async function apiLogin(payload: LoginPayload): Promise<Me> {
   return apiFetch("/auth/login", {
     method: "POST",
@@ -101,7 +102,7 @@ export async function apiConfirmPasswordReset(p: PasswordResetConfirm): Promise<
   });
 }
 
-/** GET /schedule/current_weeks → { next_picks_week, live_week } */
+// ---- Scheduling endpoints (not authenticated) ----
 export function getScheduleCurrent(): Promise<ScheduleCurrent> {
   return apiFetch("/schedule/current_weeks", {
     method: "GET",
@@ -109,7 +110,6 @@ export function getScheduleCurrent(): Promise<ScheduleCurrent> {
   });
 }
 
-/** GET /schedule/{week_number}/games → Game[] */
 export function getGamesForWeek(weekNumber: number): Promise<Game[]> {
   if (!Number.isInteger(weekNumber) || weekNumber < 1 || weekNumber > 18) {
     return Promise.reject(new Error(`Invalid weekNumber: ${weekNumber}`));
@@ -125,9 +125,7 @@ export function getGamesForWeek(weekNumber: number): Promise<Game[]> {
   });
 }
 
-/**
- * GET /picks/{week_number} → PickOut[]
- */
+// ---- Picks endpoints (authenticated) ----
 export function getMyPicksForWeek(weekNumber: number): Promise<PickOut[]> {
   if (!Number.isInteger(weekNumber) || weekNumber < 1 || weekNumber > 18) {
     return Promise.reject(new Error(`Invalid weekNumber: ${weekNumber}`));
@@ -145,29 +143,13 @@ export function getMyPicksForWeek(weekNumber: number): Promise<PickOut[]> {
  * POST /picks/bulk → PickOut[]
  * @param payload PicksBulkIn
  */
-export function upsertPicksBulk(payload: PicksBulkIn): Promise<PickOut[]> {
-  return apiFetch(`/picks/bulk`, {
+export function setMyPicks(payload: PicksBulkIn): Promise<PickOut[]> {
+  return apiFetch(`/picks`, {
     method: "POST",
     body: JSON.stringify(payload),
     factory: (d) => {
       if (!Array.isArray(d)) throw new Error("Expected array");
       return d.map((item) => new PickOut(item));
     },
-  });
-}
-
-/**
- * PUT /picks/{game_id} → PickOut
- * @param gameId number
- * @param pick PickIn
- */
-export function upsertSinglePick(gameId: number, pick: PickIn): Promise<PickOut> {
-  if (!Number.isInteger(gameId)) {
-    return Promise.reject(new Error("Invalid gameId"));
-  }
-  return apiFetch(`/picks/${gameId}`, {
-    method: "PUT",
-    body: JSON.stringify(pick),
-    factory: (d) => new PickOut(d),
   });
 }
