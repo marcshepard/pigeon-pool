@@ -13,6 +13,7 @@ import {
 import type { Severity } from "../components/CommonComponents";
 import { DataGridLite } from "../components/DataGridLite";
 import type { ColumnDef } from "../components/DataGridLite";
+import { useAuth } from "../auth/useAuth";
 import {
   getResultsWeekPicks,
   getResultsWeekLeaderboard,
@@ -28,6 +29,7 @@ type Row = {
 };
 
 export default function ResultsPage() {
+  const { state } = useAuth();
   const [week, setWeek] = useState<number | null>(1);
   const [liveWeek, setLiveWeek] = useState<number | null>(null);
   const [lockedWeeks, setLockedWeeks] = useState<number[]>([]);
@@ -148,7 +150,6 @@ export default function ResultsPage() {
             <PickCell
               label={cell.label}
               signed={cell.signed}
-              tooltip={`${cell.away_abbr} @ ${cell.home_abbr} — ${cell.label}`}
             />
           );
         },
@@ -246,8 +247,10 @@ export default function ResultsPage() {
               rows={rows}
               columns={columns}
               pinnedTopRows={consensusRow ? [consensusRow] : []}
-              defaultSort={{ key: "pigeon", dir: "asc" }}
+              defaultSort={{ key: "pigeon_name", dir: "asc" }}
               printTitle={`Results — Week ${week}`}
+              getRowId={(r) => r.pigeon_number}
+              highlightRowId={state.status === "signedIn" ? state.user.pigeon_number : undefined}
             />
           </PrintArea>
         )}

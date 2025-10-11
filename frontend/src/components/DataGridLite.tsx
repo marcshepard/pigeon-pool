@@ -5,6 +5,7 @@
 import { useMemo, useState, useEffect } from "react";
 import type { ReactNode } from "react";
 import { Box, Table, TableHead, TableRow, TableCell, TableBody } from "@mui/material";
+import type { Theme } from "@mui/material/styles";
 
 export type ColumnDef<T> = {
   key: string;
@@ -25,11 +26,13 @@ export type DataGridLiteProps<T> = {
   defaultSort?: { key: string; dir: "asc" | "desc" };
   allowSort?: boolean;
   dense?: boolean;
-  zebra?: boolean;
+  zebra?: boolean; // when true, alternate row backgrounds
   emptyMessage?: string;
   printTitle?: string;
   /** Provide a stable id for rows to avoid using indices */
   getRowId?: (row: T, index: number) => string | number;
+  /** If provided, the row with this id will be highlighted */
+  highlightRowId?: string | number;
 };
 
 function defaultComparator(a: unknown, b: unknown) {
@@ -53,6 +56,7 @@ export function DataGridLite<T>({
   emptyMessage = "No rows",
   printTitle,
   getRowId,
+  highlightRowId,
 }: DataGridLiteProps<T>) {
   const [sortKey, setSortKey] = useState<string | null>(defaultSort?.key ?? null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">(defaultSort?.dir ?? "asc");
@@ -125,17 +129,20 @@ export function DataGridLite<T>({
         sx={{
           position: "sticky",
           top: 0,
-          zIndex: 2,
-          backgroundColor: "background.default",
+          // Ensure headers sit above body cells
+          zIndex: 10,
           fontWeight: 600,
           cursor: sortable ? "pointer" : "default",
           userSelect: "none",
           px: 0.5,
           py: 0.25,
           whiteSpace: "nowrap",
+          // Fully opaque header background
+          backgroundColor: (theme) => theme.palette.background.paper,
           ...(c.width ? { width: c.width, minWidth: c.width } : {}),
-          ...(c.pin === "left"  && { left: 0,  zIndex: 5, boxShadow: "inset -1px 0 0 rgba(0,0,0,0.12)" }),
-          ...(c.pin === "right" && { right: 0, zIndex: 5, boxShadow: "inset  1px 0 0 rgba(0,0,0,0.12)" }),
+          // Pinned headers must sit above pinned body cells
+          ...(c.pin === "left"  && { left: 0,  zIndex: 12, boxShadow: "inset -1px 0 0 rgba(0,0,0,0.12)" }),
+          ...(c.pin === "right" && { right: 0, zIndex: 12, boxShadow: "inset  1px 0 0 rgba(0,0,0,0.12)" }),
         }}
         aria-sort={isSorted ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
       >
@@ -160,46 +167,40 @@ export function DataGridLite<T>({
     );
   };
 
-  const renderRow = (row: T, idx: number, pinned?: "top") => {
-    // Even/odd zebra flag for body rows
-    const isAlt = zebra && !pinned && idx % 2 === 1;
-    const key = getRowId ? getRowId(row, idx) : idx;
+  const renderRow = (row: T, idx: number) => {
+  // Row key
+  const key = getRowId ? getRowId(row, idx) : idx;
+
+    // Determine row background (highlight takes precedence over zebra)
+    const isHighlighted = highlightRowId !== undefined && highlightRowId !== null && key === highlightRowId;
+    const isAlt = zebra && !isHighlighted && (idx % 2 === 1);
+    const rowBg = (theme: Theme) => {
+      if (isHighlighted) return "#fff9c4"; // light yellow
+      if (isAlt) return theme.palette.mode === "light" ? theme.palette.grey[50] : theme.palette.grey[900];
+      return undefined;
+    };
 
     return (
-      <TableRow key={key}>
+      <TableRow key={key} sx={{ backgroundColor: rowBg }}>
         {orderedCols.map((c) => (
           <TableCell
             key={c.key}
             align={c.align ?? "left"}
             sx={{
+              backgroundColor: rowBg,
               position: c.pin ? "sticky" : "static",
               left: c.pin === "left" ? 0 : undefined,
               right: c.pin === "right" ? 0 : undefined,
+              // Body pinned cells should be below pinned headers
               zIndex: c.pin ? 1 : 0,
-
-              // ✅ Use a SOLID background for zebra rows so pinned cells don't bleed
-              // light: grey[100] approximates the usual hover overlay on paper
-              // dark: grey[800]/[900] gives a subtle, solid alternate row
-              backgroundColor: (theme) =>
-                isAlt
-                  ? (theme.palette.mode === "light"
-                      ? theme.palette.grey[100]
-                      : theme.palette.grey[800])
-                  : theme.palette.background.paper,
-
-              // widths only if provided
               ...(c.width ? { width: c.width, minWidth: c.width } : {}),
-
-              // compact & no text bleed
               px: 0.5,
               py: 0.25,
               whiteSpace: "nowrap",
               overflow: "hidden",
               textOverflow: "ellipsis",
-
-              // keep pinned shadows; bg remains the SAME solid zebra color
-              ...(c.pin === "left"  && { left: 0,  zIndex: 5, boxShadow: "inset -1px 0 0 rgba(0,0,0,0.12)" }),
-              ...(c.pin === "right" && { right: 0, zIndex: 5, boxShadow: "inset  1px 0 0 rgba(0,0,0,0.12)" }),
+              ...(c.pin === "left"  && { left: 0,  zIndex: 1, boxShadow: "inset -1px 0 0 rgba(0,0,0,0.12)" }),
+              ...(c.pin === "right" && { right: 0, zIndex: 1, boxShadow: "inset  1px 0 0 rgba(0,0,0,0.12)" }),
             }}
           >
             {c.renderCell ? c.renderCell(row) : ""}
@@ -249,7 +250,7 @@ export function DataGridLite<T>({
           <TableRow>{orderedCols.map(headerCell)}</TableRow>
         </TableHead>
         <TableBody>
-          {pinnedTopRows.map((r, i) => renderRow(r, i, "top"))}
+          {pinnedTopRows.map((r, i) => renderRow(r, i))}
           {sortedRows.length === 0 ? (
             <TableRow>
               <TableCell colSpan={orderedCols.length} align="center">

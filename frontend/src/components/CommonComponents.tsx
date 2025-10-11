@@ -17,7 +17,6 @@ import {
   Snackbar,
   Stack,
   TextField,
-  Tooltip,
   Typography,
 } from "@mui/material";
 import type { BoxProps } from "@mui/material";
@@ -140,37 +139,18 @@ export function Loading({ error }: { error?: string }) {
 
 export function PickCell({
   label,
-  signed,          // positive = home, negative = away
-  max = 30,        // scale the bar length
-  tooltip,
 }: {
   label: string;
   signed: number;
   max?: number;
-  tooltip?: string;
 }) {
-  const pct = Math.min(1, Math.abs(signed) / max);
   return (
-    <Tooltip title={tooltip ?? label}>
-      <Box sx={{ position: "relative", display: "inline-block", minWidth: 70 }}>
-        <Box
-          sx={{
-            position: "absolute",
-            top: "50%",
-            left: "50%",
-            height: 6,
-            width: `${pct * 100}%`,
-            transform: `translate(${signed >= 0 ? "0" : "-100"}%, -50%)`,
-            backgroundColor: signed >= 0 ? "success.light" : "error.light",
-            opacity: 0.4,
-            borderRadius: 1,
-          }}
-        />
-        <Box sx={{ position: "relative", textAlign: "center", fontVariantNumeric: "tabular-nums" }}>
-          {label}
-        </Box>
+    <Box sx={{ position: "relative", display: "inline-block", minWidth: 70 }}>
+      {/* Removed colored bar background */}
+      <Box sx={{ position: "relative", textAlign: "center", fontVariantNumeric: "tabular-nums" }}>
+        {label}
       </Box>
-    </Tooltip>
+    </Box>
   );
 }
 
