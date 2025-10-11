@@ -11,7 +11,11 @@ import {
   PrintOnlyStyles,
   PrintArea,
 } from "../components/CommonComponents";
-import { getResultsWeekPicks, getResultsWeekLeaderboard } from "../backend/fetch";
+import {
+  getResultsWeekPicks,
+  getResultsWeekLeaderboard,
+  getScheduleCurrent,
+} from "../backend/fetch";
 import type { ColumnDef, Severity } from "../components/CommonComponents";
 
 type Row = {
@@ -23,13 +27,46 @@ type Row = {
 };
 
 export default function ResultsPage() {
-  const [week, setWeek] = useState<number>(1);
+  const [week, setWeek] = useState<number | null>(1);
+  const [liveWeek, setLiveWeek] = useState<number | null>(null);
+  const [lockedWeeks, setLockedWeeks] = useState<number[]>([]);
   const [rows, setRows] = useState<Row[]>([]);
   const [games, setGames] = useState<{ game_id: number; home_abbr: string; away_abbr: string }[]>([]);
   const [snack, setSnack] = useState({ open: false, message: "", severity: "info" as Severity });
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => { load(week); }, [week]);
+  useEffect(() => {
+  let cancelled = false;
+  (async () => {
+    try {
+      const sc = await getScheduleCurrent(); // { next_picks_week: number | null, live_week?: number | null }
+      // If next_picks_week is n, locked weeks are 1..(n-1)
+      // If null (season over), all 1..18 are locked
+      const cutoff = sc.next_picks_week;
+      const weeks =
+        cutoff == null
+          ? Array.from({ length: 18 }, (_, i) => i + 1)
+          : Array.from({ length: Math.max(0, cutoff - 1) }, (_, i) => i + 1);
+
+      if (!cancelled) {
+        setLockedWeeks(weeks);
+        setWeek(weeks.length ? weeks[weeks.length - 1] : null); // most recent locked
+        setLiveWeek(sc.live_week ?? null); // Currently live week (locked but ongoing) - null between MNF and TNF
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e ?? "");
+      setSnack({ open: true, message: msg || "Failed to load schedule status", severity: "error" });
+    }
+  })();
+  return () => { cancelled = true; };
+}, []);
+
+  useEffect(() => {
+    if (week == null) return;
+    if (!lockedWeeks.includes(week)) return; // safety
+    load(week);
+  }, [week, lockedWeeks]);
+
 
   async function load(w: number) {
     setLoading(true);
@@ -173,17 +210,21 @@ export default function ResultsPage() {
       <Box sx={{ p: 2 }}>
         {/* Toolbar + controls won't print (they're outside the PrintArea) */}
         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
-          <Typography variant="h6">Results — Week {week}</Typography>
+          <Typography variant="h6">
+            {week == null
+              ? "Results — Loading…"
+              : `Results — Week ${week}${liveWeek === week ? " (in progress)" : ""}`}
+          </Typography>
           <Stack direction="row" gap={1} alignItems="center">
-            <FormControl size="small">
+            <FormControl size="small" disabled={lockedWeeks.length === 0}>
               <InputLabel>Week</InputLabel>
               <Select
                 label="Week"
-                value={week}
+                value={week ?? ""}
                 onChange={(e) => setWeek(Number(e.target.value))}
                 sx={{ minWidth: 120 }}
               >
-                {Array.from({ length: 18 }, (_, i) => i + 1).map((w) => (
+                {lockedWeeks.map((w) => (
                   <MenuItem key={w} value={w}>
                     Week {w}
                   </MenuItem>
