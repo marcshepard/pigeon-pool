@@ -118,7 +118,14 @@ export default function ResultsPage() {
     }
   }
 
-  // Build columns
+
+  // Calculate week state and dynamic columns/title
+  const weekState = useMemo(() => {
+    if (!liveWeek) return "completed";
+    if (liveWeek && rows.every(r => (r.points ?? 0) === 0)) return "not started";
+    return "in progress";
+  }, [liveWeek, rows]);
+
   const columns: ColumnDef<Row>[] = useMemo(() => {
     const cols: ColumnDef<Row>[] = [
       {
@@ -126,10 +133,22 @@ export default function ResultsPage() {
         header: "Pigeon",
         pin: "left",
         width: 140,
-        valueGetter: (r) => r.pigeon_number, // sort by pigeon number
-        renderCell: (r) => `${r.pigeon_number} ${r.pigeon_name}`, // render pigeon number + name
+        valueGetter: (r) => r.pigeon_number,
+        renderCell: (r) => `${r.pigeon_number} ${r.pigeon_name}`,
       },
     ];
+
+    // Points column (first non-pinned) if not 'not started'
+    if (weekState !== "not started") {
+      cols.push({
+        key: "points",
+        header: "Points",
+        align: "right",
+        width: 90,
+        valueGetter: (r) => (r.points ?? Number.POSITIVE_INFINITY),
+        renderCell: (r) => (r.points ?? "—"),
+      });
+    }
 
     for (const g of games) {
       const key = `g_${g.game_id}`;
@@ -156,28 +175,20 @@ export default function ResultsPage() {
       });
     }
 
-    // Points & Rank pinned right
-    cols.push(
-      {
-        key: "points",
-        header: "Points",
-        align: "right",
-        width: 90,
-        valueGetter: (r) => (r.points ?? Number.POSITIVE_INFINITY),
-        renderCell: (r) => (r.points ?? "—"),
-      },
-      {
+    // Rank column (last) if not 'not started'
+    if (weekState !== "not started") {
+      cols.push({
         key: "rank",
         header: "Rank",
         align: "center",
         width: 80,
         valueGetter: (r) => (r.rank ?? Number.POSITIVE_INFINITY),
         renderCell: (r) => (r.rank ?? "—"),
-      }
-    );
+      });
+    }
 
     return cols;
-  }, [games]);
+  }, [games, weekState]);
 
   // Consensus pinned-top row
   const consensusRow: Row | null = useMemo(() => {
@@ -212,12 +223,8 @@ export default function ResultsPage() {
       <Box>
         {/* Toolbar + controls won't print (they're outside the PrintArea) */}
         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
-          <Typography variant="body1" fontWeight="bold">
-            {week == null
-              ? "Loading results…"
-              : liveWeek === week ? "Partial results" : "Results"}
-          </Typography>
-          <Stack direction="row" gap={1} alignItems="center">
+          {/* Left: Week picker */}
+          <Box flex={1} display="flex" alignItems="center">
             <FormControl size="small" disabled={lockedWeeks.length === 0}>
               <InputLabel>Week</InputLabel>
               <Select
@@ -233,10 +240,25 @@ export default function ResultsPage() {
                 ))}
               </Select>
             </FormControl>
+          </Box>
+          {/* Center: Title */}
+          <Box flex={1} display="flex" justifyContent="center" alignItems="center">
+            <Typography variant="body1" fontWeight="bold">
+              {week == null
+                ? "Loading results…"
+                : weekState === "completed"
+                  ? "Results"
+                  : weekState === "not started"
+                    ? "Picks"
+                    : "Partial results"}
+            </Typography>
+          </Box>
+          {/* Right: Print button */}
+          <Box flex={1} display="flex" justifyContent="flex-end" alignItems="center">
             <Button variant="outlined" onClick={() => window.print()}>
               Print
             </Button>
-          </Stack>
+          </Box>
         </Stack>
 
         {loading ? (

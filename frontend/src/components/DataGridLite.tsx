@@ -2,7 +2,7 @@
  * DataGridLite lite component, sortable table with pinned columns
  */
 
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import type { ReactNode } from "react";
 import { Box, Table, TableHead, TableRow, TableCell, TableBody } from "@mui/material";
 import type { Theme } from "@mui/material/styles";
@@ -167,21 +167,36 @@ export function DataGridLite<T>({
     );
   };
 
+
+  // For scrolling highlighted row into view
+  const highlightedRowRef = useRef<HTMLTableRowElement | null>(null);
+
+  // Scroll highlighted row into view after render
+  useEffect(() => {
+    if (highlightedRowRef.current) {
+      highlightedRowRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [highlightRowId, sortedRows]);
+
   const renderRow = (row: T, idx: number) => {
-  // Row key
-  const key = getRowId ? getRowId(row, idx) : idx;
+    // Row key
+    const key = getRowId ? getRowId(row, idx) : idx;
 
     // Determine row background (highlight takes precedence over zebra)
     const isHighlighted = highlightRowId !== undefined && highlightRowId !== null && key === highlightRowId;
     const isAlt = zebra && !isHighlighted && (idx % 2 === 1);
     const rowBg = (theme: Theme) => {
       if (isHighlighted) return "#fff9c4"; // light yellow
-      if (isAlt) return theme.palette.mode === "light" ? theme.palette.grey[50] : theme.palette.grey[900];
+      if (isAlt) return theme.palette.mode === "light" ? theme.palette.grey[200] : theme.palette.grey[900];
       return undefined;
     };
 
     return (
-      <TableRow key={key} sx={{ backgroundColor: rowBg }}>
+      <TableRow
+        key={key}
+        sx={{ backgroundColor: rowBg }}
+        ref={isHighlighted ? highlightedRowRef : undefined}
+      >
         {orderedCols.map((c) => (
           <TableCell
             key={c.key}

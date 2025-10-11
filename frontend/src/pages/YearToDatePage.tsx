@@ -11,6 +11,7 @@ import {
 } from "../components/CommonComponents";
 import type { Severity } from "../components/CommonComponents";
 import { DataGridLite } from "../components/DataGridLite";
+import { useAuth } from "../auth/useAuth";
 import type { ColumnDef } from "../components/DataGridLite";
 import { getResultsYtd } from "../backend/fetch";
 
@@ -23,6 +24,7 @@ type Row = {
 };
 
 export default function YtdPage() {
+  const { state } = useAuth();
   const [rows, setRows] = useState<Row[]>([]);
   const [weeks, setWeeks] = useState<number[]>([]);
   const [snack, setSnack] = useState({ open: false, message: "", severity: "info" as Severity });
@@ -152,6 +154,8 @@ export default function YtdPage() {
               columns={columns}
               defaultSort={{ key: "pigeon", dir: "asc" }}
               printTitle="Pigeon Pool — Year to Date"
+              getRowId={(r) => r.pigeon_number}
+              highlightRowId={state.status === "signedIn" ? state.user.pigeon_number : undefined}
             />
           </PrintArea>
         )}
