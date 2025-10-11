@@ -6,17 +6,18 @@ import { useEffect, useMemo, useState } from "react";
 import { Box, Stack, Typography, Alert, Button, MenuItem, Select, FormControl, InputLabel } from "@mui/material";
 import {
   AppSnackbar,
-  DataGridLite,
   PickCell,
   PrintOnlyStyles,
   PrintArea,
 } from "../components/CommonComponents";
+import type { Severity } from "../components/CommonComponents";
+import { DataGridLite } from "../components/DataGridLite";
+import type { ColumnDef } from "../components/DataGridLite";
 import {
   getResultsWeekPicks,
   getResultsWeekLeaderboard,
   getScheduleCurrent,
 } from "../backend/fetch";
-import type { ColumnDef, Severity } from "../components/CommonComponents";
 
 type Row = {
   pigeon_number: number;
