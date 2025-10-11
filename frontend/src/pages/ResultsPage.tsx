@@ -207,20 +207,20 @@ export default function ResultsPage() {
       {/* Print only the grid (landscape, compact margins) */}
       <PrintOnlyStyles areaClass="print-area" landscape margin="8mm" />
 
-      <Box sx={{ p: 2 }}>
+      <Box>
         {/* Toolbar + controls won't print (they're outside the PrintArea) */}
         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
-          <Typography variant="h6">
+          <Typography variant="body1" fontWeight="bold">
             {week == null
-              ? "Results — Loading…"
-              : `Results — Week ${week}${liveWeek === week ? " (in progress)" : ""}`}
+              ? "Loading results…"
+              : `Week ${week} results ${liveWeek === week ? " (in progress)" : ""}`}
           </Typography>
           <Stack direction="row" gap={1} alignItems="center">
             <FormControl size="small" disabled={lockedWeeks.length === 0}>
               <InputLabel>Week</InputLabel>
               <Select
                 label="Week"
-                value={week ?? ""}
+                value={lockedWeeks.length === 0 ? "" : week ?? ""}
                 onChange={(e) => setWeek(Number(e.target.value))}
                 sx={{ minWidth: 120 }}
               >

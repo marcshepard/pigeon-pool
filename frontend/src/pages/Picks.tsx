@@ -151,10 +151,10 @@ export default function PicksPage() {
     : current?.next_picks_week ?? (futureWeeks.length ? futureWeeks[0] : 1);
 
   return (
-    <Box sx={{ p: { xs: 2, md: 3 }, maxWidth: 900, mx: "auto" }}>
+    <Box sx={{ maxWidth: 900, mx: "auto" }}>
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2, gap: 2 }}>
         <Typography variant="body1" fontWeight="bold">
-          Enter your picks for week {titleWeek}
+          Enter picks (week {titleWeek})
         </Typography>
 
         <FormControl size="small" sx={{ minWidth: 160 }}>

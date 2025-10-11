@@ -135,10 +135,10 @@ export default function YtdPage() {
       {/* Make only .print-area printable (landscape, small margins) */}
       <PrintOnlyStyles areaClass="print-area" landscape margin="8mm" />
 
-      <Box sx={{ p: 2 }}>
+      <Box>
         {/* This toolbar won't print because it's outside PrintArea */}
         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
-          <Typography variant="h6">Year to Date</Typography>
+          <Typography variant="body1" fontWeight="bold">Year to Date</Typography>
           <Button variant="outlined" onClick={() => window.print()}>Print</Button>
         </Stack>
 

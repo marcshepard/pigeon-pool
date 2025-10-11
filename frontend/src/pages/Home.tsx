@@ -39,7 +39,7 @@ const tiles = [
 export default function HomePage() {
     return (
         <Box sx={{ maxWidth: 520, mx: "auto" }}>
-            <Typography variant="body2" align="center">
+            <Typography variant="body1" align="center" fontWeight="bold">
                 Welcome to the Pigeon Pool
             </Typography>
             <Stack spacing={3} mt={5}>

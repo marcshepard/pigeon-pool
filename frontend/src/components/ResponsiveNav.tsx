@@ -214,7 +214,7 @@ export default function ResponsiveNav({
             width: "100%",
             mx: "auto",
             boxSizing: "border-box",
-            p: { xs: .5, md: 1 },
+            p: 2,
           }}
         >
           {children}
