@@ -327,12 +327,12 @@ export class WeekPicksRow {
   }
 }
 
-/** Leaderboard row for one week (lower total_points is better). */
+/** Leaderboard row for one week (lower score is better). */
 export class LeaderboardRow {
   pigeon_number: number;
   pigeon_name: string;
   week_number: number;
-  total_points: number;
+  score: number;
   rank: number;
 
   constructor(data: unknown) {
@@ -340,13 +340,13 @@ export class LeaderboardRow {
     if (!isNumber(data.pigeon_number)) throw new DataValidationError("pigeon_number must be number");
     if (!isString(data.pigeon_name)) throw new DataValidationError("pigeon_name must be string");
     if (!isNumber(data.week_number)) throw new DataValidationError("week_number must be number");
-    if (!isNumber(data.total_points)) throw new DataValidationError("total_points must be number");
+    if (!isNumber(data.score)) throw new DataValidationError("score must be number");
     if (!isNumber(data.rank)) throw new DataValidationError("rank must be number");
 
     this.pigeon_number = data.pigeon_number;
     this.pigeon_name = data.pigeon_name;
     this.week_number = data.week_number;
-    this.total_points = data.total_points;
+    this.score = data.score;
     this.rank = data.rank;
   }
 }
@@ -354,16 +354,16 @@ export class LeaderboardRow {
 /** Per-week breakdown element used inside YtdRow.by_week. */
 export class YtdByWeek {
   week_number: number;
-  total_points: number;
+  score: number;
   rank: number;
 
   constructor(data: unknown) {
     if (!isRecord(data)) throw new DataValidationError("Invalid YtdByWeek (not an object)");
     if (!isNumber(data.week_number)) throw new DataValidationError("week_number must be number");
-    if (!isNumber(data.total_points)) throw new DataValidationError("total_points must be number");
+    if (!isNumber(data.score)) throw new DataValidationError("score must be number");
     if (!isNumber(data.rank)) throw new DataValidationError("rank must be number");
     this.week_number = data.week_number;
-    this.total_points = data.total_points;
+    this.score = data.score;
     this.rank = data.rank;
   }
 }

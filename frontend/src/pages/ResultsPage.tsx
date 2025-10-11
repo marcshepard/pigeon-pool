@@ -99,7 +99,7 @@ export default function ResultsPage() {
             pigeon_number: p.pigeon_number,
             pigeon_name: p.pigeon_name,
             picks: {},
-            points: lbr?.total_points ?? null,
+            points: lbr?.score ?? null,
             rank: lbr?.rank ?? null,
           };
           byPigeon.set(p.pigeon_number, row);
@@ -213,7 +213,7 @@ export default function ResultsPage() {
           <Typography variant="body1" fontWeight="bold">
             {week == null
               ? "Loading results…"
-              : `Week ${week} results ${liveWeek === week ? " (in progress)" : ""}`}
+              : liveWeek === week ? "Partial results" : "Results"}
           </Typography>
           <Stack direction="row" gap={1} alignItems="center">
             <FormControl size="small" disabled={lockedWeeks.length === 0}>

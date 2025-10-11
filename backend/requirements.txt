@@ -24,3 +24,6 @@ PyJWT >=2.9.0                      # JWT signing/verification (sessions, resets)
 # --- Data models & validation ---
 pydantic >=2.9.0                   # Schema validation and settings management
 email-validator >=2.2.0            # RFC-compliant email validation for EmailStr
+
+# --- Excel import/export ---
+openpyxl>=3.1

@@ -5,7 +5,7 @@ Endpoints (all require authentication):
 - GET /results/weeks/{week}/picks
     Return all picks for a locked week, joined with game metadata (+ pigeon_name).
 - GET /results/weeks/{week}/leaderboard
-    Return leaderboard (total_points + rank + pigeon_name) for a locked week.
+    Return leaderboard (score + rank + pigeon_name) for a locked week.
 - GET /results/leaderboard
     Return leaderboard rows for all locked weeks.
 - GET /results/ytd
@@ -57,18 +57,18 @@ class WeekPicksRow(BaseModel):
 
 
 class LeaderboardRow(BaseModel):
-    """Leaderboard row for a particular week (lower total_points is better)."""
+    """Leaderboard row for a particular week (lower score is better)."""
     pigeon_number: int
     pigeon_name: str
     week_number: int = Field(..., ge=1, le=18)
-    total_points: int
+    score: int
     rank: int
 
 
 class YtdByWeek(BaseModel):
     """Per-week breakdown used in YTD responses."""
     week_number: int = Field(..., ge=1, le=18)
-    total_points: int
+    score: int
     rank: int
 
 
@@ -125,11 +125,11 @@ WEEK_LEADERBOARD_SQL = text("""
       pigeon_number,
       pigeon_name,
       week_number,
-      total_points,
+      score,
       rank
     FROM v_weekly_leaderboard
     WHERE week_number = :week
-    ORDER BY rank ASC, total_points ASC, pigeon_number ASC
+    ORDER BY rank ASC, score ASC, pigeon_number ASC
 """)
 
 ALL_LOCKED_LEADERBOARD_SQL = text("""
@@ -137,12 +137,12 @@ ALL_LOCKED_LEADERBOARD_SQL = text("""
       v.pigeon_number,
       v.pigeon_name,
       v.week_number,
-      v.total_points,
+      v.score,
       v.rank
     FROM v_weekly_leaderboard v
     JOIN weeks w ON w.week_number = v.week_number
     WHERE w.lock_at <= now()
-    ORDER BY v.week_number ASC, v.rank ASC, v.total_points ASC, v.pigeon_number ASC
+    ORDER BY v.week_number ASC, v.rank ASC, v.score ASC, v.pigeon_number ASC
 """)
 
 # YTD: aggregate across locked weeks, include pigeon_name and per-week breakdown
@@ -153,7 +153,7 @@ YTD_SUMMARY_SQL = text("""
       WHERE lock_at <= now()
     ),
     base AS (
-      SELECT v.pigeon_number, v.pigeon_name, v.week_number, v.total_points, v.rank
+      SELECT v.pigeon_number, v.pigeon_name, v.week_number, v.score, v.rank
       FROM v_weekly_leaderboard v
       JOIN locked l ON l.week_number = v.week_number
     ),
@@ -161,7 +161,7 @@ YTD_SUMMARY_SQL = text("""
       SELECT
         pigeon_number,
         max(pigeon_name)                AS pigeon_name,   -- name is stable per pigeon
-        SUM(total_points)::int          AS total_points_ytd,
+        SUM(score)::int          AS total_points_ytd,
         AVG(rank)::float                AS average_rank,
         SUM(CASE WHEN rank = 1 THEN 1 ELSE 0 END)::int AS wins
       FROM base
@@ -177,7 +177,7 @@ YTD_SUMMARY_SQL = text("""
         json_agg(
           json_build_object(
             'week_number', b.week_number,
-            'total_points', b.total_points,
+            'score', b.score,
             'rank', b.rank
           )
           ORDER BY b.week_number
@@ -259,7 +259,7 @@ async def get_week_picks(
 @router.get(
     "/weeks/{week}/leaderboard",
     response_model=List[LeaderboardRow],
-    summary="Leaderboard (total_points + rank + pigeon_name) for a locked week",
+    summary="Leaderboard (score + rank + pigeon_name) for a locked week",
 )
 async def get_week_leaderboard(
     week: int,
@@ -281,7 +281,7 @@ async def get_week_leaderboard(
             pigeon_number=r[0],
             pigeon_name=r[1],
             week_number=r[2],
-            total_points=r[3],
+            score=r[3],
             rank=r[4],
         )
         for r in rows
@@ -308,7 +308,7 @@ async def get_all_locked_leaderboards(
             pigeon_number=r[0],
             pigeon_name=r[1],
             week_number=r[2],
-            total_points=r[3],
+            score=r[3],
             rank=r[4],
         )
         for r in rows
@@ -341,7 +341,7 @@ async def get_ytd(
 
     out: List[YtdRow] = []
     for r in rows:
-        # r[5] is int[] weeks; r[6] is JSON array of {week_number,total_points,rank}
+        # r[5] is int[] weeks; r[6] is JSON array of {week_number,score,rank}
         weeks_locked = list(r[5]) if r[5] is not None else []
         by_week_json = r[6] or []
 

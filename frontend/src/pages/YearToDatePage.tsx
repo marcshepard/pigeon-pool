@@ -16,7 +16,7 @@ import { getResultsYtd } from "../backend/fetch";
 type Row = {
   pigeon_number: number;
   pigeon_name: string;
-  byWeek: Record<number, { rank: number; total_points: number }>;
+  byWeek: Record<number, { rank: number; score: number }>;
   pointsYtd: number;
   yearRank: number; // computed client-side by pointsYtd asc
 };
@@ -38,7 +38,7 @@ export default function YtdPage() {
       const temp: Row[] = data.map(d => {
         const byWeek: Row["byWeek"] = {};
         for (const bw of d.by_week) {
-          byWeek[bw.week_number] = { rank: bw.rank, total_points: bw.total_points };
+          byWeek[bw.week_number] = { rank: bw.rank, score: bw.score };
         }
         return {
           pigeon_number: d.pigeon_number,

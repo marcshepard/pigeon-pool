@@ -27,7 +27,6 @@ Note: there is no .env.production.local; production secrets are stored as Azure 
 ### 1. DB setup
 1. Install PostgreSQL, take all the defaults (they should match backend/.env), create a DB called "pigeon_pool", note the password
 2. Run database/schema.sql to create the DB schema
-3. Run database/users.sql to populate the DB with users
 
 ### 2. Backend API setup
 1. Create a backend/.env.development.local file and add these lines:
@@ -44,16 +43,24 @@ conda activate pigeon
 pip install -r backend/requirements.txt
 ```
 
-3. Run the backend cli to populate the DB with the NFL schedule
+3. Run the CLI to populate the DB with the NFL schedule
 ```bash
 python -m backend.cli sync-schedule
 ```
-Note: the CLI has other command line options available. To see them all:
+
+4. Run the CLI to sync historic pigeon picks from previous weeks into the DB
+First, get a copy of picks 2025.xlsx (not checked in for privacy reasons). Then:
 ```bash
-python -m backend.cli -h
+python -m backend.cli import-picks-xlsx
 ```
 
-4. Start the server
+5. Run the CLI to sync historic scores from previous weeks into the DB
+For example, to sync scores from the first 6 weeks of the season:
+```bash
+python -m backend.cli sync-scores 6
+```
+
+6. Start the server
 ```bash
 uvicorn backend.main:app --reload --port 8000
 ```

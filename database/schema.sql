@@ -55,11 +55,25 @@ CREATE INDEX IF NOT EXISTS ix_picks_game   ON picks (game_id);
 CREATE INDEX IF NOT EXISTS ix_picks_player ON picks (pigeon_number);
 
 -- === LOCK TRIGGER ===
+-- Recreate with a bypass knob
 CREATE OR REPLACE FUNCTION deny_picks_after_lock()
-RETURNS TRIGGER LANGUAGE plpgsql AS $$
+RETURNS TRIGGER
+LANGUAGE plpgsql AS $$
 DECLARE
   is_locked BOOLEAN;
+  bypass TEXT;
 BEGIN
+  -- If caller set a session var, skip the lock check
+  BEGIN
+    bypass := current_setting('app.bypass_lock', true);
+  EXCEPTION WHEN OTHERS THEN
+    bypass := NULL;
+  END;
+
+  IF COALESCE(bypass, '') IN ('on','true','1') THEN
+    RETURN COALESCE(NEW, OLD);
+  END IF;
+
   SELECT (w.lock_at <= now())
     INTO is_locked
   FROM games g
@@ -76,6 +90,9 @@ END$$;
 -- === PICKS FILLED VIEW ===
 -- Synthesizes "home team by 0" picks for games a player hasn't picked yet
 -- (so the UI can show a full slate of picks for each player)
+-- DROP VIEW IF EXISTS v_weekly_leaderboard;
+-- DROP VIEW IF EXISTS v_results;
+-- DROP VIEW IF EXISTS v_picks_filled CASCADE;
 
 CREATE OR REPLACE VIEW v_picks_filled AS
 SELECT
@@ -84,78 +101,106 @@ SELECT
   g.week_number,
   COALESCE(p.picked_home, TRUE)   AS picked_home,       -- default to home
   COALESCE(p.predicted_margin, 0) AS predicted_margin,  -- default to 0
-  p.created_at
+  p.created_at,
+  (p.game_id IS NOT NULL)         AS is_made            -- TRUE if an actual pick exists
 FROM players pl
 CROSS JOIN games g
 LEFT JOIN picks p
   ON p.pigeon_number = pl.pigeon_number
  AND p.game_id       = g.game_id;
 
+-- === RESULTS VIEW ===
+-- Calculates points per player per game for all games that have started and have a score
+-- This gives final total points from past weeks + current points from the week in progress
+CREATE OR REPLACE VIEW v_results AS
+WITH base AS (
+  SELECT
+    pl.pigeon_name,
+    pl.pigeon_number,
+    g.week_number,
+    g.game_id,
+    format('%s @ %s', g.away_abbr, g.home_abbr) AS game_name,
+    /* signed margins */
+    CASE WHEN f.picked_home THEN f.predicted_margin ELSE -f.predicted_margin END AS predicted_margin,  -- +home, -away, 0=tie pick
+    (g.home_score - g.away_score) AS actual_margin,                                                     -- +home win, -away win, 0=tie
+    f.is_made
+  FROM v_picks_filled f
+  JOIN games   g  ON g.game_id = f.game_id
+  JOIN players pl ON pl.pigeon_number = f.pigeon_number
+  WHERE g.kickoff_at <= now()
+    AND g.home_score IS NOT NULL
+    AND g.away_score IS NOT NULL
+)
+SELECT
+  b.pigeon_name,
+  b.pigeon_number,
+  b.week_number,
+  b.game_id,
+  b.game_name,
+
+  /* signed margins (to match Andy's sheet) */
+  b.predicted_margin,
+  b.actual_margin,
+
+  /* diff = |predicted - actual| using signed numbers */
+  ABS(b.predicted_margin - b.actual_margin)::INT AS diff,
+
+  /* penalty by sign only:
+     - synthesized pick → 50
+     - picked tie AND game tied → 7  (kept explicit so you can tune)
+     - sign(predicted) ≠ sign(actual) → 7 (wrong outcome in any direction)
+     - else 0
+  */
+  CASE
+    WHEN b.is_made = FALSE THEN 50
+    WHEN SIGN(b.predicted_margin) = 0 AND SIGN(b.actual_margin) = 0 THEN 7
+    WHEN SIGN(b.predicted_margin) <> SIGN(b.actual_margin) THEN 7
+    ELSE 0
+  END::INT AS penalty,
+
+  /* total points */
+  (ABS(b.predicted_margin - b.actual_margin)
+   +
+   CASE
+     WHEN b.is_made = FALSE THEN 100
+     WHEN SIGN(b.predicted_margin) = 0 AND SIGN(b.actual_margin) = 0 THEN 7
+     WHEN SIGN(b.predicted_margin) <> SIGN(b.actual_margin) THEN 7
+     ELSE 0
+   END)::INT AS points
+FROM base b;
+
 -- === WEEKLY LEADERBOAD VIEW ===
 -- Shows total points and rank per player per week:
 -- * Games not yet started are ignored
--- * Points per game are calculated as the difference between predicted margin and actual margin, plus 7 pt penalty if the pick was wrong
--- * A pick of 0 (imbued if pick was not made) always incurs a 7 pt penalty
--- * Rank is based on total points per week; lower is better
+-- * score is total points (lower is better) per the complex v_results calculation
+-- * rank is based on total points per week; lower is better
+-- * points is the fractional rank (e.g., two tied at 2nd → (2 + 3)/2 = 2.5)
 CREATE OR REPLACE VIEW v_weekly_leaderboard AS
-WITH base AS (
+WITH totals AS (
   SELECT
-    f.pigeon_number,
-    g.week_number,
-    g.game_id,
-    g.home_score,
-    g.away_score,
-    f.predicted_margin,
-    f.picked_home
-  FROM v_picks_filled f
-  JOIN games g ON g.game_id = f.game_id
-  WHERE g.kickoff_at <= now()          -- ignore not-started games
+    r.pigeon_number,
+    MIN(r.pigeon_name) AS pigeon_name,
+    r.week_number,
+    SUM(r.points)::INT AS score
+  FROM v_results r
+  GROUP BY r.pigeon_number, r.week_number
 ),
-scored AS (
+ranked AS (
   SELECT
-    b.*,
-    CASE
-      WHEN b.home_score IS NULL OR b.away_score IS NULL THEN 0
-      ELSE ABS(b.home_score - b.away_score)
-    END AS actual_margin,
-    CASE
-      WHEN b.home_score IS NULL OR b.away_score IS NULL THEN NULL
-      WHEN b.home_score >  b.away_score THEN TRUE
-      WHEN b.home_score <  b.away_score THEN FALSE
-      ELSE NULL  -- tie
-    END AS home_won
-  FROM base b
-),
-per_game AS (
-  SELECT
-    s.pigeon_number,
-    s.week_number,
-    s.game_id,
-    ABS(s.predicted_margin - s.actual_margin) AS margin_diff,
-    CASE
-      WHEN s.predicted_margin = 0 THEN 7             -- 0 margin always +7
-      WHEN s.home_won IS NULL THEN 0                 -- tie/unknown: no wrong-side penalty
-      WHEN s.picked_home <> s.home_won THEN 7        -- wrong side
-      ELSE 0
-    END AS penalty
-  FROM scored s
-),
-totals AS (
-  SELECT
-    pigeon_number,
-    week_number,
-    SUM(margin_diff + penalty)::INT AS total_points
-  FROM per_game
-  GROUP BY pigeon_number, week_number
+    t.*,
+    RANK() OVER (PARTITION BY t.week_number ORDER BY t.score)             AS rank,
+    COUNT(*) OVER (PARTITION BY t.week_number, t.score)                   AS tie_count
+  FROM totals t
 )
 SELECT
-  t.pigeon_number,
-  p.pigeon_name,
-  t.week_number,
-  t.total_points,
-  RANK() OVER (PARTITION BY t.week_number ORDER BY t.total_points ASC) AS rank
-FROM totals t
-JOIN players p ON p.pigeon_number = t.pigeon_number;
+  pigeon_number,
+  pigeon_name,
+  week_number,
+  LEAST(score, 800) AS score,
+  rank,
+  /* Average the occupied positions for ties, e.g., two tied at 2nd → (2 + 3)/2 = 2.5 */
+  (rank + (tie_count - 1) / 2.0)::numeric(10,1) AS points
+FROM ranked;
 
 -- Convenience view for "all picks for a locked week" (privacy: only locked weeks).
 -- Join includes pigeon_name and full game context in one place.
@@ -178,7 +223,6 @@ JOIN games   g  ON g.game_id = f.game_id
 JOIN weeks   w  ON w.week_number = g.week_number
 JOIN players pl ON pl.pigeon_number = f.pigeon_number
 WHERE w.lock_at <= now();
-
 
 -- Trigger the lock check on picks insert/update/delete
 DROP TRIGGER IF EXISTS trg_picks_insert_lock ON picks;
