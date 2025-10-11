@@ -2,7 +2,7 @@
  * DataGridLite lite component, sortable table with pinned columns
  */
 
-import { useMemo, useState, useEffect, useRef } from "react";
+import { useMemo, useState, useEffect } from "react";
 import type { ReactNode } from "react";
 import { Box, Table, TableHead, TableRow, TableCell, TableBody } from "@mui/material";
 import type { Theme } from "@mui/material/styles";
@@ -23,6 +23,7 @@ export type DataGridLiteProps<T> = {
   rows: T[];
   columns: ColumnDef<T>[];
   pinnedTopRows?: T[];
+  pinnedBottomRows?: T[];
   defaultSort?: { key: string; dir: "asc" | "desc" };
   allowSort?: boolean;
   dense?: boolean;
@@ -49,6 +50,7 @@ export function DataGridLite<T>({
   rows,
   columns,
   pinnedTopRows = [],
+  pinnedBottomRows = [],
   defaultSort,
   allowSort = true,
   dense = true,
@@ -99,8 +101,6 @@ export function DataGridLite<T>({
     const isSorted = sortKey === c.key;
     const sortable = allowSort && (c.sortable ?? true) && !!c.valueGetter;
 
-    const caret = isSorted ? (sortDir === "asc" ? "^" : "v") : "";
-
     const onToggle = () => {
       if (!sortable) return;
       if (!isSorted) {
@@ -146,37 +146,13 @@ export function DataGridLite<T>({
         }}
         aria-sort={isSorted ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
       >
-        <span>
-          {c.header}
-          {sortable && isSorted ? (
-            <span
-              style={{
-                marginLeft: 4,
-                fontSize: "1.05em",   // bump size; tweak to taste (e.g. 1.15em)
-                fontWeight: 700,       // bold
-                letterSpacing: "-0.02em",
-                verticalAlign: "baseline",
-                opacity: 0.95,
-              }}
-            >
-              {caret}
-            </span>
-          ) : null}
-        </span>
+        {c.header}
       </TableCell>
     );
   };
 
 
-  // For scrolling highlighted row into view
-  const highlightedRowRef = useRef<HTMLTableRowElement | null>(null);
 
-  // Scroll highlighted row into view after render
-  useEffect(() => {
-    if (highlightedRowRef.current) {
-      highlightedRowRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
-    }
-  }, [highlightRowId, sortedRows]);
 
   const renderRow = (row: T, idx: number) => {
     // Row key
@@ -188,14 +164,14 @@ export function DataGridLite<T>({
     const rowBg = (theme: Theme) => {
       if (isHighlighted) return "#fff9c4"; // light yellow
       if (isAlt) return theme.palette.mode === "light" ? theme.palette.grey[200] : theme.palette.grey[900];
-      return undefined;
+      // Explicit solid background for non-striped, non-highlighted rows
+      return theme.palette.background.paper;
     };
 
     return (
       <TableRow
         key={key}
         sx={{ backgroundColor: rowBg }}
-        ref={isHighlighted ? highlightedRowRef : undefined}
       >
         {orderedCols.map((c) => (
           <TableCell
@@ -206,16 +182,16 @@ export function DataGridLite<T>({
               position: c.pin ? "sticky" : "static",
               left: c.pin === "left" ? 0 : undefined,
               right: c.pin === "right" ? 0 : undefined,
-              // Body pinned cells should be below pinned headers
-              zIndex: c.pin ? 1 : 0,
+              // Body pinned cells should be above non-pinned body cells, but below headers
+              zIndex: c.pin ? 2 : 1,
               ...(c.width ? { width: c.width, minWidth: c.width } : {}),
               px: 0.5,
               py: 0.25,
               whiteSpace: "nowrap",
               overflow: "hidden",
               textOverflow: "ellipsis",
-              ...(c.pin === "left"  && { left: 0,  zIndex: 1, boxShadow: "inset -1px 0 0 rgba(0,0,0,0.12)" }),
-              ...(c.pin === "right" && { right: 0, zIndex: 1, boxShadow: "inset  1px 0 0 rgba(0,0,0,0.12)" }),
+              ...(c.pin === "left"  && { left: 0,  zIndex: 2, boxShadow: "inset -1px 0 0 rgba(0,0,0,0.12)" }),
+              ...(c.pin === "right" && { right: 0, zIndex: 2, boxShadow: "inset  1px 0 0 rgba(0,0,0,0.12)" }),
             }}
           >
             {c.renderCell ? c.renderCell(row) : ""}
@@ -275,6 +251,7 @@ export function DataGridLite<T>({
           ) : (
             sortedRows.map((r, i) => renderRow(r, i + pinnedTopRows.length))
           )}
+          {pinnedBottomRows.map((r, i) => renderRow(r, i + pinnedTopRows.length + sortedRows.length))}
         </TableBody>
       </Table>
     </Box>

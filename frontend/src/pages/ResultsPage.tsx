@@ -138,11 +138,11 @@ export default function ResultsPage() {
       },
     ];
 
-    // Points column (first non-pinned) if not 'not started'
+    // Score column (first non-pinned) if not 'not started'
     if (weekState !== "not started") {
       cols.push({
         key: "points",
-        header: "Points",
+        header: "Score",
         align: "right",
         width: 90,
         valueGetter: (r) => (r.points ?? Number.POSITIVE_INFINITY),
@@ -268,7 +268,8 @@ export default function ResultsPage() {
             <DataGridLite<Row>
               rows={rows}
               columns={columns}
-              pinnedTopRows={consensusRow ? [consensusRow] : []}
+              pinnedTopRows={[]}
+              pinnedBottomRows={consensusRow ? [consensusRow] : []}
               defaultSort={{ key: "pigeon_name", dir: "asc" }}
               printTitle={`Results — Week ${week}`}
               getRowId={(r) => r.pigeon_number}

@@ -20,7 +20,7 @@ const tiles = [
         path: "/results",
         icon: <ListAltIcon color="primary" sx={{ fontSize: 40 }} />,
         label: "Results",
-        desc: "View results for this or previous weeks",
+        desc: "View picks and results for this or previous weeks",
     },
     {
         path: "/year-to-date",
