@@ -39,28 +39,28 @@ export default function ResultsPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-  let cancelled = false;
-  (async () => {
-    try {
-      const sc = await getScheduleCurrent(); // { next_picks_week: number | null, live_week?: number | null }
-      // If next_picks_week is n, locked weeks are 1..(n-1)
-      // If null (season over), all 1..18 are locked
-      const cutoff = sc.next_picks_week;
-      const weeks =
-        cutoff == null
-          ? Array.from({ length: 18 }, (_, i) => i + 1)
-          : Array.from({ length: Math.max(0, cutoff - 1) }, (_, i) => i + 1);
+    let cancelled = false;
+    (async () => {
+      try {
+        const sc = await getScheduleCurrent(); // { next_picks_week: number | null, live_week?: number | null }
+        // If next_picks_week is n, locked weeks are 1..(n-1)
+        // If null (season over), all 1..18 are locked
+        const cutoff = sc.next_picks_week;
+        const weeks =
+          cutoff == null
+            ? Array.from({ length: 18 }, (_, i) => i + 1)
+            : Array.from({ length: Math.max(0, cutoff - 1) }, (_, i) => i + 1);
 
-      if (!cancelled) {
-        setLockedWeeks(weeks);
-        setWeek(weeks.length ? weeks[weeks.length - 1] : null); // most recent locked
-        setLiveWeek(sc.live_week ?? null); // Currently live week (locked but ongoing) - null between MNF and TNF
+        if (!cancelled) {
+          setLockedWeeks(weeks);
+          setWeek(weeks.length ? weeks[weeks.length - 1] : null); // most recent locked
+          setLiveWeek(sc.live_week ?? null); // Currently live week (locked but ongoing) - null between MNF and TNF
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e ?? "");
+        setSnack({ open: true, message: msg || "Failed to load schedule status", severity: "error" });
       }
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e ?? "");
-      setSnack({ open: true, message: msg || "Failed to load schedule status", severity: "error" });
-    }
-  })();
+    })();
   return () => { cancelled = true; };
 }, []);
 
@@ -118,13 +118,20 @@ export default function ResultsPage() {
     }
   }
 
-
   // Calculate week state and dynamic columns/title
   const weekState = useMemo(() => {
-    if (!liveWeek) return "completed";
-    if (liveWeek && rows.every(r => (r.points ?? 0) === 0)) return "not started";
-    return "in progress";
-  }, [liveWeek, rows]);
+    if (week == null) return "completed";
+
+    // If there is no live week at all, every locked week is completed
+    if (liveWeek == null) return "completed";
+
+    // If we're viewing a week other than the live one, it's completed
+    if (week !== liveWeek) return "completed";
+
+    // We're viewing the live week → decide between 'not started' vs 'in progress'
+    const allZero = rows.every(r => (r.points ?? 0) === 0);
+    return allZero ? "not started" : "in progress";
+  }, [week, liveWeek, rows]);
 
   const columns: ColumnDef<Row>[] = useMemo(() => {
     const cols: ColumnDef<Row>[] = [
