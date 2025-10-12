@@ -35,19 +35,21 @@ export async function apiFetch<T>(
   if (!res.ok) {
     if (res.status === 401) {
       console.warn("apiFetch: 401 Unauthorized");
-      // Only redirect if we're not already on the login page.
+      // Only redirect if we're not already on the login or reset-password page.
       const loginPath = "/login";
-      const onLoginPage = location.pathname.startsWith(loginPath);
+      const resetPasswordPath = "/reset-password";
+      const currentPath = location.pathname;
+      const onLoginOrReset = currentPath === loginPath || currentPath === resetPasswordPath;
 
-      if (!onLoginPage) {
-        console.info("apiFetch: Redirecting to login page due to 401 from non-login page");
+      if (!onLoginOrReset) {
+        console.info("apiFetch: Redirecting to login page due to 401 from non-login/reset-password page");
         const returnTo = encodeURIComponent(location.pathname + location.search);
         const reason = "session_expired";
         // replace() avoids cluttering history with multiple failed redirects
         location.replace(`${loginPath}?reason=${reason}&returnTo=${returnTo}`);
       }
 
-      // Bubble an error so callers on /login can render form-level feedback.
+      // Bubble an error so callers on /login or /reset-password can render form-level feedback.
       console.warn("apiFetch: Throwing Unauthorized error");
       throw new Error("Unauthorized");
     }

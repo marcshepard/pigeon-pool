@@ -4,7 +4,6 @@
  * Caches the result in app cache.
  */
 
-// src/hooks/useYtd.ts
 import { useEffect, useState } from "react";
 import { getResultsAllLeaderboards, getScheduleCurrent } from "../backend/fetch";
 import { LeaderboardRow } from "../backend/types";

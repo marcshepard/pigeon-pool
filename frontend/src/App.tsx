@@ -66,9 +66,15 @@ function PrivateShell() {
     );
   }
 
-  // Not signed in → redirect to login
+  // Not signed in → redirect to login, unless already on /login or /reset-password
   if (state.status === "signedOut") {
-    return <Navigate to="/login" replace />;
+    console.log ("Current state is signedOut");
+    const currentPath = window.location.pathname;
+      console.log ("Current path is ", currentPath);
+
+    if (currentPath !== "/login" && currentPath !== "/reset-password") {
+      return <Navigate to="/login" replace />;
+    }
   }
 
   // Signed in → render the app shell with routes
