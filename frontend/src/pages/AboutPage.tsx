@@ -8,7 +8,7 @@ export default function AboutPage() {
                 PIGEON POOL RULES
             </Typography>
             <Typography variant="body1">
-                <b>1.</b> Submit your picks from the <Link to="/picks">Picks page</Link> by Wednesday.
+                <b>1.</b> Submit your picks from the <Link to="/picks">Picks page</Link> by Wednesday midnight PST.
                 You must pick the WINNER of each game and by how many points they will win (SPREAD).
                 If you don't submit picks by the deadline, you will get a last place finish for the week.
             </Typography>
