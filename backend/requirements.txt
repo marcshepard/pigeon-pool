@@ -27,3 +27,6 @@ email-validator >=2.2.0            # RFC-compliant email validation for EmailStr
 
 # --- Excel import/export ---
 openpyxl>=3.1
+
+# --- Email (Azure Communication Services) ---
+azure-communication-email >=1.0.0

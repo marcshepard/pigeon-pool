@@ -18,6 +18,7 @@ from pydantic import BaseModel, EmailStr
 
 from backend.utils.settings import get_settings
 from backend.utils.logger import debug, info, warn, error
+from backend.utils.email import send_email
 
 # --- Config ---
 S = get_settings()
@@ -29,6 +30,25 @@ FRONTEND_ORIGIN = S.frontend_origin
 RESET_TTL_MINUTES = S.reset_ttl_minutes
 SESSION_MINUTES = S.session_minutes
 SLIDE_THRESHOLD_SECONDS = S.slide_threshold_seconds
+
+def sent_password_reset_email(to_email: str, token: str) -> None:
+    """ Send a password reset email to the given address """
+    subject = "Pigeon Pool Password Reset"
+    plain_text = (
+        "You requested a password reset for your Pigeon Pool account.\n\n"
+        "If you did not make this request, you can ignore this email.\n\n"
+        "To reset your password, click the link below:\n\n"
+        f"{FRONTEND_ORIGIN}/reset-password?token={token}\n\n"
+        "This link will expire in 30 minutes."
+    )
+    html = (
+        "<p>You requested a password reset for your Pigeon Pool account.</p>"
+        "<p>If you did not make this request, you can ignore this email.</p>"
+        "<p>To reset your password, click the link below:</p>"
+        f'<p><a href="{FRONTEND_ORIGIN}/reset-password?token={token}">Reset Password</a></p>'
+        "<p>This link will expire in 30 minutes.</p>"
+    )
+    send_email(to_email, subject, plain_text, html)
 
 def _origin_tuple(url: str):
     p = urlparse(url)
@@ -180,7 +200,7 @@ def current_user(request: Request, response: Response) -> MeOut:
         )
 
 # --- Password reset helpers ---
-def make_reset_token(pigeon_number: int) -> Tuple[str, int]:
+def make_reset_token(pigeon_number: int) -> str:
     """
     Create a short-lived password reset JWT with a unique jti.
     Returns (token, exp_epoch_seconds).
@@ -197,7 +217,7 @@ def make_reset_token(pigeon_number: int) -> Tuple[str, int]:
         "exp": int(exp.timestamp()),
     }
     token = jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALG)
-    return token, int(exp.timestamp())
+    return token
 
 def parse_reset_token(token: str) -> dict:
     """
@@ -327,16 +347,10 @@ def request_password_reset(payload: PasswordResetRequestIn):
                 return {"ok": True}
 
             pn, _ = row
-            token, exp_ts = make_reset_token(pn)
-            reset_url = f"{FRONTEND_ORIGIN}/reset-password?token={token}"
+            token = make_reset_token(pn)
 
-            debug(
-                "password-reset: token generated",
-                pn=pn,
-                exp=int(exp_ts),
-            )
-            # TODO: send the email here (use your mailer abstraction)  # pylint: disable=fixme
-            debug(f"password-reset: reset link = {reset_url}")
+            sent_password_reset_email(email, token)
+            info("password-reset: email sent", pn=pn, email=email)
 
             return {"ok": True}
 

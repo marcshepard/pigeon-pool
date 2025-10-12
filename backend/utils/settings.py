@@ -52,6 +52,10 @@ class Settings:
     session_minutes: int        # idle/absolute expiry for simplicity
     slide_threshold_seconds: int  # re-issue cookie if < this many seconds left
 
+    # Email
+    email_endpoint: str         # Azure email URL. e.g. https://<resource>.communication.azure.com/
+    email_access_key: str       # Azure email access key
+
     # Helpers
     def psycopg_kwargs(self) -> dict:
         """Return dict suitable for psycopg.connect(**kwargs) """
@@ -83,6 +87,8 @@ def get_settings() -> Settings:
         reset_ttl_minutes=int(os.getenv("RESET_TTL_MINUTES", "30")),
         session_minutes=int(os.getenv("SESSION_MINUTES", "60")),
         slide_threshold_seconds=int(os.getenv("SLIDE_THRESHOLD_SECONDS", str(15 * 60))),
+        email_endpoint=_req("EMAIL_ENDPOINT"),
+        email_access_key=_req("EMAIL_ACCESS_KEY")
     )
 
 def reset_settings_cache() -> None:
