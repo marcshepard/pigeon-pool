@@ -168,15 +168,22 @@ export function DataGridLite<T>({
       return theme.palette.background.paper;
     };
 
+    const rowClass = isHighlighted
+      ? "user-row"
+      : isAlt
+        ? "striped-row"
+        : undefined;
     return (
       <TableRow
         key={key}
+        className={rowClass}
         sx={{ backgroundColor: rowBg }}
       >
         {orderedCols.map((c) => (
           <TableCell
             key={c.key}
             align={c.align ?? "left"}
+            className={rowClass}
             sx={{
               backgroundColor: rowBg,
               position: c.pin ? "sticky" : "static",

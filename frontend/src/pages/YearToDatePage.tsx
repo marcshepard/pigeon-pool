@@ -8,6 +8,7 @@ import {
   AppSnackbar,
   PrintOnlyStyles,
   PrintArea,
+  PrintGridStyles,
 } from "../components/CommonComponents";
 import type { Severity } from "../components/CommonComponents";
 
@@ -67,7 +68,8 @@ export default function YtdPage() {
 
   return (
     <>
-      <PrintOnlyStyles areaClass="print-area" landscape margin="8mm" />
+  <PrintOnlyStyles areaClass="print-area" landscape margin="8mm" />
+  <PrintGridStyles />
       <Box>
         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
           <Typography variant="body1" fontWeight="bold">Year to Date</Typography>
@@ -77,7 +79,7 @@ export default function YtdPage() {
         {loading ? (
           <Alert severity="info">Loading…</Alert>
         ) : (
-          <PrintArea>
+          <PrintArea className="print-grid-area">
             <DataGridLite<YtdRow>
               rows={rows}
               columns={columns}

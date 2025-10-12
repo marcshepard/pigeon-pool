@@ -4,7 +4,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Box, Stack, Typography, Alert, Button, MenuItem, Select, FormControl, InputLabel } from "@mui/material";
-import { AppSnackbar, PickCell, PrintOnlyStyles, PrintArea } from "../components/CommonComponents";
+import { AppSnackbar, PickCell, PrintOnlyStyles, PrintArea, PrintGridStyles } from "../components/CommonComponents";
 import type { Severity } from "../components/CommonComponents";
 import { DataGridLite } from "../components/DataGridLite";
 import type { ColumnDef } from "../components/DataGridLite";
@@ -87,7 +87,8 @@ export default function ResultsPage() {
 
   return (
     <>
-      <PrintOnlyStyles areaClass="print-area" landscape margin="8mm" />
+  <PrintOnlyStyles areaClass="print-area" landscape margin="8mm" />
+  <PrintGridStyles />
 
       <Box>
         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
@@ -129,7 +130,7 @@ export default function ResultsPage() {
         {loading ? (
           <Alert severity="info">Loading…</Alert>
         ) : (
-          <PrintArea>
+          <PrintArea className="print-grid-area">
             <DataGridLite<ResultsRow>
               rows={rows}
               columns={columns}

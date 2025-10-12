@@ -24,6 +24,38 @@ import type { BoxProps } from "@mui/material";
 import Visibility from "@mui/icons-material/Visibility";
 import VisibilityOff from "@mui/icons-material/VisibilityOff";
 
+// Centralized print styles for grids (striping, user row, fit, portrait)
+export function PrintGridStyles() {
+  return (
+    <GlobalStyles
+      styles={{
+        '@media print': {
+          '.striped-row td, .striped-row th': {
+            backgroundColor: '#f5f5f5 !important',
+            WebkitPrintColorAdjust: 'exact',
+            printColorAdjust: 'exact',
+          },
+          '.user-row td, .user-row th': {
+            backgroundColor: '#ffe082 !important',
+            WebkitPrintColorAdjust: 'exact',
+            printColorAdjust: 'exact',
+          },
+          '.print-grid-area': {
+            width: '100vw',
+            maxWidth: '100vw',
+            overflow: 'visible',
+          },
+          '@page': {
+            size: 'portrait',
+            margin: '0.5in',
+          },
+          '.no-print': { display: 'none !important' },
+        },
+      }}
+    />
+  );
+}
+
 export function FormCard({ title, children }: { title: string; children: ReactNode }) {
   return (
     <Box sx={{ display: "grid", placeItems: "center", minHeight: "100dvh", p: 2 }}>
