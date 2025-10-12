@@ -29,7 +29,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.utils.db import get_db
-from backend.utils.logger import debug, info, warn, error
+from backend.utils.logger import debug, info, warn
 from .auth import require_user
 
 
@@ -63,6 +63,7 @@ class LeaderboardRow(BaseModel):
     week_number: int = Field(..., ge=1, le=18)
     score: int
     rank: int
+    points: float
 
 
 class YtdByWeek(BaseModel):
@@ -70,18 +71,13 @@ class YtdByWeek(BaseModel):
     week_number: int = Field(..., ge=1, le=18)
     score: int
     rank: int
-
+    points: float
 
 class YtdRow(BaseModel):
     """Aggregated YTD stats across all locked weeks for a player."""
     pigeon_number: int
     pigeon_name: str
-    total_points_ytd: int
-    average_rank: float
-    wins: int  # number of week-firsts (rank = 1)
-    weeks_locked: List[int]
     by_week: List[YtdByWeek]
-
 
 # =============================================================================
 # SQL
@@ -119,85 +115,35 @@ WEEK_PICKS_SQL = text("""
     ORDER BY pigeon_number, kickoff_at, game_id
 """)
 
-# v_weekly_leaderboard already contains pigeon_name.
+# Leaderboard rows for a single week:
 WEEK_LEADERBOARD_SQL = text("""
     SELECT
       pigeon_number,
       pigeon_name,
       week_number,
       score,
-      rank
+      rank,
+      points
     FROM v_weekly_leaderboard
     WHERE week_number = :week
     ORDER BY rank ASC, score ASC, pigeon_number ASC
 """)
 
+# Leaderboard rows for all locked weeks (concatenated):
 ALL_LOCKED_LEADERBOARD_SQL = text("""
     SELECT
       v.pigeon_number,
       v.pigeon_name,
       v.week_number,
       v.score,
-      v.rank
+      v.rank,
+      v.points
     FROM v_weekly_leaderboard v
     JOIN weeks w ON w.week_number = v.week_number
     WHERE w.lock_at <= now()
     ORDER BY v.week_number ASC, v.rank ASC, v.score ASC, v.pigeon_number ASC
 """)
 
-# YTD: aggregate across locked weeks, include pigeon_name and per-week breakdown
-YTD_SUMMARY_SQL = text("""
-    WITH locked AS (
-      SELECT week_number
-      FROM weeks
-      WHERE lock_at <= now()
-    ),
-    base AS (
-      SELECT v.pigeon_number, v.pigeon_name, v.week_number, v.score, v.rank
-      FROM v_weekly_leaderboard v
-      JOIN locked l ON l.week_number = v.week_number
-    ),
-    agg AS (
-      SELECT
-        pigeon_number,
-        max(pigeon_name)                AS pigeon_name,   -- name is stable per pigeon
-        SUM(score)::int          AS total_points_ytd,
-        AVG(rank)::float                AS average_rank,
-        SUM(CASE WHEN rank = 1 THEN 1 ELSE 0 END)::int AS wins
-      FROM base
-      GROUP BY pigeon_number
-    ),
-    weeks_seen AS (
-      SELECT array_agg(DISTINCT week_number ORDER BY week_number) AS weeks
-      FROM (SELECT week_number FROM locked) s
-    ),
-    per_week AS (
-      SELECT
-        b.pigeon_number,
-        json_agg(
-          json_build_object(
-            'week_number', b.week_number,
-            'score', b.score,
-            'rank', b.rank
-          )
-          ORDER BY b.week_number
-        ) AS by_week
-      FROM base b
-      GROUP BY b.pigeon_number
-    )
-    SELECT
-      a.pigeon_number,
-      a.pigeon_name,
-      a.total_points_ytd,
-      a.average_rank,
-      a.wins,
-      COALESCE(ws.weeks, ARRAY[]::int[]) AS weeks_locked,
-      COALESCE(pw.by_week, '[]'::json)   AS by_week
-    FROM agg a
-    LEFT JOIN weeks_seen ws ON TRUE
-    LEFT JOIN per_week pw ON pw.pigeon_number = a.pigeon_number
-    ORDER BY a.total_points_ytd ASC, a.average_rank ASC, a.pigeon_number ASC
-""")
 
 # =============================================================================
 # Helpers
@@ -283,6 +229,7 @@ async def get_week_leaderboard(
             week_number=r[2],
             score=r[3],
             rank=r[4],
+            points=r[5],
         )
         for r in rows
     ]
@@ -310,50 +257,7 @@ async def get_all_locked_leaderboards(
             week_number=r[2],
             score=r[3],
             rank=r[4],
+            points=r[5],
         )
         for r in rows
     ]
-
-
-@router.get(
-    "/ytd",
-    response_model=List[YtdRow],
-    summary="Year-to-date totals per player (locked weeks only, includes pigeon_name)",
-)
-async def get_ytd(
-    db: AsyncSession = Depends(get_db),
-    me=Depends(require_user),
-):
-    """
-    Aggregate YTD results across all locked weeks.
-    Returns per-player totals, average rank, wins, weeks_locked, a by-week breakdown,
-    and the player's display name (pigeon_name).
-    """
-    debug("results: get_ytd called", user=me.pigeon_number)
-
-    try:
-        result = await db.execute(YTD_SUMMARY_SQL)
-        rows = result.fetchall()
-        info("results: ytd rows", count=len(rows))
-    except Exception as ex:  # pylint: disable=broad-except
-        error("results: ytd query failed", err=str(ex))
-        raise
-
-    out: List[YtdRow] = []
-    for r in rows:
-        # r[5] is int[] weeks; r[6] is JSON array of {week_number,score,rank}
-        weeks_locked = list(r[5]) if r[5] is not None else []
-        by_week_json = r[6] or []
-
-        out.append(
-            YtdRow(
-                pigeon_number=r[0],
-                pigeon_name=r[1],
-                total_points_ytd=r[2],
-                average_rank=float(r[3]),
-                wins=r[4],
-                weeks_locked=weeks_locked,
-                by_week=[YtdByWeek(**bw) for bw in by_week_json],
-            )
-        )
-    return out

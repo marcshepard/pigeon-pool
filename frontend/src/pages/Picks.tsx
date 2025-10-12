@@ -150,121 +150,142 @@ export default function PicksPage() {
     ? week
     : current?.next_picks_week ?? (futureWeeks.length ? futureWeeks[0] : 1);
 
+
   return (
-    <Box sx={{ maxWidth: 900, mx: "auto" }}>
-      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2, gap: 2 }}>
-        <Typography variant="body1" fontWeight="bold">
-          Enter picks (week {titleWeek})
-        </Typography>
+    <Box sx={{ maxWidth: 900, mx: "auto", height: '100vh', display: 'flex', flexDirection: 'column' }}>
+      {/* Fixed header within the picks page */}
+      <Box
+        sx={{
+          position: "sticky",
+          top: 0,
+          left: 0,
+          width: "100%",
+          zIndex: 2,
+          bgcolor: "background.paper",
+          py: 1.5,
+        }}
+      >
+        <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}>
+          {/* Week selector (left) */}
+          <FormControl size="small" sx={{ minWidth: 160 }}>
+            <InputLabel id="week-select-label">Week</InputLabel>
+            <Select
+              labelId="week-select-label"
+              label="Week"
+              value={week}
+              onChange={(e) => setWeek(Number(e.target.value))}
+            >
+              {futureWeeks.map((w) => (
+                <MenuItem key={w} value={w}>Week {w}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
 
-        <FormControl size="small" sx={{ minWidth: 160 }}>
-          <InputLabel id="week-select-label">Week</InputLabel>
-          <Select
-            labelId="week-select-label"
-            label="Week"
-            value={week}
-            onChange={(e) => setWeek(Number(e.target.value))}
-          >
-            {futureWeeks.map((w) => (
-              <MenuItem key={w} value={w}>Week {w}</MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-      </Stack>
+          {/* Title (center) */}
+          <Typography variant="body1" fontWeight="bold" sx={{ flex: 1, textAlign: "center" }}>
+            Enter picks
+          </Typography>
 
-      <AppSnackbar
-        open={snackbar.open}
-        message={snackbar.message}
-        severity={snackbar.severity}
-        onClose={() => setSnackbar((s) => ({ ...s, open: false }))}
-      />
-
-      {loading && <Loading error={loadingError} />}
-
-      {!loading && loadingError && (
-        <Alert severity="error" sx={{ mb: 2 }}>
-          {loadingError}
-        </Alert>
-      )}
-
-      {!loading && games && games.length === 0 && (
-        <Alert severity="info" sx={{ mb: 2 }}>
-          No games found for week {titleWeek}.
-        </Alert>
-      )}
-
-      {!loading && games && games.length > 0 && (
-        <Stack spacing={2}>
-          {games.map((g) => {
-            const d = draft[g.game_id];
-            const kickoff = new Date(g.kickoff_at);
-            const when = kickoff.toLocaleString(undefined, {
-              weekday: "short",
-              month: "short",
-              day: "numeric",
-              hour: "numeric",
-              minute: "2-digit",
-            });
-
-            return (
-              <Box key={g.game_id} sx={{ border: "1px solid", borderColor: "divider", borderRadius: 2, p: 2 }}>
-                <Stack
-                  direction={{ xs: "column", sm: "row" }}
-                  justifyContent="space-between"
-                  alignItems={{ xs: "flex-start", sm: "center" }}
-                  spacing={1.5}
-                >
-                  <Box>
-                    <Typography variant="subtitle1" fontWeight="bold">
-                      {g.away_abbr} @ {g.home_abbr}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">{when}</Typography>
-                  </Box>
-
-                  <Stack direction="row" spacing={3} alignItems="center" sx={{ width: { xs: "100%", sm: "auto" } }}>
-                    {/* Pick side */}
-                    <FormControl component="fieldset">
-                      <RadioGroup
-                        row
-                        value={d?.picked_home ? "home" : "away"}
-                        onChange={(_, val) => handlePick(g.game_id, val as "home" | "away")}
-                      >
-                        <FormControlLabel value="away" control={<Radio />} label={g.away_abbr} />
-                        <FormControlLabel value="home" control={<Radio />} label={g.home_abbr} />
-                      </RadioGroup>
-                    </FormControl>
-
-                    {/* Margin */}
-                    <TextField
-                      label="Margin"
-                      type="text"
-                      size="small"
-                      value={String(d?.predicted_margin ?? 0)}
-                      onChange={(e) => handleMargin(g.game_id, e.target.value)}
-                      sx={{ width: 100 }}
-                      slotProps={{
-                        input: {
-                          inputProps: {
-                            inputMode: "numeric",
-                            pattern: "\\d{1,2}",
-                            maxLength: 2,
-                          },
-                        },
-                      }}
-                    />
-                  </Stack>
-                </Stack>
-              </Box>
-            );
-          })}
-
-          <Box sx={{ display: "flex", justifyContent: "flex-end", mt: 1 }}>
+          {/* Submit button (right) */}
+          <Box sx={{ display: "flex", justifyContent: "flex-end", minWidth: 160 }}>
             <Button variant="contained" size="large" onClick={handleSubmit}>
-              Submit Picks
+              Submit
             </Button>
           </Box>
         </Stack>
-      )}
+      </Box>
+
+      {/* Scrollable picks area below header */}
+      <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto', px: 0.5, pt: 2 }}>
+
+        <AppSnackbar
+          open={snackbar.open}
+          message={snackbar.message}
+          severity={snackbar.severity}
+          onClose={() => setSnackbar((s) => ({ ...s, open: false }))}
+        />
+
+        {loading && <Loading error={loadingError} />}
+
+        {!loading && loadingError && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {loadingError}
+          </Alert>
+        )}
+
+        {!loading && games && games.length === 0 && (
+          <Alert severity="info" sx={{ mb: 2 }}>
+            No games found for week {titleWeek}.
+          </Alert>
+        )}
+
+        {!loading && games && games.length > 0 && (
+          <Stack spacing={2}>
+            {games.map((g) => {
+              const d = draft[g.game_id];
+              const kickoff = new Date(g.kickoff_at);
+              const when = kickoff.toLocaleString(undefined, {
+                weekday: "short",
+                month: "short",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+              });
+
+              return (
+                <Box key={g.game_id} sx={{ border: "1px solid", borderColor: "divider", borderRadius: 2, p: 2 }}>
+                  <Stack
+                    direction={{ xs: "column", sm: "row" }}
+                    justifyContent="space-between"
+                    alignItems={{ xs: "flex-start", sm: "center" }}
+                    spacing={1.5}
+                  >
+                    <Box>
+                      <Typography variant="subtitle1" fontWeight="bold">
+                        {g.away_abbr} @ {g.home_abbr}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">{when}</Typography>
+                    </Box>
+
+                    <Stack direction="row" spacing={3} alignItems="center" sx={{ width: { xs: "100%", sm: "auto" } }}>
+                      {/* Pick side */}
+                      <FormControl component="fieldset">
+                        <RadioGroup
+                          row
+                          value={d?.picked_home ? "home" : "away"}
+                          onChange={(_, val) => handlePick(g.game_id, val as "home" | "away")}
+                        >
+                          <FormControlLabel value="away" control={<Radio />} label={g.away_abbr} />
+                          <FormControlLabel value="home" control={<Radio />} label={g.home_abbr} />
+                        </RadioGroup>
+                      </FormControl>
+
+                      {/* Margin */}
+                      <TextField
+                        label="Margin"
+                        type="text"
+                        size="small"
+                        value={String(d?.predicted_margin ?? 0)}
+                        onChange={(e) => handleMargin(g.game_id, e.target.value)}
+                        sx={{ width: 100 }}
+                        slotProps={{
+                          input: {
+                            inputProps: {
+                              inputMode: "numeric",
+                              pattern: "\\d{1,2}",
+                              maxLength: 2,
+                            },
+                          },
+                        }}
+                      />
+                    </Stack>
+                  </Stack>
+                </Box>
+              );
+            })}
+          </Stack>
+        )}
+      </Box>
     </Box>
   );
 }

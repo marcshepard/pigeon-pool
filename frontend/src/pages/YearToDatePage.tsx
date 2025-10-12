@@ -1,5 +1,5 @@
 /**
- * Show year-to-date statistics
+ * Year-to-date (client-computed from /results/leaderboard)
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -10,17 +10,30 @@ import {
   PrintArea,
 } from "../components/CommonComponents";
 import type { Severity } from "../components/CommonComponents";
+
 import { DataGridLite } from "../components/DataGridLite";
-import { useAuth } from "../auth/useAuth";
 import type { ColumnDef } from "../components/DataGridLite";
-import { getResultsYtd } from "../backend/fetch";
+
+import { useAuth } from "../auth/useAuth";
+import { getResultsAllLeaderboards, getScheduleCurrent } from "../backend/fetch";
+
+type WeekCell = { rank: number; score: number; points: number };
 
 type Row = {
   pigeon_number: number;
   pigeon_name: string;
-  byWeek: Record<number, { rank: number; score: number }>;
-  pointsYtd: number;
-  yearRank: number; // computed client-side by pointsYtd asc
+  byWeek: Record<number, WeekCell>;
+
+  // New summary fields
+  pointsTotal: number;  // sum of weekly position points
+  pointsWorst: number;  // worst single week position points
+  pointsAdj: number;    // POINTS = pointsTotal - pointsWorst (drop worst)
+  yearRankPts: number;  // YEAR = rank by pointsAdj (lower is better)
+
+  top5: number;         // TOP = # of weeks with rank <= 5
+
+  returnTotal: number;  // RETURN = sum of weekly payouts (tie-split)
+  yearRankRet: number;  // RANK = rank by returnTotal (higher is better)
 };
 
 export default function YtdPage() {
@@ -30,69 +43,141 @@ export default function YtdPage() {
   const [snack, setSnack] = useState({ open: false, message: "", severity: "info" as Severity });
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => { load(); }, []);
-  async function load() {
-    setLoading(true);
-    try {
-      const data = await getResultsYtd();
-      const allWeeks = Array.from(new Set(data.flatMap(d => d.weeks_locked))).sort((a, b) => a - b);
+  useEffect(() => { void load(); }, []);
 
-      // prepare base without yearRank
-      const temp: Row[] = data.map(d => {
-        const byWeek: Row["byWeek"] = {};
-        for (const bw of d.by_week) {
-          byWeek[bw.week_number] = { rank: bw.rank, score: bw.score };
-        }
-        return {
-          pigeon_number: d.pigeon_number,
-          pigeon_name: d.pigeon_name,
-          byWeek,
-          pointsYtd: d.total_points_ytd,
-          yearRank: Number.POSITIVE_INFINITY,
+async function load() {
+  setLoading(true);
+  try {
+    // Fetch weekly leaderboards + current weeks in parallel
+    const [weekly, sched] = await Promise.all([
+      getResultsAllLeaderboards(),
+      getScheduleCurrent(), // { next_picks_week, live_week }
+    ]);
+
+    const liveWeek = sched?.live_week ?? null;
+
+    // Exclude the live (in-progress) week from YTD calcs
+    const weeklyFiltered = liveWeek == null
+      ? weekly
+      : weekly.filter(w => w.week_number !== liveWeek);
+
+    // Weeks present (post-filter)
+    const allWeeks = Array.from(new Set(weeklyFiltered.map(w => w.week_number))).sort((a, b) => a - b);
+    setWeeks(allWeeks);
+
+    // Group by player
+    const byPigeon = new Map<number, Row>();
+    for (const w of weeklyFiltered) {
+      let r = byPigeon.get(w.pigeon_number);
+      if (!r) {
+        r = {
+          pigeon_number: w.pigeon_number,
+          pigeon_name: w.pigeon_name,
+          byWeek: {},
+          pointsTotal: 0,
+          pointsWorst: 0,
+          pointsAdj: 0,
+          yearRankPts: Number.POSITIVE_INFINITY,
+          top5: 0,
+          returnTotal: 0,
+          yearRankRet: Number.POSITIVE_INFINITY,
         };
-      });
-
-      // compute YEAR rank by pointsYtd asc (ties get same number)
-      const sorted = [...temp].sort((a, b) => a.pointsYtd - b.pointsYtd || a.pigeon_number - b.pigeon_number);
-      let rank = 0, prevPts: number | null = null, shown = 0;
-      const counts: Record<number, number> = {};
-      for (const r of sorted) {
-        shown++;
-        if (prevPts === null || r.pointsYtd !== prevPts) {
-          rank = shown;
-          prevPts = r.pointsYtd;
-        }
-        r.yearRank = rank;
-        counts[rank] = (counts[rank] ?? 0) + 1;
+        byPigeon.set(w.pigeon_number, r);
       }
-
-      // apply tie prefix formatting at render time via counts
-      setRows(temp);
-      setWeeks(allWeeks);
-      setTieCounts(counts);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e ?? "");
-      setSnack({ open: true, message: msg || "Failed to load YTD", severity: "error" });
-    } finally {
-      setLoading(false);
+      r.byWeek[w.week_number] = { rank: w.rank, score: w.score, points: w.points };
     }
+
+    // Build tie counts per (week, rank) from the filtered set
+    const RETURNS_BY_PLACE = [530, 270, 160, 100, 70];
+    const tieCountByWeekRank = new Map<number, Map<number, number>>();
+    for (const wk of allWeeks) {
+      const map = new Map<number, number>();
+      const rowsThisWeek = weeklyFiltered.filter(x => x.week_number === wk);
+      for (const r of rowsThisWeek) {
+        map.set(r.rank, (map.get(r.rank) ?? 0) + 1);
+      }
+      tieCountByWeekRank.set(wk, map);
+    }
+
+    const payoutFor = (rank: number, tieCount: number): number => {
+      // Average the occupied places within 1..5
+      let pool = 0;
+      for (let pos = rank; pos < rank + tieCount; pos++) {
+        if (pos >= 1 && pos <= 5) pool += RETURNS_BY_PLACE[pos - 1];
+      }
+      return tieCount > 0 ? pool / tieCount : 0;
+    };
+
+    // Aggregates per player (from filtered weeks only)
+    for (const r of byPigeon.values()) {
+      const weekCells = Object.values(r.byWeek);
+      const numWeeks = weekCells.length;
+
+      r.pointsTotal = weekCells.reduce((s, w) => s + w.points, 0);
+      r.pointsWorst = numWeeks >= 2 ? Math.max(...weekCells.map(w => w.points)) : 0;
+      r.pointsAdj   = r.pointsTotal - r.pointsWorst;
+
+      r.top5 = weekCells.reduce((s, w) => s + (w.rank <= 5 ? 1 : 0), 0);
+
+      let ret = 0;
+      for (const [wkStr, cell] of Object.entries(r.byWeek)) {
+        const wk = Number(wkStr);
+        const tieCount = tieCountByWeekRank.get(wk)?.get(cell.rank) ?? 1;
+        ret += payoutFor(cell.rank, tieCount);
+      }
+      r.returnTotal = ret;
+    }
+
+    // YEAR rank by pointsAdj (lower is better)
+    {
+      const arr = Array.from(byPigeon.values());
+      const sorted = [...arr].sort((a, b) => a.pointsAdj - b.pointsAdj || a.pigeon_number - b.pigeon_number);
+      let shown = 0, currRank = 0, prevVal: number | null = null;
+      for (const row of sorted) {
+        shown++;
+        if (prevVal === null || row.pointsAdj !== prevVal) {
+          currRank = shown; prevVal = row.pointsAdj;
+        }
+        row.yearRankPts = currRank;
+      }
+    }
+
+    // RANK by returnTotal (higher is better)
+    {
+      const arr = Array.from(byPigeon.values());
+      const sorted = [...arr].sort((a, b) => b.returnTotal - a.returnTotal || a.pigeon_number - b.pigeon_number);
+      let shown = 0, currRank = 0, prevVal: number | null = null;
+      for (const row of sorted) {
+        shown++;
+        if (prevVal === null || row.returnTotal !== prevVal) {
+          currRank = shown; prevVal = row.returnTotal;
+        }
+        row.yearRankRet = currRank;
+      }
+    }
+
+    setRows(Array.from(byPigeon.values()));
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e ?? "");
+    setSnack({ open: true, message: msg || "Failed to load YTD", severity: "error" });
+  } finally {
+    setLoading(false);
   }
+}
 
-  // rank tie counts (for "T" rendering)
-  const [tieCounts, setTieCounts] = useState<Record<number, number>>({});
-
+  // Columns -------------------------------------------------------------------
   const columns: ColumnDef<Row>[] = useMemo(() => {
     const cols: ColumnDef<Row>[] = [
       {
         key: "pigeon",
         header: "Pigeon",
         pin: "left",
-        valueGetter: (r) => r.pigeon_number, // sort by pigeon number
-        renderCell: (r) => `${r.pigeon_number} ${r.pigeon_name}`, // render pigeon number + name
+        valueGetter: (r) => r.pigeon_number,
+        renderCell: (r) => `${r.pigeon_number} ${r.pigeon_name}`,
       },
     ];
 
-    // week columns (rank cells)
+    // Per-week rank columns (W1..Wn)
     for (const w of weeks) {
       cols.push({
         key: `w_${w}`,
@@ -100,46 +185,59 @@ export default function YtdPage() {
         align: "left",
         valueGetter: (r) => r.byWeek[w]?.rank ?? Number.POSITIVE_INFINITY,
         renderCell: (r) => {
-          const rk = r.byWeek[w]?.rank;
-          if (rk == null) return "—";
-          // (Optional) if you have per-week tie info, you could prefix "T"; here we just show number.
-          return String(rk);
+          const cell = r.byWeek[w];
+          return cell ? String(cell.rank) : "—";
         },
       });
     }
 
-    // summary columns
+    // Replace summary columns with the requested set:
+    // POINTS (one decimal), YEAR (by points), TOP (int), RETURN (two decimals), RANK (by return)
     cols.push(
       {
-        key: "pointsYtd",
+        key: "pointsAdj",
         header: "POINTS",
         align: "left",
-        valueGetter: (r) => r.pointsYtd,
-        renderCell: (r) => r.pointsYtd,
+        valueGetter: (r) => r.pointsAdj,
+        renderCell: (r) => r.pointsAdj.toFixed(1),
       },
       {
-        key: "yearRank",
+        key: "yearRankPts",
         header: "YEAR",
         align: "left",
-        valueGetter: (r) => r.yearRank,
-        renderCell: (r) => {
-          const rk = r.yearRank;
-          const tied = tieCounts[rk] > 1;
-          return tied ? `T${rk}` : String(rk);
-        },
+        valueGetter: (r) => r.yearRankPts,
+        renderCell: (r) => String(r.yearRankPts),
+      },
+      {
+        key: "top5",
+        header: "TOP",
+        align: "left",
+        valueGetter: (r) => r.top5,
+        renderCell: (r) => String(r.top5),
+      },
+      {
+        key: "returnTotal",
+        header: "RETURN",
+        align: "left",
+        valueGetter: (r) => r.returnTotal,
+        renderCell: (r) => r.returnTotal.toFixed(2),
+      },
+      {
+        key: "yearRankRet",
+        header: "RANK",
+        align: "left",
+        valueGetter: (r) => r.yearRankRet,
+        renderCell: (r) => String(r.yearRankRet),
       }
     );
 
     return cols;
-  }, [weeks, tieCounts]);
+  }, [weeks]);
 
   return (
     <>
-      {/* Make only .print-area printable (landscape, small margins) */}
       <PrintOnlyStyles areaClass="print-area" landscape margin="8mm" />
-
       <Box>
-        {/* This toolbar won't print because it's outside PrintArea */}
         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
           <Typography variant="body1" fontWeight="bold">Year to Date</Typography>
           <Button variant="outlined" onClick={() => window.print()}>Print</Button>
@@ -170,4 +268,3 @@ export default function YtdPage() {
     </>
   );
 }
-

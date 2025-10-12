@@ -158,7 +158,7 @@ SELECT
     ELSE 0
   END::INT AS penalty,
 
-  /* total points */
+  /* total score */
   (ABS(b.predicted_margin - b.actual_margin)
    +
    CASE
@@ -166,13 +166,13 @@ SELECT
      WHEN SIGN(b.predicted_margin) = 0 AND SIGN(b.actual_margin) = 0 THEN 7
      WHEN SIGN(b.predicted_margin) <> SIGN(b.actual_margin) THEN 7
      ELSE 0
-   END)::INT AS points
+   END)::INT AS score
 FROM base b;
 
 -- === WEEKLY LEADERBOAD VIEW ===
 -- Shows total points and rank per player per week:
 -- * Games not yet started are ignored
--- * score is total points (lower is better) per the complex v_results calculation
+-- * score is total score (lower is better) per the complex v_results calculation
 -- * rank is based on total points per week; lower is better
 -- * points is the fractional rank (e.g., two tied at 2nd → (2 + 3)/2 = 2.5)
 CREATE OR REPLACE VIEW v_weekly_leaderboard AS
@@ -181,7 +181,7 @@ WITH totals AS (
     r.pigeon_number,
     MIN(r.pigeon_name) AS pigeon_name,
     r.week_number,
-    SUM(r.points)::INT AS score
+    SUM(r.score)::INT AS score
   FROM v_results r
   GROUP BY r.pigeon_number, r.week_number
 ),

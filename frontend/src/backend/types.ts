@@ -334,6 +334,7 @@ export class LeaderboardRow {
   week_number: number;
   score: number;
   rank: number;
+  points: number;
 
   constructor(data: unknown) {
     if (!isRecord(data)) throw new DataValidationError("Invalid LeaderboardRow (not an object)");
@@ -342,61 +343,14 @@ export class LeaderboardRow {
     if (!isNumber(data.week_number)) throw new DataValidationError("week_number must be number");
     if (!isNumber(data.score)) throw new DataValidationError("score must be number");
     if (!isNumber(data.rank)) throw new DataValidationError("rank must be number");
+    if (!isNumber(data.points)) throw new DataValidationError("points must be number");
 
     this.pigeon_number = data.pigeon_number;
     this.pigeon_name = data.pigeon_name;
     this.week_number = data.week_number;
     this.score = data.score;
     this.rank = data.rank;
+    this.points = data.points;
   }
 }
 
-/** Per-week breakdown element used inside YtdRow.by_week. */
-export class YtdByWeek {
-  week_number: number;
-  score: number;
-  rank: number;
-
-  constructor(data: unknown) {
-    if (!isRecord(data)) throw new DataValidationError("Invalid YtdByWeek (not an object)");
-    if (!isNumber(data.week_number)) throw new DataValidationError("week_number must be number");
-    if (!isNumber(data.score)) throw new DataValidationError("score must be number");
-    if (!isNumber(data.rank)) throw new DataValidationError("rank must be number");
-    this.week_number = data.week_number;
-    this.score = data.score;
-    this.rank = data.rank;
-  }
-}
-
-/** Year-to-date aggregate for a player across locked weeks. */
-export class YtdRow {
-  pigeon_number: number;
-  pigeon_name: string;
-  total_points_ytd: number;
-  average_rank: number;
-  wins: number;
-  weeks_locked: number[];
-  by_week: YtdByWeek[];
-
-  constructor(data: unknown) {
-    if (!isRecord(data)) throw new DataValidationError("Invalid YtdRow (not an object)");
-    if (!isNumber(data.pigeon_number)) throw new DataValidationError("pigeon_number must be number");
-    if (!isString(data.pigeon_name)) throw new DataValidationError("pigeon_name must be string");
-    if (!isNumber(data.total_points_ytd)) throw new DataValidationError("total_points_ytd must be number");
-    if (!isNumber(data.average_rank)) throw new DataValidationError("average_rank must be number");
-    if (!isNumber(data.wins)) throw new DataValidationError("wins must be number");
-    if (!Array.isArray(data.weeks_locked)) throw new DataValidationError("weeks_locked must be number[]");
-    if (!Array.isArray(data.by_week)) throw new DataValidationError("by_week must be array");
-
-    this.pigeon_number = data.pigeon_number;
-    this.pigeon_name = data.pigeon_name;
-    this.total_points_ytd = data.total_points_ytd;
-    this.average_rank = data.average_rank;
-    this.wins = data.wins;
-    this.weeks_locked = (data.weeks_locked as unknown[]).map((n) => {
-      if (typeof n !== "number") throw new DataValidationError("weeks_locked entries must be numbers");
-      return n;
-    });
-    this.by_week = (data.by_week as unknown[]).map((bw) => new YtdByWeek(bw));
-  }
-}

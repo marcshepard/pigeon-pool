@@ -14,7 +14,6 @@ import {
   PickOut,
   PicksBulkIn,
   WeekPicksRow,
-  YtdRow
 } from "./types";
 
 // Base URL for API calls, from env or default to relative /api (for dev with proxy)
@@ -203,19 +202,6 @@ export function getResultsAllLeaderboards(): Promise<LeaderboardRow[]> {
     factory: (data: unknown) => {
       if (!Array.isArray(data)) throw new Error("Invalid payload: expected array");
       return data.map((row) => new LeaderboardRow(row));
-    },
-  });
-}
-
-/**
- * Fetch Year-To-Date aggregates per player (locked weeks only).
- */
-export function getResultsYtd(): Promise<YtdRow[]> {
-  return apiFetch(`/results/ytd`, {
-    method: "GET",
-    factory: (data: unknown) => {
-      if (!Array.isArray(data)) throw new Error("Invalid payload: expected array");
-      return data.map((row) => new YtdRow(row));
     },
   });
 }
