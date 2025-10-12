@@ -4,10 +4,14 @@ on:
   push:
     branches:
       - main
+    paths:
+      - 'frontend/**'
   pull_request:
     types: [opened, synchronize, reopened, closed]
     branches:
       - main
+    paths:
+      - 'frontend/**'
 
 jobs:
   build_and_deploy_job:
@@ -30,7 +34,7 @@ jobs:
           # For more information regarding Static Web App workflow configurations, please visit: https://aka.ms/swaworkflowconfig
           app_location: "./frontend" # App source code path
           api_location: "" # Api source code path - optional
-          output_location: "build" # Built app content directory - optional
+          output_location: "dist" # Built app content directory for Vite
           ###### End of Repository/Build Configurations ######
 
   close_pull_request_job:
@@ -44,3 +48,4 @@ jobs:
         with:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_ORANGE_GROUND_0A4B52C1E }}
           action: "close"
+          app_location: "./frontend"
