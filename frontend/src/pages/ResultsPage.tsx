@@ -4,137 +4,37 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Box, Stack, Typography, Alert, Button, MenuItem, Select, FormControl, InputLabel } from "@mui/material";
-import {
-  AppSnackbar,
-  PickCell,
-  PrintOnlyStyles,
-  PrintArea,
-} from "../components/CommonComponents";
+import { AppSnackbar, PickCell, PrintOnlyStyles, PrintArea } from "../components/CommonComponents";
 import type { Severity } from "../components/CommonComponents";
 import { DataGridLite } from "../components/DataGridLite";
 import type { ColumnDef } from "../components/DataGridLite";
 import { useAuth } from "../auth/useAuth";
-import {
-  getResultsWeekPicks,
-  getResultsWeekLeaderboard,
-  getScheduleCurrent,
-} from "../backend/fetch";
-
-type Row = {
-  pigeon_number: number;
-  pigeon_name: string;
-  picks: Record<string, { signed: number; label: string; home_abbr: string; away_abbr: string }>;
-  points: number | null;
-  rank: number | null;
-};
+import { useResults, type ResultsRow } from "../hooks/useResults";
+import { useSchedule } from "../hooks/useSchedule";
 
 export default function ResultsPage() {
   const { state } = useAuth();
-  const [week, setWeek] = useState<number | null>(1);
-  const [liveWeek, setLiveWeek] = useState<number | null>(null);
-  const [lockedWeeks, setLockedWeeks] = useState<number[]>([]);
-  const [rows, setRows] = useState<Row[]>([]);
-  const [games, setGames] = useState<{ game_id: number; home_abbr: string; away_abbr: string }[]>([]);
+  const { lockedWeeks } = useSchedule();
+  const [week, setWeek] = useState<number | null>(null);
   const [snack, setSnack] = useState({ open: false, message: "", severity: "info" as Severity });
-  const [loading, setLoading] = useState(false);
 
+  // choose default week when lockedWeeks loaded
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const sc = await getScheduleCurrent(); // { next_picks_week: number | null, live_week?: number | null }
-        // If next_picks_week is n, locked weeks are 1..(n-1)
-        // If null (season over), all 1..18 are locked
-        const cutoff = sc.next_picks_week;
-        const weeks =
-          cutoff == null
-            ? Array.from({ length: 18 }, (_, i) => i + 1)
-            : Array.from({ length: Math.max(0, cutoff - 1) }, (_, i) => i + 1);
-
-        if (!cancelled) {
-          setLockedWeeks(weeks);
-          setWeek(weeks.length ? weeks[weeks.length - 1] : null); // most recent locked
-          setLiveWeek(sc.live_week ?? null); // Currently live week (locked but ongoing) - null between MNF and TNF
-        }
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e ?? "");
-        setSnack({ open: true, message: msg || "Failed to load schedule status", severity: "error" });
-      }
-    })();
-  return () => { cancelled = true; };
-}, []);
-
-  useEffect(() => {
-    if (week == null) return;
-    if (!lockedWeeks.includes(week)) return; // safety
-    load(week);
-  }, [week, lockedWeeks]);
-
-
-  async function load(w: number) {
-    setLoading(true);
-    try {
-      const [picks, lb] = await Promise.all([
-        getResultsWeekPicks(w),
-        getResultsWeekLeaderboard(w),
-      ]);
-
-      // shape: per game metadata
-      const gameOrder = [...new Map(
-        picks.map(p => [p.game_id, { game_id: p.game_id, home_abbr: p.home_abbr, away_abbr: p.away_abbr}])
-      ).values()];
-      setGames(gameOrder);
-
-      // leaderboard map
-      const lbByPigeon = new Map(lb.map((r) => [r.pigeon_number, r]));
-
-      // group by pigeon
-      const byPigeon = new Map<number, Row>();
-      for (const p of picks) {
-        const key = `g_${p.game_id}`;
-        const signed = p.picked_home ? +p.predicted_margin : -p.predicted_margin;
-        const team = p.picked_home ? p.home_abbr : p.away_abbr;
-        const label = `${team} +${p.predicted_margin}`;
-        let row = byPigeon.get(p.pigeon_number);
-        if (!row) {
-          const lbr = lbByPigeon.get(p.pigeon_number);
-          row = {
-            pigeon_number: p.pigeon_number,
-            pigeon_name: p.pigeon_name,
-            picks: {},
-            points: lbr?.score ?? null,
-            rank: lbr?.rank ?? null,
-          };
-          byPigeon.set(p.pigeon_number, row);
-        }
-        row.picks[key] = { signed, label, home_abbr: p.home_abbr, away_abbr: p.away_abbr };
-      }
-      setRows([...byPigeon.values()]);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e ?? "");
-      setSnack({ open: true, message: msg || "Failed to load results", severity: "error" });
-    } finally {
-      setLoading(false);
+    if (week == null && lockedWeeks.length) {
+      setWeek(lockedWeeks[lockedWeeks.length - 1]);
     }
-  }
+  }, [lockedWeeks, week]);
 
-  // Calculate week state and dynamic columns/title
-  const weekState = useMemo(() => {
-    if (week == null) return "completed";
+  // Cache-backed data for the selected week
+  const { rows, games, weekState, consensusRow, loading, error } = useResults(week);
 
-    // If there is no live week at all, every locked week is completed
-    if (liveWeek == null) return "completed";
+  useEffect(() => {
+    if (error) setSnack({ open: true, message: error, severity: "error" });
+  }, [error]);
 
-    // If we're viewing a week other than the live one, it's completed
-    if (week !== liveWeek) return "completed";
-
-    // We're viewing the live week → decide between 'not started' vs 'in progress'
-    const allZero = rows.every(r => (r.points ?? 0) === 0);
-    return allZero ? "not started" : "in progress";
-  }, [week, liveWeek, rows]);
-
-  const columns: ColumnDef<Row>[] = useMemo(() => {
-    const cols: ColumnDef<Row>[] = [
+  // Columns ----------------------------------------------------------
+  const columns: ColumnDef<ResultsRow>[] = useMemo(() => {
+    const cols: ColumnDef<ResultsRow>[] = [
       {
         key: "pigeon_name",
         header: "Pigeon",
@@ -145,7 +45,6 @@ export default function ResultsPage() {
       },
     ];
 
-    // Score column (first non-pinned) if not 'not started'
     if (weekState !== "not started") {
       cols.push({
         key: "points",
@@ -161,28 +60,17 @@ export default function ResultsPage() {
       const key = `g_${g.game_id}`;
       cols.push({
         key,
-        header: (
-          <Box sx={{ textAlign: "center" }}>
-            <div>{g.away_abbr} @ {g.home_abbr}</div>
-          </Box>
-        ),
+        header: <Box sx={{ textAlign: "center" }}>{g.away_abbr} @ {g.home_abbr}</Box>,
         align: "center",
         sortable: true,
         valueGetter: (r) => r.picks[key]?.signed ?? 0,
         renderCell: (r) => {
           const cell = r.picks[key];
-          if (!cell) return "—";
-          return (
-            <PickCell
-              label={cell.label}
-              signed={cell.signed}
-            />
-          );
+          return cell ? <PickCell label={cell.label} signed={cell.signed} /> : "—";
         },
       });
     }
 
-    // Rank column (last) if not 'not started'
     if (weekState !== "not started") {
       cols.push({
         key: "rank",
@@ -197,40 +85,13 @@ export default function ResultsPage() {
     return cols;
   }, [games, weekState]);
 
-  // Consensus pinned-top row
-  const consensusRow: Row | null = useMemo(() => {
-    if (!rows.length) return null;
-    const out: Row = {
-      pigeon_number: 0,
-      pigeon_name: "Consensus",
-      picks: {},
-      points: null,
-      rank: null,
-    };
-    for (const g of games) {
-      const key = `g_${g.game_id}`;
-      let sum = 0, n = 0;
-      for (const r of rows) {
-        const v = r.picks[key]?.signed;
-        if (typeof v === "number") { sum += v; n += 1; }
-      }
-      const mean = n ? sum / n : 0;
-      const team = mean >= 0 ? g.home_abbr : g.away_abbr;
-      const label = `${team} +${Math.round(Math.abs(mean))}`;
-      out.picks[key] = { signed: mean, label, home_abbr: g.home_abbr, away_abbr: g.away_abbr };
-    }
-    return out;
-  }, [rows, games]);
-
   return (
     <>
-      {/* Print only the grid (landscape, compact margins) */}
       <PrintOnlyStyles areaClass="print-area" landscape margin="8mm" />
 
       <Box>
-        {/* Toolbar + controls won't print (they're outside the PrintArea) */}
         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
-          {/* Left: Week picker */}
+          {/* Week picker */}
           <Box flex={1} display="flex" alignItems="center">
             <FormControl size="small" disabled={lockedWeeks.length === 0}>
               <InputLabel>Week</InputLabel>
@@ -241,14 +102,13 @@ export default function ResultsPage() {
                 sx={{ minWidth: 120 }}
               >
                 {lockedWeeks.map((w) => (
-                  <MenuItem key={w} value={w}>
-                    Week {w}
-                  </MenuItem>
+                  <MenuItem key={w} value={w}>Week {w}</MenuItem>
                 ))}
               </Select>
             </FormControl>
           </Box>
-          {/* Center: Title */}
+
+          {/* Title */}
           <Box flex={1} display="flex" justifyContent="center" alignItems="center">
             <Typography variant="body1" fontWeight="bold">
               {week == null
@@ -260,11 +120,10 @@ export default function ResultsPage() {
                     : "Partial results"}
             </Typography>
           </Box>
-          {/* Right: Print button */}
+
+          {/* Print */}
           <Box flex={1} display="flex" justifyContent="flex-end" alignItems="center">
-            <Button variant="outlined" onClick={() => window.print()}>
-              Print
-            </Button>
+            <Button variant="outlined" onClick={() => window.print()}>Print</Button>
           </Box>
         </Stack>
 
@@ -272,13 +131,13 @@ export default function ResultsPage() {
           <Alert severity="info">Loading…</Alert>
         ) : (
           <PrintArea>
-            <DataGridLite<Row>
+            <DataGridLite<ResultsRow>
               rows={rows}
               columns={columns}
               pinnedTopRows={[]}
               pinnedBottomRows={consensusRow ? [consensusRow] : []}
               defaultSort={{ key: "pigeon_name", dir: "asc" }}
-              printTitle={`Results — Week ${week}`}
+              printTitle={`Results — Week ${week ?? ""}`}
               getRowId={(r) => r.pigeon_number}
               highlightRowId={state.status === "signedIn" ? state.user.pigeon_number : undefined}
             />
@@ -295,4 +154,3 @@ export default function ResultsPage() {
     </>
   );
 }
-
