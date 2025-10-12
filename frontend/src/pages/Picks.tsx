@@ -113,10 +113,16 @@ export default function PicksPage() {
   const handleSubmit = async () => {
     if (typeof week !== "number" || !games) return;
 
-    // Validate: every game has a draft entry
+
+    // Validate: every game has a draft entry and non-zero margin
     const missing = games.find((g) => !draft[g.game_id]);
     if (missing) {
       setSnackbar({ open: true, message: "Please make a pick and margin for every game.", severity: "warning" });
+      return;
+    }
+    const zeroMargin = games.find((g) => draft[g.game_id]?.predicted_margin === 0);
+    if (zeroMargin) {
+      setSnackbar({ open: true, message: "All picks must have non-zero margins", severity: "warning" });
       return;
     }
 
@@ -232,8 +238,19 @@ export default function PicksPage() {
                 minute: "2-digit",
               });
 
+              // Highlight margin control if margin is zero
+              const highlightMargin = d && d.predicted_margin === 0;
+
               return (
-                <Box key={g.game_id} sx={{ border: "1px solid", borderColor: "divider", borderRadius: 2, p: 2 }}>
+                <Box
+                  key={g.game_id}
+                  sx={{
+                    border: "1px solid",
+                    borderColor: "divider",
+                    borderRadius: 2,
+                    p: 2,
+                  }}
+                >
                   <Stack
                     direction={{ xs: "column", sm: "row" }}
                     justifyContent="space-between"
@@ -267,7 +284,14 @@ export default function PicksPage() {
                         size="small"
                         value={String(d?.predicted_margin ?? 0)}
                         onChange={(e) => handleMargin(g.game_id, e.target.value)}
-                        sx={{ width: 100 }}
+                        sx={{
+                          width: 100,
+                          backgroundColor: highlightMargin ? 'rgba(255,0,0,0.06)' : undefined,
+                          transition: 'background 0.2s',
+                        }}
+                        InputProps={{
+                          style: highlightMargin ? { borderColor: '#f44336' } : undefined,
+                        }}
                         slotProps={{
                           input: {
                             inputProps: {
