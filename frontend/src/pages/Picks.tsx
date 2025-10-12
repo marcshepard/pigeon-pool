@@ -167,7 +167,7 @@ export default function PicksPage() {
       >
         <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}>
           {/* Week selector (left) */}
-          <FormControl size="small" sx={{ minWidth: 160 }}>
+          <FormControl size="small">
             <InputLabel id="week-select-label">Week</InputLabel>
             <Select
               labelId="week-select-label"
@@ -187,7 +187,7 @@ export default function PicksPage() {
           </Typography>
 
           {/* Submit button (right) */}
-          <Box sx={{ display: "flex", justifyContent: "flex-end", minWidth: 160 }}>
+          <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
             <Button variant="contained" size="large" onClick={handleSubmit}>
               Submit
             </Button>

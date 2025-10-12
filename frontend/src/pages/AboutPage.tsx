@@ -1,9 +1,71 @@
-import { Typography, Box } from "@mui/material";
+import { Typography, Box, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper } from "@mui/material";
+import { Link } from "react-router-dom";
 
 export default function AboutPage() {
     return (
-        <Box>
-            <Typography variant="body1">This page will show the pool rules and other static content</Typography>
+        <Box maxWidth={700} mx="auto" mt={4} p={2}>
+            <Typography variant="h6" gutterBottom align="center" fontWeight={700}>
+                PIGEON POOL RULES
+            </Typography>
+            <Typography variant="body1">
+                <b>1.</b> Submit your picks from the <Link to="/picks">Picks page</Link> by Wednesday.
+                You must pick the WINNER of each game and by how many points they will win (SPREAD).
+                If you don't submit picks by the deadline, you will get a last place finish for the week.
+            </Typography>
+            <Typography variant="body1">
+                <b>2.</b> You will be able to see everyone's picks on the <Link to="/results">Results page</Link> Thursday morning.
+            </Typography>
+            <Typography variant="body1">
+                <b>4.</b> Your score for the week is the total of the DIFFERENCES between your picked spreads and the actual spreads,
+                plus a seven point “penalty” for each game where you did not pick the winning team. The lower your weekly score, the better.
+                Partial and final scores will also be available on the <Link to="/results">Results page</Link> once the first game has started.
+            </Typography>
+            <Typography variant="body1">
+                <b>5.</b> Your cumulative score is the sum of your weekly rankings, MINUS your highest weekly ranking.
+                The lower your cumulative score, the better. You can view your weekly and cumulative scores on
+                the <Link to="/year-to-date">Year-to-date page</Link>.
+            </Typography>
+            <Typography variant="body1">
+                <b>6.</b> Coming soon: What-if scenarios for MNF
+            </Typography>
+            <Typography variant="body1">
+                <b>7.</b> Payoffs are per the table below and are sent by US mail.
+            </Typography>
+            <Box mt={4}>
+                <Typography variant="h6" gutterBottom align="center">Payoff Table</Typography>
+                <TableContainer component={Paper} sx={{ maxWidth: 500, mx: "auto" }}>
+                    <Table size="small">
+                        <TableHead>
+                            <TableRow>
+                                <TableCell align="center"></TableCell>
+                                <TableCell align="center">1st</TableCell>
+                                <TableCell align="center">2nd</TableCell>
+                                <TableCell align="center">3rd</TableCell>
+                                <TableCell align="center">4th</TableCell>
+                                <TableCell align="center">5th</TableCell>
+                            </TableRow>
+                        </TableHead>
+                        <TableBody>
+                            <TableRow>
+                                <TableCell component="th" scope="row" align="center">Weekly</TableCell>
+                                <TableCell align="center">530</TableCell>
+                                <TableCell align="center">270</TableCell>
+                                <TableCell align="center">160</TableCell>
+                                <TableCell align="center">100</TableCell>
+                                <TableCell align="center">70</TableCell>
+                            </TableRow>
+                            <TableRow>
+                                <TableCell component="th" scope="row" align="center">Cummulative</TableCell>
+                                <TableCell align="center">530</TableCell>
+                                <TableCell align="center">270</TableCell>
+                                <TableCell align="center">160</TableCell>
+                                <TableCell align="center">100</TableCell>
+                                <TableCell align="center">7</TableCell>
+                            </TableRow>
+                        </TableBody>
+                    </Table>
+                </TableContainer>
+            </Box>
         </Box>
-    )
+    );
 }

@@ -25,6 +25,7 @@ export async function apiFetch<T>(
   path: string,
   init: RequestInit & { factory: (data: unknown) => T }
 ): Promise<T> {
+  console.debug(`apiFetch ${init.method || "GET"} ${path}`);
   const res = await fetch(`${BASE}${path}`, {
     ...init,
     headers: { "Content-Type": "application/json", ...(init.headers || {}) },
@@ -33,11 +34,13 @@ export async function apiFetch<T>(
 
   if (!res.ok) {
     if (res.status === 401) {
+      console.warn("apiFetch: 401 Unauthorized");
       // Only redirect if we're not already on the login page.
       const loginPath = "/login";
       const onLoginPage = location.pathname.startsWith(loginPath);
 
       if (!onLoginPage) {
+        console.info("apiFetch: Redirecting to login page due to 401 from non-login page");
         const returnTo = encodeURIComponent(location.pathname + location.search);
         const reason = "session_expired";
         // replace() avoids cluttering history with multiple failed redirects
@@ -45,6 +48,7 @@ export async function apiFetch<T>(
       }
 
       // Bubble an error so callers on /login can render form-level feedback.
+      console.warn("apiFetch: Throwing Unauthorized error");
       throw new Error("Unauthorized");
     }
 

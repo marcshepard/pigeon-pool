@@ -99,7 +99,6 @@ export default function ResultsPage() {
                 label="Week"
                 value={lockedWeeks.length === 0 ? "" : week ?? ""}
                 onChange={(e) => setWeek(Number(e.target.value))}
-                sx={{ minWidth: 120 }}
               >
                 {lockedWeeks.map((w) => (
                   <MenuItem key={w} value={w}>Week {w}</MenuItem>
