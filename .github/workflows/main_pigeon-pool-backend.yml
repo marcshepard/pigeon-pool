@@ -58,10 +58,19 @@ jobs:
       #     source venv/bin/activate
       #     alembic upgrade head
 
+      - name: Zip backend folder for deployment
+        run: |
+          zip -r ${{ env.ZIP_NAME }} backend \
+            -x "backend/venv/**" "backend/.venv/**" "backend/__pycache__/**" "*.pyc" \
+               "backend/.git/**" "backend/.github/**" "backend/.pytest_cache/**" "backend/tests/**" \
+               "backend/.env.local" "backend/.env.*.local"
+          echo "Zipped backend folder: $(pwd)/${{ env.ZIP_NAME }}"
+          unzip -l ${{ env.ZIP_NAME }} | grep -E '\.env($|\.|/)'
+
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
           app-name: 'pigeon-pool-backend'
           slot-name: 'Production'
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_9434C8B104FA42D698A263DF9534D244 }}
-          package: ${{ env.APP_DIR }}
+          package: ${{ env.ZIP_NAME }}
