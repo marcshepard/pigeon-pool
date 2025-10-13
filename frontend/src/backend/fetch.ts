@@ -21,9 +21,14 @@ const BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/
 
 // Generic JSON fetch with type-safe factory & no `any`
 // Redirect to the login page on 401 with session expired message unless they are already on that page
+type FetchInit<T> = RequestInit & {
+  factory: (data: unknown) => T;
+  redirectOn401?: boolean; // defaults to true; set false for boot-time /auth/me
+};
+
 export async function apiFetch<T>(
   path: string,
-  init: RequestInit & { factory: (data: unknown) => T }
+  init: FetchInit<T>
 ): Promise<T> {
   console.debug(`apiFetch ${init.method || "GET"} ${path}`);
   const res = await fetch(`${BASE}${path}`, {
@@ -35,13 +40,14 @@ export async function apiFetch<T>(
   if (!res.ok) {
     if (res.status === 401) {
       console.warn("apiFetch: 401 Unauthorized");
+      const shouldRedirect = init.redirectOn401 !== false; // default true
       // Only redirect if we're not already on the login or reset-password page.
       const loginPath = "/login";
       const resetPasswordPath = "/reset-password";
       const currentPath = location.pathname;
       const onLoginOrReset = currentPath === loginPath || currentPath === resetPasswordPath;
 
-      if (!onLoginOrReset) {
+      if (shouldRedirect && !onLoginOrReset) {
         console.info("apiFetch: Redirecting to login page due to 401 from non-login/reset-password page");
         const returnTo = encodeURIComponent(location.pathname + location.search);
         const reason = "session_expired";
@@ -91,6 +97,7 @@ export async function apiLogout(): Promise<Ok> {
 export async function apiMe(): Promise<Me> {
   return apiFetch("/auth/me", {
     method: "GET",
+    redirectOn401: false, // do not show session_expired banner on first boot probe
     factory: (d) => new Me(d),
   });
 }
