@@ -17,7 +17,7 @@ import {
 } from "./types";
 
 // Base URL for API calls, from env or default to relative /api (for dev with proxy)
-const BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") || "/api";
+const BASE = import.meta.env.VITE_API_URL as string;
 
 // --- Lightweight token store ---
 // In-memory cache and mirror to localStorage so refreshes survive.
