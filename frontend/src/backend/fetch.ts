@@ -52,6 +52,7 @@ type FetchInit<T> = RequestInit & {
 };
 
 export async function apiFetch<T>(path: string, init: FetchInit<T>): Promise<T> {
+  console.log(`API ${init.method || "GET"} ${path}`);
   const url = `${BASE}${path}`;
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
