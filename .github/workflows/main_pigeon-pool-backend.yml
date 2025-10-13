@@ -58,22 +58,10 @@ jobs:
       #     source venv/bin/activate
       #     alembic upgrade head
 
-      - name: Zip artifact for deployment (include dotfiles)
-        working-directory: ${{ env.APP_DIR }}
-        run: |
-          zip -r ${{ env.ZIP_NAME }} . \
-            -x "venv/**" ".venv/**" "__pycache__/**" "*.pyc" \
-               ".git/**" ".github/**" ".pytest_cache/**" "tests/**" \
-               ".env.local" ".env.*.local"
-          echo "Working Directory: $(pwd)"
-          ls -lh ${{ env.ZIP_NAME }}
-          # sanity: make sure no .env.* accidentally slipped in
-          unzip -l ${{ env.ZIP_NAME }} | grep -E '\.env($|\.|/)' || true
-
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
           app-name: 'pigeon-pool-backend'
           slot-name: 'Production'
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_9434C8B104FA42D698A263DF9534D244 }}
-          package: ${{ env.APP_DIR }}/${{ env.ZIP_NAME }}
+          package: ${{ env.APP_DIR }}
