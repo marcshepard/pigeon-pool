@@ -39,7 +39,6 @@ export default function ResultsPage() {
         key: "pigeon_name",
         header: "Pigeon",
         pin: "left",
-        width: 140,
         valueGetter: (r) => r.pigeon_number,
         renderCell: (r) => `${r.pigeon_number} ${r.pigeon_name}`,
       },
@@ -49,10 +48,16 @@ export default function ResultsPage() {
       cols.push({
         key: "points",
         header: "Score",
-        align: "right",
-        width: 90,
+        align: "left",
         valueGetter: (r) => (r.points ?? Number.POSITIVE_INFINITY),
         renderCell: (r) => (r.points ?? "—"),
+      });
+      cols.push({
+        key: "rank",
+        header: "Rank",
+        align: "left",
+        valueGetter: (r) => (r.rank ?? Number.POSITIVE_INFINITY),
+        renderCell: (r) => (r.rank ?? "—"),
       });
     }
 
@@ -68,17 +73,6 @@ export default function ResultsPage() {
           const cell = r.picks[key];
           return cell ? <PickCell label={cell.label} signed={cell.signed} /> : "—";
         },
-      });
-    }
-
-    if (weekState !== "not started") {
-      cols.push({
-        key: "rank",
-        header: "Rank",
-        align: "center",
-        width: 80,
-        valueGetter: (r) => (r.rank ?? Number.POSITIVE_INFINITY),
-        renderCell: (r) => (r.rank ?? "—"),
       });
     }
 
