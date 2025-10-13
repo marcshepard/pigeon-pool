@@ -1,18 +1,19 @@
 """
-Authentication-related endpoints and helpers.
+Authentication-related endpoints and helpers, using name/password and bearer tokens
 """
 
-#pylint: disable=line-too-long
+# pylint: disable=line-too-long
 
 from datetime import datetime, timedelta, timezone
 import os
 import binascii
 from typing import Optional, Tuple
-from urllib.parse import urlparse
 
 import jwt
 import psycopg
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+
 from passlib.hash import bcrypt
 from pydantic import BaseModel, EmailStr
 
@@ -25,67 +26,16 @@ S = get_settings()
 DB_CFG = S.psycopg_kwargs()
 JWT_SECRET = S.jwt_secret
 JWT_ALG = S.jwt_alg
-API_ORIGIN = S.api_origin
 FRONTEND_ORIGIN = S.frontend_origin
 RESET_TTL_MINUTES = S.reset_ttl_minutes
 SESSION_MINUTES = S.session_minutes
-SLIDE_THRESHOLD_SECONDS = S.slide_threshold_seconds
+SLIDE_THRESHOLD_SECONDS = S.slide_threshold_seconds  # (kept for parity; used for token refresh timing)
 
-def sent_password_reset_email(to_email: str, token: str) -> None:
-    """ Send a password reset email to the given address """
-    subject = "Pigeon Pool Password Reset"
-    plain_text = (
-        "You requested a password reset for your Pigeon Pool account.\n\n"
-        "If you did not make this request, you can ignore this email.\n\n"
-        "To reset your password, click the link below:\n\n"
-        f"{FRONTEND_ORIGIN}/reset-password?token={token}\n\n"
-        "This link will expire in 30 minutes."
-    )
-    html = (
-        "<p>You requested a password reset for your Pigeon Pool account.</p>"
-        "<p>If you did not make this request, you can ignore this email.</p>"
-        "<p>To reset your password, click the link below:</p>"
-        f'<p><a href="{FRONTEND_ORIGIN}/reset-password?token={token}">Reset Password</a></p>'
-        "<p>This link will expire in 30 minutes.</p>"
-    )
-    send_email(to_email, subject, plain_text, html)
-
-def _origin_tuple(url: str):
-    p = urlparse(url)
-    port = p.port or (443 if p.scheme == "https" else 80)
-    return (p.scheme, p.hostname, port)
-
-ENV = os.getenv("APP_ENV", "development").lower()
-_FE = _origin_tuple(FRONTEND_ORIGIN)
-_API = _origin_tuple(API_ORIGIN)
-CROSS_SITE = _FE != _API
-API_SCHEME = _origin_tuple(API_ORIGIN)[0]
-
-# Cookie flags that “just work” in both modes
-COOKIE_NAME = os.getenv("COOKIE_NAME", "session")
-COOKIE_DOMAIN = os.getenv("COOKIE_DOMAIN") or None   # keep None unless you really need it
-COOKIE_PATH = "/"
-
-if CROSS_SITE:
-    if API_SCHEME == "https":
-        # Cross-site over HTTPS → modern, allowed
-        COOKIE_SAMESITE = "none"
-        COOKIE_SECURE = True
-    elif ENV == "development":
-        # Dev mode: let the app start; you should use the Vite proxy so the browser sees same-origin.
-        warn("Dev mode: CROSS_SITE over HTTP detected; using SameSite=Lax, Secure=False. Use the Vite proxy for the FE.")
-        COOKIE_SAMESITE = "lax"
-        COOKIE_SECURE = False
-    else:
-        # Prod or non-dev without HTTPS → fail fast
-        raise RuntimeError(
-            "CROSS_SITE requires HTTPS (Secure cookies). Run API over HTTPS or use a dev proxy."
-        )
-else:
-    # Same-origin (e.g., via Vite proxy in dev)
-    COOKIE_SAMESITE = "lax"
-    COOKIE_SECURE = _origin_tuple(API_ORIGIN)[0] == "https"
-
+bearer = HTTPBearer(
+    auto_error=False,          # we'll raise our own 401 so messages are clearer
+    scheme_name="BearerAuth",
+    bearerFormat="JWT",
+)
 
 # --- DB helper ---
 def db():
@@ -94,8 +44,8 @@ def db():
 
 # --- Models ---
 class LoginIn(BaseModel):
-    """ Login input: either email or pigeon_number + password """
-    email: EmailStr = None
+    """ Login input """
+    email: EmailStr
     password: str
 
 class MeOut(BaseModel):
@@ -105,6 +55,14 @@ class MeOut(BaseModel):
     email: EmailStr
     is_admin: bool
     session: dict
+
+class LoginOut(BaseModel):
+    """ Login output """
+    ok: bool
+    access_token: str
+    token_type: str = "bearer"
+    expires_at: str
+    user: MeOut
 
 class PasswordResetRequestIn(BaseModel):
     """ Password reset request input """
@@ -116,13 +74,14 @@ class PasswordResetConfirmIn(BaseModel):
     new_password: str
 
 # --- JWT helpers ---
-def make_session_token(pigeon_number: int) -> tuple[str, int]:
+def make_session_token(pigeon_number: int, email: str) -> tuple[str, int]:
     """Create a session JWT and return (token, exp_epoch_seconds)."""
     now = datetime.now(timezone.utc)
     exp = now + timedelta(minutes=SESSION_MINUTES)
     exp_epoch = int(exp.timestamp())
     payload = {
         "sub": str(pigeon_number),
+        "email": email,
         "typ": "session",
         "iat": int(now.timestamp()),
         "exp": exp_epoch,
@@ -136,31 +95,14 @@ def parse_session_token(token: str) -> dict:
         data = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALG])
     except jwt.PyJWTError as exc:
         warn(f"Session token decode error: {exc}")
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid or expired session"
-        ) from exc
-
+        raise HTTPException(status_code=401, detail="Invalid or expired session") from exc
     if data.get("typ") != "session":
         raise HTTPException(status_code=401, detail="Wrong token type")
     return data
 
-def set_session_cookie(response: Response, token: str, exp_epoch: int):
-    """ Set the session cookie in the response """
-    max_age = max(0, exp_epoch - int(datetime.now(timezone.utc).timestamp()))
-    response.set_cookie(
-        COOKIE_NAME, token,
-        httponly=True, secure=COOKIE_SECURE, samesite=COOKIE_SAMESITE,
-        domain=COOKIE_DOMAIN, path=COOKIE_PATH, max_age=max_age,
-    )
-
-def clear_session_cookie(response: Response):
-    """ Clear the session cookie in the response """
-    response.delete_cookie(COOKIE_NAME, domain=COOKIE_DOMAIN, path=COOKIE_PATH)
-
 # --- Queries ---
 def find_player(cur, email: str) -> Optional[Tuple]:
-    """ Find a player by email or pigeon_number, return row or None """
+    """ Find a player by email, return row or None """
     cur.execute(
         "SELECT pigeon_number, pigeon_name, email, password_hash, is_admin "
         "FROM players WHERE email = %s",
@@ -168,42 +110,10 @@ def find_player(cur, email: str) -> Optional[Tuple]:
     )
     return cur.fetchone()
 
-# --- Dependency for auth ---
-def current_user(request: Request, response: Response) -> MeOut:
-    """ Dependency to get the current user from the session cookie, slide session if needed """
-    token = request.cookies.get(COOKIE_NAME)
-    if not token:
-        raise HTTPException(status_code=401, detail="Not signed in")
-
-    data = parse_session_token(token)
-    pn = int(data["sub"])
-    exp_ts = int(data["exp"])
-
-    # Slide session if close to expiry (stateless re-issue)
-    now_ts = int(datetime.now(timezone.utc).timestamp())
-    if exp_ts - now_ts < SLIDE_THRESHOLD_SECONDS:
-        new_token, new_exp = make_session_token(pn)
-        set_session_cookie(response, new_token, new_exp)
-        exp_ts = new_exp
-
-    with db() as conn, conn.cursor() as cur:
-        cur.execute("SELECT pigeon_number, pigeon_name, email, is_admin FROM players WHERE pigeon_number = %s", (pn,))
-        row = cur.fetchone()
-        if not row:
-            raise HTTPException(status_code=401, detail="User not found")
-        return MeOut(
-            pigeon_number=row[0],
-            pigeon_name=row[1],
-            email=row[2],
-            is_admin=row[3],
-            session={"expires_at": datetime.fromtimestamp(exp_ts, tz=timezone.utc).isoformat()}
-        )
-
 # --- Password reset helpers ---
 def make_reset_token(pigeon_number: int) -> str:
     """
     Create a short-lived password reset JWT with a unique jti.
-    Returns (token, exp_epoch_seconds).
     """
     now = datetime.now(timezone.utc)
     exp = now + timedelta(minutes=RESET_TTL_MINUTES)
@@ -237,7 +147,6 @@ def parse_reset_token(token: str) -> dict:
 def ensure_reset_table(conn: psycopg.Connection) -> None:
     """
     Ensure the single-use ledger table exists.
-    Idempotent, lightweight, executed on first confirm.
     """
     with conn.cursor() as cur:
         cur.execute("""
@@ -250,27 +159,77 @@ def ensure_reset_table(conn: psycopg.Connection) -> None:
         conn.commit()
 
 def jti_already_used(cur: psycopg.Cursor, jti: str) -> bool:
-    """
-    Check if a reset token jti has already been marked used.
-    """
+    """ Check if a reset token jti has already been marked used. """
     cur.execute("SELECT 1 FROM password_reset_uses WHERE jti = %s", (jti,))
     return cur.fetchone() is not None
 
 def mark_jti_used(cur: psycopg.Cursor, jti: str, pigeon_number: int) -> None:
-    """
-    Mark a reset token jti as used (single-use enforcement).
-    """
+    """ Mark a reset token jti as used (single-use enforcement). """
     cur.execute(
         "INSERT INTO password_reset_uses (jti, pigeon_number) VALUES (%s, %s) ON CONFLICT DO NOTHING",
         (jti, pigeon_number),
     )
 
+def sent_password_reset_email(to_email: str, token: str) -> None:
+    """ Send a password reset email to the given address """
+    subject = "Pigeon Pool Password Reset"
+    plain_text = (
+        "You requested a password reset for your Pigeon Pool account.\n\n"
+        "If you did not make this request, you can ignore this email.\n\n"
+        "To reset your password, click the link below:\n\n"
+        f"{FRONTEND_ORIGIN}/reset-password?token={token}\n\n"
+        "This link will expire in 30 minutes."
+    )
+    html = (
+        "<p>You requested a password reset for your Pigeon Pool account.</p>"
+        "<p>If you did not make this request, you can ignore this email.</p>"
+        "<p>To reset your password, click the link below:</p>"
+        f'<p><a href="{FRONTEND_ORIGIN}/reset-password?token={token}">Reset Password</a></p>'
+        "<p>This link will expire in 30 minutes.</p>"
+    )
+    send_email(to_email, subject, plain_text, html)
+
+# --- Bearer auth dependency ---
+def current_user(creds: HTTPAuthorizationCredentials = Depends(bearer)) -> MeOut:
+    """
+    Validate Authorization: Bearer <token> and return MeOut.
+
+    Note: This implementation is header-only (no cookies). Frontend must send:
+      Authorization: Bearer <JWT>
+    """
+    if not creds:
+        raise HTTPException(status_code=401, detail="Missing Authorization header")
+
+    if (creds.scheme or "").lower() != "bearer":
+        raise HTTPException(status_code=401, detail="Authorization must be Bearer <token>")
+
+    data = parse_session_token(creds.credentials)
+    pn = int(data["sub"])
+    exp_ts = int(data["exp"])
+
+    with db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT pigeon_number, pigeon_name, email, is_admin FROM players WHERE pigeon_number = %s",
+            (pn,),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=401, detail="User not found")
+
+        return MeOut(
+            pigeon_number=row[0],
+            pigeon_name=row[1],
+            email=row[2],
+            is_admin=row[3],
+            session={"expires_at": datetime.fromtimestamp(exp_ts, tz=timezone.utc).isoformat()},
+        )
+
 # --- Router ---
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-@router.post("/login", response_model=MeOut)
-def login(payload: LoginIn, response: Response):
-    """ Login with email or pigeon_number + password, set session cookie """
+@router.post("/login", response_model=LoginOut)
+def login(payload: LoginIn):
+    """Login and return a Bearer token plus user info."""
     debug("In login")
 
     with db() as conn, conn.cursor() as cur:
@@ -286,22 +245,28 @@ def login(payload: LoginIn, response: Response):
             if stored_hash and stored_hash.startswith("$2"):  # bcrypt hash prefix
                 ok = bcrypt.verify(payload.password, stored_hash)
             else:
-                ok = payload.password == stored_hash  # TEMP: allow plain until you migrate
+                ok = payload.password == stored_hash  # TEMP: allow plain until migrated
         except (ValueError, TypeError):
             ok = False
 
         if not ok:
             raise HTTPException(status_code=401, detail="Invalid credentials")
 
-        token, exp_ts = make_session_token(pn)
-        set_session_cookie(response, token, exp_ts)
-        return MeOut(
+        token, exp_ts = make_session_token(pn, email)
+        pigeon = MeOut(
             pigeon_number=pn,
             pigeon_name=name,
             email=email,
             is_admin=is_admin,
-            session={"expires_at": datetime.fromtimestamp(exp_ts , tz=timezone.utc).isoformat()},
+            session={"expires_at": datetime.fromtimestamp(exp_ts, tz=timezone.utc).isoformat()},
         )
+        return {
+            "ok": True,
+            "access_token": token,
+            "token_type": "bearer",
+            "expires_at": pigeon.session["expires_at"],
+            "user": pigeon,
+        }
 
 @router.get("/me", response_model=MeOut)
 def me(user: MeOut = Depends(current_user)):
@@ -310,11 +275,9 @@ def me(user: MeOut = Depends(current_user)):
     return user
 
 @router.post("/logout")
-def logout(response: Response):
-    """ Logout by clearing the session cookie """
+def logout():
+    """ Logout is client-side (delete token). """
     debug("In logout")
-
-    clear_session_cookie(response)
     return {"ok": True}
 
 @router.post("/password-reset", status_code=status.HTTP_200_OK)
@@ -323,16 +286,12 @@ def request_password_reset(payload: PasswordResetRequestIn):
     Start the password reset flow.
 
     - Always returns 200 for well-formed requests to avoid email enumeration.
-    - If the player exists, generate a reset token and (later) email it.
-    - If the player doesn't exist, log internally but still return 200.
-    - If there is a server/DB error, raise 500.
     """
     email = payload.email.lower().strip()
     debug("password-reset: request received", email=email)
 
     try:
         with db() as conn, conn.cursor() as cur:
-            # extra debug to confirm DB connection works
             debug("password-reset: connected to DB")
 
             cur.execute(
@@ -342,7 +301,6 @@ def request_password_reset(payload: PasswordResetRequestIn):
             row = cur.fetchone()
 
             if not row:
-                # Internal log only; 200 to caller to prevent enumeration.
                 info("password-reset: email not found", email=email)
                 return {"ok": True}
 
@@ -355,20 +313,14 @@ def request_password_reset(payload: PasswordResetRequestIn):
             return {"ok": True}
 
     except psycopg.Error as db_exc:
-        # This is a real server problem — let the client know it failed
         error("password-reset: DB error", exc=db_exc, email=email)
         raise HTTPException(status_code=500, detail="Failed to process request") from db_exc
 
-
-
 @router.post("/password-reset/confirm", status_code=status.HTTP_200_OK)
-def confirm_password_reset(payload: PasswordResetConfirmIn, response: Response):
+def confirm_password_reset(payload: PasswordResetConfirmIn):
     """
     Finalize the reset using the token and set a new password.
-
-    Validates token (issuer/type/exp), enforces single-use via jti,
-    sets a new bcrypt hash, and (optionally) signs the user in immediately
-    by issuing a session cookie.
+    Returns a fresh session bearer token so the client can sign in immediately.
     """
     debug("In confirm_password_reset")
 
@@ -388,10 +340,19 @@ def confirm_password_reset(payload: PasswordResetConfirmIn, response: Response):
                     raise HTTPException(status_code=401, detail="Reset link already used")
 
                 # set new bcrypt hash
+                # First, fetch email for token creation afterwards
+                cur.execute("SELECT email FROM players WHERE pigeon_number = %s", (pn,))
+                row = cur.fetchone()
+                if not row:
+                    raise HTTPException(status_code=401, detail="Invalid reset token")
+                email = row[0]
+
                 new_hash = bcrypt.hash(payload.new_password)
-                cur.execute("UPDATE players SET password_hash = %s WHERE pigeon_number = %s", (new_hash, pn))
+                cur.execute(
+                    "UPDATE players SET password_hash = %s WHERE pigeon_number = %s",
+                    (new_hash, pn)
+                )
                 if cur.rowcount != 1:
-                    # No such user (could be deleted)
                     warn("password-reset: couldn't update user", pn=pn, jti=jti)
                     raise HTTPException(status_code=401, detail="Invalid reset token")
 
@@ -399,18 +360,19 @@ def confirm_password_reset(payload: PasswordResetConfirmIn, response: Response):
                 mark_jti_used(cur, jti, pn)
             conn.commit()
     except psycopg.Error as db_exc:
-        # Database-specific failure
         warn("password-reset: DB error", exc=db_exc, pn=pn, jti=jti)
         raise HTTPException(status_code=500, detail="Failed to reset password") from db_exc
 
-    # 3) (Optional) sign them in immediately by issuing a fresh session cookie
-    token, exp_ts = make_session_token(pn)
-    set_session_cookie(response, token, exp_ts)
+    # 3) Return a fresh token so the client can sign in immediately
+    token, exp_ts = make_session_token(pn, email)
+    return {
+        "ok": True,
+        "access_token": token,
+        "token_type": "bearer",
+        "expires_at": datetime.fromtimestamp(exp_ts, tz=timezone.utc).isoformat(),
+    }
 
-    return {"ok": True}
-
-# --- FastAPI dependency used by routes ---
-# --- Lightweight dependency for other routers ---
+# --- Lightweight dependencies for other routers ---
 class AuthUser(BaseModel):
     """ Minimal user info for auth dependencies """
     pigeon_number: int
@@ -420,8 +382,6 @@ class AuthUser(BaseModel):
 def require_user(user: MeOut = Depends(current_user)) -> AuthUser:
     """
     Minimal auth dependency for feature routers.
-    Reuses cookie-based session validation from current_user,
-    but returns a small payload with just what's commonly needed.
     """
     return AuthUser(
         pigeon_number=user.pigeon_number,
@@ -430,9 +390,7 @@ def require_user(user: MeOut = Depends(current_user)) -> AuthUser:
     )
 
 def require_admin(user: MeOut = Depends(current_user)) -> AuthUser:
-    """
-    Optional: restrict endpoints to admins.
-    """
+    """ Restrict endpoints to admins. """
     if not user.is_admin:
         raise HTTPException(status_code=403, detail="Admin only")
     return AuthUser(

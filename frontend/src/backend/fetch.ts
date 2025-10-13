@@ -19,55 +19,69 @@ import {
 // Base URL for API calls, from env or default to relative /api (for dev with proxy)
 const BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") || "/api";
 
+// --- Lightweight token store ---
+// In-memory cache and mirror to localStorage so refreshes survive.
+const TOKEN_KEY = "pp_access_token";
+let tokenCache: string | null = null;
+
+function getToken(): string | null {
+  if (tokenCache) return tokenCache;
+  try {
+    tokenCache = localStorage.getItem(TOKEN_KEY);
+  } catch {
+    /* ignore */
+  }
+  return tokenCache;
+}
+
+function setToken(t: string | null) {
+  tokenCache = t;
+  try {
+    if (t) localStorage.setItem(TOKEN_KEY, t);
+    else localStorage.removeItem(TOKEN_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
 // Generic JSON fetch with type-safe factory & no `any`
 // Redirect to the login page on 401 with session expired message unless they are already on that page
 type FetchInit<T> = RequestInit & {
   factory: (data: unknown) => T;
-  redirectOn401?: boolean; // defaults to true; set false for boot-time /auth/me
+  redirectOn401?: boolean; // default true; set false for boot-time /auth/me
 };
 
-export async function apiFetch<T>(
-  path: string,
-  init: FetchInit<T>
-): Promise<T> {
-  console.debug(`apiFetch ${init.method || "GET"} ${path}`);
-  const res = await fetch(`${BASE}${path}`, {
+export async function apiFetch<T>(path: string, init: FetchInit<T>): Promise<T> {
+  const url = `${BASE}${path}`;
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(init.headers as Record<string, string> | undefined),
+  };
+
+  const tok = getToken();
+  if (tok) headers.Authorization = `Bearer ${tok}`;
+
+  const res = await fetch(url, {
     ...init,
-    headers: { "Content-Type": "application/json", ...(init.headers || {}) },
-    credentials: "include",
+    headers,
+    // no cookies needed for bearer tokens
   });
 
   if (!res.ok) {
     if (res.status === 401) {
-      console.warn("apiFetch: 401 Unauthorized");
       const shouldRedirect = init.redirectOn401 !== false; // default true
-      // Only redirect if we're not already on the login or reset-password page.
-      const loginPath = "/login";
-      const resetPasswordPath = "/reset-password";
-      const currentPath = location.pathname;
-      const onLoginOrReset = currentPath === loginPath || currentPath === resetPasswordPath;
-
-      if (shouldRedirect && !onLoginOrReset) {
-        console.info("apiFetch: Redirecting to login page due to 401 from non-login/reset-password page");
+      const onAuthScreens = ["/login", "/reset-password"].includes(location.pathname);
+      if (shouldRedirect && !onAuthScreens) {
         const returnTo = encodeURIComponent(location.pathname + location.search);
-        const reason = "session_expired";
-        // replace() avoids cluttering history with multiple failed redirects
-        location.replace(`${loginPath}?reason=${reason}&returnTo=${returnTo}`);
+        location.replace(`/login?reason=session_expired&returnTo=${returnTo}`);
       }
-
-      // Bubble an error so callers on /login or /reset-password can render form-level feedback.
-      console.warn("apiFetch: Throwing Unauthorized error");
       throw new Error("Unauthorized");
     }
-
-    // Build a readable error message for snackbars
     let message = res.statusText || "Request failed";
     try {
       const text = await res.text();
-      message = text || message;
-    } catch {
-      /* ignore */
-    }
+      if (text) message = text;
+    } catch { /* ignore */ }
     throw new Error(`API error ${res.status}: ${message}`);
   }
 
@@ -78,28 +92,43 @@ export async function apiFetch<T>(
 // =============================
 // Auth fetch wrappers
 // =============================
+type LoginOut = {
+  ok: boolean;
+  access_token: string;
+  token_type: "bearer";
+  expires_at: string;
+  user: unknown;         // will be validated by new Me(...)
+};
 
 export async function apiLogin(payload: LoginPayload): Promise<Me> {
-  return apiFetch("/auth/login", {
+  const out = await apiFetch<LoginOut>("/auth/login", {
     method: "POST",
     body: JSON.stringify(payload),
-    factory: (d) => new Me(d),
+    factory: (d) => d as LoginOut,
+    redirectOn401: false, // let caller show “invalid credentials” etc
   });
-}
 
-export async function apiLogout(): Promise<Ok> {
-  return apiFetch("/auth/logout", {
-    method: "POST",
-    factory: (d) => new Ok(d),
-  });
+  setToken(out.access_token);
+  return new Me(out.user);
 }
 
 export async function apiMe(): Promise<Me> {
-  return apiFetch("/auth/me", {
+  return apiFetch<Me>("/auth/me", {
     method: "GET",
-    redirectOn401: false, // do not show session_expired banner on first boot probe
     factory: (d) => new Me(d),
+    redirectOn401: false, // AuthContext decides what to do on first boot
   });
+}
+
+export async function apiLogout(): Promise<void> {
+  try {
+    await apiFetch<{ ok: boolean }>("/auth/logout", {
+      method: "POST",
+      factory: () => ({ ok: true }),
+      redirectOn401: false,
+    });
+  } catch { /* ignore */ }
+  setToken(null);
 }
 
 export async function apiRequestPasswordReset(p: PasswordResetRequest): Promise<Ok> {

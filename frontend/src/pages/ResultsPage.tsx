@@ -121,22 +121,33 @@ export default function ResultsPage() {
           </Box>
         </Stack>
 
-        {loading ? (
+        {loading ?
           <Alert severity="info">Loading…</Alert>
-        ) : (
-          <PrintArea className="print-grid-area">
-            <DataGridLite<ResultsRow>
-              rows={rows}
-              columns={columns}
-              pinnedTopRows={[]}
-              pinnedBottomRows={consensusRow ? [consensusRow] : []}
-              defaultSort={{ key: "pigeon_name", dir: "asc" }}
-              printTitle={`Results — Week ${week ?? ""}`}
-              getRowId={(r) => r.pigeon_number}
-              highlightRowId={state.status === "signedIn" ? state.user.pigeon_number : undefined}
-            />
-          </PrintArea>
-        )}
+        : <>
+            {weekState === "in progress" && (
+              <>
+                <Typography variant="body1" sx={{ mb: 1 }}>
+                  This week is in progress. While games are live, scores are updated every 30 minutes. Score and Rank are based games completed, plus live games as if they ended now. 
+                </Typography>
+                <Typography variant="body1" sx={{ mb: 2 }}>
+                  Coming soon: What if scenarios for MNF outcomes
+                </Typography>
+              </>
+            )}
+            <PrintArea className="print-grid-area">
+              <DataGridLite<ResultsRow>
+                rows={rows}
+                columns={columns}
+                pinnedTopRows={[]}
+                pinnedBottomRows={consensusRow ? [consensusRow] : []}
+                defaultSort={{ key: "pigeon_name", dir: "asc" }}
+                printTitle={`Results — Week ${week ?? ""}`}
+                getRowId={(r) => r.pigeon_number}
+                highlightRowId={state.status === "signedIn" ? state.user.pigeon_number : undefined}
+              />
+            </PrintArea>
+          </>
+        }
 
         <AppSnackbar
           open={snack.open}
