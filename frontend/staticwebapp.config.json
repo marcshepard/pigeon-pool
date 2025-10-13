@@ -2,7 +2,9 @@
   "routes": [
     {
       "route": "/api/*",
-      "rewrite": "https://pigeon-pool-backend-gjgcdxcvgcepbfca.westus2-01.azurewebsites.net/api/{*path}"
+      "methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+      "allowedRoles": ["anonymous"],
+      "rewrite": "https://pigeon-pool-backend-gjgcdxcvgcepbfca.westus2-01.azurewebsites.net/{*path}"
     }
   ],
   "navigationFallback": {
