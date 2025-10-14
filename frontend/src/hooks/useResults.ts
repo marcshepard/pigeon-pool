@@ -31,7 +31,7 @@ function shapeRowsAndGames(picks: ApiWeekPick[], lb: ApiLeaderboardRow[]) {
     const key = `g_${p.game_id}`;
     const signed = p.picked_home ? +p.predicted_margin : -p.predicted_margin;
     const team = p.picked_home ? p.home_abbr : p.away_abbr;
-    const label = `${team} +${p.predicted_margin}`;
+  const label = p.predicted_margin === 0 ? "" : `${team} +${p.predicted_margin}`;
 
     let row = byPigeon.get(p.pigeon_number);
     if (!row) {
@@ -155,7 +155,7 @@ export function useResults(week: number | null) {
         }
         const mean = n ? sum / n : 0;
         const team = mean >= 0 ? g.home_abbr : g.away_abbr;
-        const label = `${team} +${Math.round(Math.abs(mean))}`;
+  const label = Math.round(Math.abs(mean)) === 0 ? "" : `${team} +${Math.round(Math.abs(mean))}`;
 
         out.picks[key] = { signed: mean, label, home_abbr: g.home_abbr, away_abbr: g.away_abbr };
     }

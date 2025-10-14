@@ -330,8 +330,16 @@ export default function PicksPage() {
                         label="Spread"
                         type="text"
                         size="small"
-                        value={String(margin)}
-                        onChange={(e) => handleMargin(g.game_id, e.target.value)}
+                        value={isZero ? "" : String(margin)}
+                        onChange={(e) => {
+                          // If blank, treat as 0; else, use handler as before
+                          const val = e.target.value.trim();
+                          if (val === "") {
+                            setDraft((d) => ({ ...d, [g.game_id]: { ...d[g.game_id], predicted_margin: 0 } }));
+                          } else {
+                            handleMargin(g.game_id, val);
+                          }
+                        }}
                         error={isError}
                         helperText={
                           isError ? (isZero ? "Required" : "Max 50") : (isWarn ? "Very large" : " ")
