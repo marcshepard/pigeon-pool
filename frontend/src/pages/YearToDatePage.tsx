@@ -6,9 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Box, Stack, Typography, Alert, Button } from "@mui/material";
 import {
   AppSnackbar,
-  PrintOnlyStyles,
   PrintArea,
-  PrintGridStyles,
 } from "../components/CommonComponents";
 import type { Severity } from "../components/CommonComponents";
 
@@ -18,6 +16,68 @@ import type { ColumnDef } from "../components/DataGridLite";
 import { useAuth } from "../auth/useAuth";
 import { useYtd } from "../hooks/useYtd";
 import type { YtdRow } from "../hooks/useYtd";
+
+function Notes () {
+  return (
+    <Box sx={{ maxWidth: 600, mt: 4 }}>
+      <Typography variant="body1" gutterBottom>
+      Notes
+      </Typography>
+      <Box component="table" sx={{ width: "100%", borderCollapse: "collapse" }}>
+      <tbody>
+        <tr>
+        <td style={{ fontWeight: "bold", padding: 4, borderBottom: "1px solid #ccc" }}>
+          <Typography variant="body1" fontWeight="bold">WEEK *</Typography>
+        </td>
+        <td style={{ padding: 4, borderBottom: "1px solid #ccc" }}>
+          <Typography variant="body1">Score for the week</Typography>
+        </td>
+        </tr>
+        <tr>
+        <td style={{ fontWeight: "bold", padding: 4, borderBottom: "1px solid #ccc" }}>
+          <Typography variant="body1" fontWeight="bold">POINTS</Typography>
+        </td>
+        <td style={{ padding: 4, borderBottom: "1px solid #ccc" }}>
+          <Typography variant="body1">Total weekly position points, minus worst week (x/o)</Typography>
+        </td>
+        </tr>
+        <tr>
+        <td style={{ fontWeight: "bold", padding: 4, borderBottom: "1px solid #ccc" }}>
+          <Typography variant="body1" fontWeight="bold">YEAR</Typography>
+        </td>
+        <td style={{ padding: 4, borderBottom: "1px solid #ccc" }}>
+          <Typography variant="body1">Ranking for year based on total points</Typography>
+        </td>
+        </tr>
+        <tr>
+        <td style={{ fontWeight: "bold", padding: 4, borderBottom: "1px solid #ccc" }}>
+          <Typography variant="body1" fontWeight="bold">TOP</Typography>
+        </td>
+        <td style={{ padding: 4, borderBottom: "1px solid #ccc" }}>
+          <Typography variant="body1">Number of weekly finishes in the top five (*/o)</Typography>
+        </td>
+        </tr>
+        <tr>
+        <td style={{ fontWeight: "bold", padding: 4, borderBottom: "1px solid #ccc" }}>
+          <Typography variant="body1" fontWeight="bold">RETURN</Typography>
+        </td>
+        <td style={{ padding: 4, borderBottom: "1px solid #ccc" }}>
+          <Typography variant="body1">Total return, year-to-date</Typography>
+        </td>
+        </tr>
+        <tr>
+        <td style={{ fontWeight: "bold", padding: 4 }}>
+          <Typography variant="body1" fontWeight="bold">RANK</Typography>
+        </td>
+        <td style={{ padding: 4 }}>
+          <Typography variant="body1">Ranking for year based on total return</Typography>
+        </td>
+        </tr>
+      </tbody>
+      </Box>
+    </Box>
+  );
+}
 
 export default function YtdPage() {
   const { state } = useAuth();
@@ -67,37 +127,35 @@ export default function YtdPage() {
   }, [weeks]);
 
   return (
-    <>
-  <PrintOnlyStyles areaClass="print-area" landscape margin="8mm" />
-  <PrintGridStyles />
-      <Box>
-        <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
-          <Typography variant="body1" fontWeight="bold">Year to Date</Typography>
-          <Button variant="outlined" onClick={() => window.print()}>Print</Button>
-        </Stack>
+    <Box mt={4} mb={2}>
+      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+        <Typography variant="body1" fontWeight="bold">Year to Date</Typography>
+        <Button variant="outlined" onClick={() => window.print()}>Print</Button>
+      </Stack>
 
-        {loading ? (
-          <Alert severity="info">Loading…</Alert>
-        ) : (
-          <PrintArea className="print-grid-area">
-            <DataGridLite<YtdRow>
-              rows={rows}
-              columns={columns}
-              defaultSort={{ key: "pigeon", dir: "asc" }}
-              printTitle="Pigeon Pool — Year to Date"
-              getRowId={(r) => r.pigeon_number}
-              highlightRowId={state.status === "signedIn" ? state.user.pigeon_number : undefined}
-            />
-          </PrintArea>
-        )}
+      {loading ? (
+        <Alert severity="info">Loading…</Alert>
+      ) : (
+        <PrintArea className="print-grid-area">
+          <DataGridLite<YtdRow>
+            rows={rows}
+            columns={columns}
+            defaultSort={{ key: "pigeon", dir: "asc" }}
+            printTitle="Pigeon Pool — Year to Date"
+            getRowId={(r) => r.pigeon_number}
+            highlightRowId={state.status === "signedIn" ? state.user.pigeon_number : undefined}
+          />
+        </PrintArea>
+      )}
 
-        <AppSnackbar
-          open={snack.open}
-          message={snack.message}
-          severity={snack.severity}
-          onClose={() => setSnack(s => ({ ...s, open: false }))}
-        />
-      </Box>
-    </>
+      <AppSnackbar
+        open={snack.open}
+        message={snack.message}
+        severity={snack.severity}
+        onClose={() => setSnack(s => ({ ...s, open: false }))}
+      />
+
+      <Notes />
+    </Box>
   );
 }
