@@ -155,7 +155,8 @@ export function useResults(week: number | null) {
         }
         const mean = n ? sum / n : 0;
         const team = mean >= 0 ? g.home_abbr : g.away_abbr;
-  const label = Math.round(Math.abs(mean)) === 0 ? "" : `${team} +${Math.round(Math.abs(mean))}`;
+  const absMean = Math.abs(mean);
+  const label = absMean === 0 ? "" : `${team} +${absMean.toFixed(1)}`;
 
         out.picks[key] = { signed: mean, label, home_abbr: g.home_abbr, away_abbr: g.away_abbr };
     }
