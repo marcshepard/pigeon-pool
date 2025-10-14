@@ -20,6 +20,12 @@ import {
   Typography,
 } from "@mui/material";
 import type { BoxProps } from "@mui/material";
+import type { SxProps, Theme } from "@mui/material/styles";
+import { alpha } from "@mui/material/styles";
+import Dialog from "@mui/material/Dialog";
+import DialogTitle from "@mui/material/DialogTitle";
+import DialogContent from "@mui/material/DialogContent";
+import DialogActions from "@mui/material/DialogActions";
 
 import Visibility from "@mui/icons-material/Visibility";
 import VisibilityOff from "@mui/icons-material/VisibilityOff";
@@ -145,6 +151,71 @@ export function AppSnackbar(props: {
         {message}
       </Alert>
     </Snackbar>
+  );
+}
+
+/**
+ * Banner – subtle inline message with a colored left border and soft background.
+ * Use instead of MUI Alert for a cleaner, flatter look inline with the page.
+ */
+export function Banner({
+  severity = "info",
+  children,
+  sx,
+}: {
+  severity?: Severity;
+  children: ReactNode;
+  sx?: SxProps<Theme>;
+}) {
+  const baseSx: SxProps<Theme> = (theme) => {
+    const color = theme.palette[severity].main;
+    return {
+      p: 1.25,
+      px: 2,
+      borderLeftWidth: 4,
+      borderLeftStyle: "solid",
+      borderLeftColor: color,
+      backgroundColor: alpha(color, 0.06),
+    };
+  };
+  return (
+    <Paper variant="outlined" sx={sx ? [baseSx, sx] as SxProps<Theme> : baseSx}>
+      <Typography variant="body2">{children}</Typography>
+    </Paper>
+  );
+}
+
+/**
+ * ConfirmDialog – simple confirmation dialog with title, body, and actions.
+ */
+export function ConfirmDialog({
+  open,
+  title = "Confirm",
+  content,
+  confirmText = "Confirm",
+  cancelText = "Cancel",
+  onConfirm,
+  onClose,
+}: {
+  open: boolean;
+  title?: string;
+  content: ReactNode;
+  confirmText?: string;
+  cancelText?: string;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
+      <DialogTitle>{title}</DialogTitle>
+      <DialogContent>
+        <Typography variant="body2" sx={{ mt: 0.5 }}>{content}</Typography>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose} color="inherit">{cancelText}</Button>
+        <BusyButton onClick={onConfirm} variant="contained">{confirmText}</BusyButton>
+      </DialogActions>
+    </Dialog>
   );
 }
 

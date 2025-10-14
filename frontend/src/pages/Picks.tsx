@@ -5,9 +5,10 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Box, Stack, Typography, FormControl, InputLabel, Select, MenuItem,
-  Alert, Button, RadioGroup, FormControlLabel, Radio, TextField
+  Button, RadioGroup, FormControlLabel, Radio, TextField
 } from "@mui/material";
-import { AppSnackbar, Loading } from "../components/CommonComponents";
+import { alpha } from "@mui/material/styles";
+import { AppSnackbar, Loading, Banner, ConfirmDialog } from "../components/CommonComponents";
 import { getScheduleCurrent, getGamesForWeek, getMyPicksForWeek, setMyPicks } from "../backend/fetch";
 import type { ScheduleCurrent, Game } from "../backend/types";
 
@@ -25,6 +26,7 @@ export default function PicksPage() {
   const [loading, setLoading] = useState(false);
   const [loadingError, setLoadingError] = useState<string>("");
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity?: "success" | "error" | "info" | "warning"; }>({ open: false, message: "" });
+  const [confirmState, setConfirmState] = useState<{ open: boolean; message: string; pending: null | (() => Promise<void>) }>({ open: false, message: "", pending: null });
 
   // Load schedule/current once and pick a default week
   useEffect(() => {
@@ -126,6 +128,34 @@ export default function PicksPage() {
       return;
     }
 
+    // New rule: any number > 50 should hard-fail submit
+    const overFifty = games.find((g) => (draft[g.game_id]?.predicted_margin ?? 0) > 50);
+    if (overFifty) {
+      setSnackbar({ open: true, message: "Margins must be 50 or less.", severity: "warning" });
+      return;
+    }
+
+    // New rule: if any number > 29, get confirmation before submitting
+    const anyOverTwentyNine = games.some((g) => (draft[g.game_id]?.predicted_margin ?? 0) > 29);
+    if (anyOverTwentyNine) {
+      // Defer the actual submit until user confirms
+      const performSubmit = async () => {
+        // Re-enter the function beyond confirmation
+        await actuallySubmit();
+      };
+      setConfirmState({
+        open: true,
+        message: "You have one or more spreads greater than 29. Are you sure you want to submit?",
+        pending: performSubmit,
+      });
+      return;
+    }
+
+    await actuallySubmit();
+  };
+
+  const actuallySubmit = async () => {
+    if (typeof week !== "number" || !games) return;
     // Prepare payload
     const picks = games.map((g) => ({
       game_id: g.game_id,
@@ -159,6 +189,20 @@ export default function PicksPage() {
 
   return (
     <Box sx={{ maxWidth: 900, mx: "auto", height: '100vh', display: 'flex', flexDirection: 'column' }}>
+      {/* Confirmation dialog for >29 spreads */}
+      <ConfirmDialog
+        open={confirmState.open}
+        title="Confirm submission"
+        content={confirmState.message}
+        confirmText="Submit"
+        cancelText="Cancel"
+        onConfirm={async () => {
+          const pending = confirmState.pending;
+          setConfirmState({ open: false, message: "", pending: null });
+          if (pending) await pending();
+        }}
+        onClose={() => setConfirmState({ open: false, message: "", pending: null })}
+      />
       {/* Fixed header within the picks page */}
       <Box
         sx={{
@@ -214,15 +258,15 @@ export default function PicksPage() {
         {loading && <Loading error={loadingError} />}
 
         {!loading && loadingError && (
-          <Alert severity="error" sx={{ mb: 2 }}>
+          <Banner severity="error" sx={{ mb: 2 }}>
             {loadingError}
-          </Alert>
+          </Banner>
         )}
 
         {!loading && games && games.length === 0 && (
-          <Alert severity="info" sx={{ mb: 2 }}>
+          <Banner severity="info" sx={{ mb: 2 }}>
             No games found for week {titleWeek}.
-          </Alert>
+          </Banner>
         )}
 
         {!loading && games && games.length > 0 && (
@@ -238,8 +282,12 @@ export default function PicksPage() {
                 minute: "2-digit",
               });
 
-              // Highlight margin control if margin is zero
-              const highlightMargin = d && d.predicted_margin === 0;
+              // Validation styling states
+              const margin = d?.predicted_margin ?? 0;
+              const isZero = margin === 0;
+              const isOverFifty = margin > 50;
+              const isWarn = margin > 29 && margin <= 50;
+              const isError = isZero || isOverFifty;
 
               return (
                 <Box
@@ -279,18 +327,31 @@ export default function PicksPage() {
 
                       {/* Margin */}
                       <TextField
-                        label="Margin"
+                        label="Spread"
                         type="text"
                         size="small"
-                        value={String(d?.predicted_margin ?? 0)}
+                        value={String(margin)}
                         onChange={(e) => handleMargin(g.game_id, e.target.value)}
+                        error={isError}
+                        helperText={
+                          isError ? (isZero ? "Required" : "Max 50") : (isWarn ? "Very large" : " ")
+                        }
                         sx={{
                           width: 100,
-                          backgroundColor: highlightMargin ? 'rgba(255,0,0,0.06)' : undefined,
+                          '& .MuiFormHelperText-root': { mt: 0.25 },
+                          backgroundColor: (theme) =>
+                            isError
+                              ? alpha(theme.palette.error.main, 0.06)
+                              : isWarn
+                                ? alpha(theme.palette.warning.main, 0.06)
+                                : undefined,
                           transition: 'background 0.2s',
+                          '& .MuiOutlinedInput-notchedOutline': {
+                            borderColor: (theme) => (isWarn ? theme.palette.warning.main : undefined),
+                          },
                         }}
                         InputProps={{
-                          style: highlightMargin ? { borderColor: '#f44336' } : undefined,
+                          // Let MUI error state handle error border color
                         }}
                         slotProps={{
                           input: {
