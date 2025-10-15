@@ -21,7 +21,8 @@ export type ResultsRow = {
 function scoreForPick(predSigned: number, actualSigned: number): number {
   const pickedHome = predSigned >= 0; // >=0 means home side
   const winnerHome = actualSigned > 0; // >0 home won, 0 tie, <0 away won
-  const diff = Math.abs(Math.abs(predSigned) - Math.abs(actualSigned));
+  // Diff is the absolute difference of the signed margins so opposite winners add, e.g., +3 vs -3 => 6
+  const diff = Math.abs(predSigned - actualSigned);
   const wrongWinner = actualSigned === 0 || pickedHome !== winnerHome;
   return diff + (wrongWinner ? 7 : 0);
 }

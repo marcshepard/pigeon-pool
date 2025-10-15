@@ -124,16 +124,11 @@ export default function PicksheetPage() {
         {loading ?
           <Alert severity="info">Loading…</Alert>
         : <>
-            {weekState === "in progress" && (
-              <>
-                <Typography variant="body1" sx={{ mb: 1 }}>
-                  This week is in progress. While games are live, scores are updated every 30 minutes. Score and Rank are based games completed, plus live games as if they ended now. 
-                </Typography>
-                <Typography variant="body1" sx={{ mb: 2 }}>
-                  Coming soon: What if scenarios for MNF outcomes
-                </Typography>
-              </>
-            )}
+            {weekState !== "not started" && 
+              <Typography variant="body1" sx={{ mb: 1 }}>
+                Bracketed numbers indicate points from completed games. For example, you might see "PHI 3 (4)" if they were picked by 3 and won by 7.
+              </Typography>
+            }
             <PrintArea className="print-grid-area">
               <DataGridLite<ResultsRow>
                 rows={rows}
