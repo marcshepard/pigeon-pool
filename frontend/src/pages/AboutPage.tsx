@@ -7,28 +7,28 @@ export default function AboutPage() {
             <Typography variant="h6" gutterBottom align="center" fontWeight={700}>
                 PIGEON POOL RULES
             </Typography>
-            <Typography variant="body1">
-                <b>1.</b> Submit your picks from the <Link to="/picks">Picks page</Link> by Wednesday midnight PST.
+            <Typography variant="body1" sx={{ mb: 1 }}>
+                <b>1.</b> Submit your picks from the <Link to="/picks">Picks page</Link> by Tuesday midnight PST.
                 You must pick the WINNER of each game and by how many points they will win (SPREAD).
                 If you don't submit picks by the deadline, you will get a last place finish for the week.
             </Typography>
-            <Typography variant="body1">
-                <b>2.</b> You will be able to see everyone's picks on the <Link to="/picksheet">Picksheet</Link> Thursday morning.
+            <Typography variant="body1" sx={{ mb: 1 }}>
+                <b>2.</b> You will be able to see everyone's picks on the <Link to="/picksheet">Picksheet</Link> Wednesday morning.
             </Typography>
-            <Typography variant="body1">
+            <Typography variant="body1" sx={{ mb: 1 }}>
                 <b>4.</b> Your score for the week is the total of the DIFFERENCES between your picked spreads and the actual spreads,
                 plus a seven point “penalty” for each game where you did not pick the winning team. The lower your weekly score, the better.
                 Partial and final scores will also be available on the <Link to="/picksheet">Picksheet</Link> once the first game has started.
             </Typography>
-            <Typography variant="body1">
+            <Typography variant="body1" sx={{ mb: 1 }}>
                 <b>5.</b> Your cumulative score is the sum of your weekly rankings, MINUS your highest weekly ranking.
                 The lower your cumulative score, the better. You can view your weekly and cumulative scores on
                 the <Link to="/year-to-date">Year-to-date page</Link>.
             </Typography>
-            <Typography variant="body1">
+            <Typography variant="body1" sx={{ mb: 1 }}>
                 <b>6.</b> Coming soon: What-if scenarios for MNF
             </Typography>
-            <Typography variant="body1">
+            <Typography variant="body1" sx={{ mb: 1 }}>
                 <b>7.</b> Payoffs are per the table below and are sent by US mail.
             </Typography>
             <Box mt={4}>

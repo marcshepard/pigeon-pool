@@ -201,7 +201,7 @@ def _upsert_pick(cur, pigeon_number: int, game_id: int, picked_home: bool, margi
     )
 
 
-def import_picks_pivot_xlsx(*, xlsx_path: str, conn, max_week: Optional[int] = None) -> int:
+def import_picks_pivot_xlsx(*, xlsx_path: str, conn, max_week: Optional[int] = None, only_week: Optional[int] = None) -> int:
     """
     Import a pivoted XLSX with one sheet per week (title like 'picks wk N').
     Uses alias normalization for team codes and logs detailed skip reasons.
@@ -219,6 +219,8 @@ def import_picks_pivot_xlsx(*, xlsx_path: str, conn, max_week: Optional[int] = N
             week = int(title.split("wk", 1)[1].strip())
         except Exception:  # noqa: BLE001
             log.warning("[xlsx] Skipping sheet '%s' (week number parse failed).", ws.title)
+            continue
+        if only_week is not None and week != only_week:
             continue
         if max_week is not None and week > max_week:
             continue

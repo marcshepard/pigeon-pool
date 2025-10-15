@@ -11,12 +11,15 @@ Example usage:
 - python -m backend.cli sync-schedule
 - python -m backend.cli sync-scores 6
 - python -m backend.cli sync-kickoffs 6
+- python -m backend.cli import-picks-xlsx C:/path/to/picks.xlsx --week 6
+- python -m backend.cli import-picks-xlsx C:/path/to/picks.xlsx --max-week 6
 """
 # pylint: disable=line-too-long
 
 from __future__ import annotations
 
 import argparse
+import os
 from typing import Any, Dict
 
 import psycopg
@@ -90,9 +93,25 @@ def cmd_sync_kickoffs(args: argparse.Namespace) -> int:
 
 def cmd_import_picks_xlsx(args: argparse.Namespace) -> int:
     """Import historical picks from a pivoted XLSX workbook ('picks wk N' sheets)."""
+    # Friendly validation: require an existing file path
+    if not getattr(args, "path", None):
+        print("error: missing path to .xlsx workbook. See 'import-picks-xlsx -h' for usage.")
+        return 2
+    if not os.path.isfile(args.path):
+        print(f"error: file not found: {args.path}")
+        return 2
+
     settings = get_settings()
     cfg = settings.psycopg_kwargs()
     print(f"[cli] import-pivot-xlsx → {cfg['user']}@{cfg['host']}:{cfg['port']}/{cfg['dbname']}")
+
+    # Validate week constraints if provided
+    only_week: int | None = None
+    max_week: int | None = None
+    if getattr(args, "week", None) is not None:
+        only_week = _validated_week(args.week)
+    if getattr(args, "max_week", None) is not None:
+        max_week = _validated_week(args.max_week)
 
     # One connection for the whole import
     with get_connection(cfg) as conn:
@@ -102,10 +121,16 @@ def cmd_import_picks_xlsx(args: argparse.Namespace) -> int:
 
         try:
             # Do the import work (any inserts/updates on this conn will bypass the trigger)
+            extra_kwargs: Dict[str, Any] = {}
+            if max_week is not None:
+                extra_kwargs["max_week"] = max_week
+            if only_week is not None:
+                extra_kwargs["only_week"] = only_week
+
             processed = import_picks_pivot_xlsx(
                 xlsx_path=args.path,
                 conn=conn,
-                max_week=args.max_week,
+                **extra_kwargs,
             )
             print(f"[cli] ✅ Pivot import complete. Processed {processed} player-pick cells.")
         finally:
@@ -168,7 +193,9 @@ def build_parser() -> argparse.ArgumentParser:
         description="Reads sheets titled like 'picks wk N' (row1 names, row2 numbers; team rows in pairs) and upserts players/picks.",
     )
     p_imp_pivot.add_argument("path", help="Path to .xlsx workbook")
-    p_imp_pivot.add_argument("--max-week", type=int, default=6, help="Highest week to import (default: 6)")
+    group = p_imp_pivot.add_mutually_exclusive_group()
+    group.add_argument("--week", type=int, help="Import only a single week (1–18)")
+    group.add_argument("--max-week", type=int, help="Highest week to import")
     p_imp_pivot.set_defaults(func=cmd_import_picks_xlsx)
 
     return parser
