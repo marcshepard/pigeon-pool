@@ -17,10 +17,10 @@ const tiles = [
         desc: "Enter picks for an upcoming week",
     },
     {
-        path: "/results",
+        path: "/picksheet",
         icon: <ListAltIcon color="primary" sx={{ fontSize: 40 }} />,
-        label: "Results",
-        desc: "View picks and results for this or previous weeks",
+        label: "Picksheet & results",
+        desc: "View the picksheet and results for this or a previous week",
     },
     {
         path: "/year-to-date",
