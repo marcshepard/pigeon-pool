@@ -45,7 +45,7 @@ class Settings:
     jwt_secret: str
     jwt_alg: str
     api_origin: str
-    frontend_origin: str
+    frontend_origins: list[str]
 
     # Session / reset token
     reset_ttl_minutes: int      # password reset token validity
@@ -83,7 +83,7 @@ def get_settings() -> Settings:
         jwt_secret=_req("JWT_SECRET"),
         jwt_alg=os.getenv("JWT_ALG", "HS256"),
         api_origin=os.getenv("API_ORIGIN", "http://localhost:8000"),
-        frontend_origin=os.getenv("FRONTEND_ORIGIN", "http://localhost:5173"),
+        frontend_origins=os.getenv("FRONTEND_ORIGINS"),
         reset_ttl_minutes=int(os.getenv("RESET_TTL_MINUTES", "30")),
         session_minutes=int(os.getenv("SESSION_MINUTES", "60")),
         slide_threshold_seconds=int(os.getenv("SLIDE_THRESHOLD_SECONDS", str(15 * 60))),

@@ -13,7 +13,7 @@ from backend.routes.schedule import router as schedule_router
 from backend.routes.results import router as results_router
 
 # Early initialization
-get_settings()          # forces env load/validation early
+s = get_settings()          # forces env load/validation early
 configure_from_env()    # configure logging level after picking up LOGGING_LEVEL from env
 
 app = FastAPI(title="Pigeon Pool API", version="0.1.0")
@@ -21,7 +21,7 @@ app = FastAPI(title="Pigeon Pool API", version="0.1.0")
 # Allow frontend dev origin (adjust later for production)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[os.getenv("FRONTEND_ORIGIN")],
+    allow_origins=s.frontend_origins,
     allow_credentials=False,    # No cookies anymore
     allow_methods=["*"],
     allow_headers=["*"],
