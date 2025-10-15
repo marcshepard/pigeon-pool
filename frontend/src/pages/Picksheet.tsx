@@ -108,7 +108,7 @@ export default function PicksheetPage() {
               {week == null
                 ? "Loading results…"
                 : weekState === "completed"
-                  ? "Results"
+                  ? "Final results"
                   : weekState === "not started"
                     ? "Picks"
                     : "Partial results"}

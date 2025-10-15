@@ -4,7 +4,6 @@
 
 
 import { create } from "zustand";
-import { persist, createJSONStorage } from "zustand/middleware";
 import { LeaderboardRow, WeekPicksRow, ScheduleCurrent } from "../backend/types";
 
 export type GameMeta = { game_id: number; home_abbr: string; away_abbr: string };
@@ -52,8 +51,7 @@ type AppCacheState = {
 };
 
 export const useAppCache = create<AppCacheState>()(
-  persist(
-    (set, get) => ({
+  (set, get) => ({
       ttlMs: 60 * 60 * 1000,        // 1 hour
       sweepEveryMs: 5 * 60 * 1000,  // sweep at most every 5 min
       _lastSweepAt: 0,
@@ -136,12 +134,6 @@ export const useAppCache = create<AppCacheState>()(
           _lastSweepAt: now,
         });
       },
-    }),
-    {
-      name: "pp:appcache",
-      storage: createJSONStorage(() => sessionStorage), // or localStorage
-      version: 1,
-    }
-  )
+    })
 );
 
