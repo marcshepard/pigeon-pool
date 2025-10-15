@@ -39,15 +39,27 @@ export default function PicksPage() {
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity?: "success" | "error" | "info" | "warning"; }>({ open: false, message: "" });
   const [confirmState, setConfirmState] = useState<{ open: boolean; message: string; pending: null | (() => Promise<void>) }>({ open: false, message: "", pending: null });
   const [homeDialogOpen, setHomeDialogOpen] = useState(false);
+  const [isTouchDevice, setIsTouchDevice] = useState(false);
+  const handleHomeDoubleTap = useDoubleTap(() => setHomeDialogOpen(true));
+
+  // Detect touch-capable device once
+  useEffect(() => {
+    try {
+      const touch = ("ontouchstart" in window) || (navigator.maxTouchPoints ?? 0) > 0;
+      setIsTouchDevice(touch);
+    } catch {
+      setIsTouchDevice(false);
+    }
+  }, []);
 
   const handleHomeDialog = () => {
     setHomeDialogOpen(true);
   };
   const handleHomeDialogConfirm = () => {
     if (!games) return;
-    // Set all picks to home by 3
-    setDraft((prev) => {
-      const next = { ...prev };
+    // Set all picks to home by 3 (overwrite for all current games)
+    setDraft(() => {
+      const next: Record<number, PickDraft> = {};
       for (const g of games) {
         next[g.game_id] = { picked_home: true, predicted_margin: 3 };
       }
@@ -266,8 +278,13 @@ export default function PicksPage() {
             variant="body1"
             fontWeight="bold"
             sx={{ flex: 1, textAlign: "center", userSelect: "none", cursor: "default" }}
-            onDoubleClick={handleHomeDialog}
-            onTouchEnd={useDoubleTap(handleHomeDialog)}
+            onDoubleClick={isTouchDevice ? undefined : handleHomeDialog}
+            onTouchEnd={(e) => {
+              // Prevent generating a subsequent dblclick event on mobile
+              e.preventDefault();
+              e.stopPropagation();
+              handleHomeDoubleTap();
+            }}
           >
             Enter picks
           </Typography>
@@ -363,7 +380,7 @@ export default function PicksPage() {
                       <FormControl component="fieldset">
                         <RadioGroup
                           row
-                          value={d && d.predicted_margin > 0 ? (d.picked_home ? "home" : "away") : undefined}
+                          value={d && d.predicted_margin > 0 ? (d.picked_home ? "home" : "away") : ""}
                           onChange={(_, val) => handlePick(g.game_id, val as "home" | "away")}
                         >
                           <FormControlLabel value="away" control={<Radio />} label={g.away_abbr} />
