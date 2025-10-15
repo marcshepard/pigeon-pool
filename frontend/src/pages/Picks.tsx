@@ -12,7 +12,7 @@ import { AppSnackbar, Loading, Banner, ConfirmDialog } from "../components/Commo
 // Utility: detect double tap on mobile
 function useDoubleTap(callback: () => void, ms = 300) {
   const lastTap = useRef<number>(0);
-  return (e: React.TouchEvent) => {
+  return () => {
     const now = Date.now();
     if (now - lastTap.current < ms) {
       callback();
@@ -38,16 +38,13 @@ export default function PicksPage() {
   const [loadingError, setLoadingError] = useState<string>("");
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity?: "success" | "error" | "info" | "warning"; }>({ open: false, message: "" });
   const [confirmState, setConfirmState] = useState<{ open: boolean; message: string; pending: null | (() => Promise<void>) }>({ open: false, message: "", pending: null });
-  // For hidden home-by-3 dialog
   const [homeDialogOpen, setHomeDialogOpen] = useState(false);
-  const [homeDialogLoading, setHomeDialogLoading] = useState(false);
-  // Handler for double click/tap on Enter picks
+
   const handleHomeDialog = () => {
     setHomeDialogOpen(true);
   };
   const handleHomeDialogConfirm = () => {
     if (!games) return;
-    setHomeDialogLoading(true);
     // Set all picks to home by 3
     setDraft((prev) => {
       const next = { ...prev };
@@ -57,7 +54,6 @@ export default function PicksPage() {
       return next;
     });
     setTimeout(() => {
-      setHomeDialogLoading(false);
       setHomeDialogOpen(false);
     }, 250);
   };
@@ -278,7 +274,7 @@ export default function PicksPage() {
       {/* Hidden dialog for home-by-3 */}
       <ConfirmDialog
         open={homeDialogOpen}
-        title={<span style={{ display: "block", textAlign: "center", width: "100%" }}>Auto-select home teams by 3?</span>}
+        title="Auto-select home teams by 3?"
         content={null}
         confirmText="Yes"
         cancelText="No"
