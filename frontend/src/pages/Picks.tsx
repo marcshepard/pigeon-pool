@@ -39,18 +39,7 @@ export default function PicksPage() {
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity?: "success" | "error" | "info" | "warning"; }>({ open: false, message: "" });
   const [confirmState, setConfirmState] = useState<{ open: boolean; message: string; pending: null | (() => Promise<void>) }>({ open: false, message: "", pending: null });
   const [homeDialogOpen, setHomeDialogOpen] = useState(false);
-  const [isTouchDevice, setIsTouchDevice] = useState(false);
   const handleHomeDoubleTap = useDoubleTap(() => setHomeDialogOpen(true));
-
-  // Detect touch-capable device once
-  useEffect(() => {
-    try {
-      const touch = ("ontouchstart" in window) || (navigator.maxTouchPoints ?? 0) > 0;
-      setIsTouchDevice(touch);
-    } catch {
-      setIsTouchDevice(false);
-    }
-  }, []);
 
   const handleHomeDialog = () => {
     setHomeDialogOpen(true);
@@ -278,7 +267,7 @@ export default function PicksPage() {
             variant="body1"
             fontWeight="bold"
             sx={{ flex: 1, textAlign: "center", userSelect: "none", cursor: "default" }}
-            onDoubleClick={isTouchDevice ? undefined : handleHomeDialog}
+            onDoubleClick={handleHomeDialog}
             onTouchEnd={(e) => {
               // Prevent generating a subsequent dblclick event on mobile
               e.preventDefault();
