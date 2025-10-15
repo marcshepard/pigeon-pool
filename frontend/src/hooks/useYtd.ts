@@ -1,6 +1,6 @@
 /**
  * Year-to-date leaderboard hook.
- * Fetches all locked weekly leaderboards, computes YTD aggregates and rankings.
+ * Fetches all locked weekly leaderboards and computes YTD aggregates and rankings.
  * Caches the result in app cache.
  */
 
