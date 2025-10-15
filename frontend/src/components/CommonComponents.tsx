@@ -207,11 +207,16 @@ export function ConfirmDialog({
 }) {
   return (
     <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
-      <DialogTitle>{title}</DialogTitle>
-      <DialogContent>
-        <Typography variant="body2" sx={{ mt: 0.5 }}>{content}</Typography>
-      </DialogContent>
-      <DialogActions>
+      <DialogTitle sx={{ textAlign: 'center' }}>{title}</DialogTitle>
+      {/* Remove extra margin if no content */}
+      {content ? (
+        <DialogContent>
+          <Typography variant="body2" sx={{ mt: 0.5 }}>{content}</Typography>
+        </DialogContent>
+      ) : (
+        <DialogContent sx={{ p: 0, m: 0, minHeight: 0 }} />
+      )}
+      <DialogActions sx={{ justifyContent: 'center', mt: content ? 0 : '-12px' }}>
         <Button onClick={onClose} color="inherit">{cancelText}</Button>
         <BusyButton onClick={onConfirm} variant="contained">{confirmText}</BusyButton>
       </DialogActions>

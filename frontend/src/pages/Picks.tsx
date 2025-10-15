@@ -2,13 +2,24 @@
  * Let the user make or edit their picks for a given week.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import {
   Box, Stack, Typography, FormControl, InputLabel, Select, MenuItem,
   Button, RadioGroup, FormControlLabel, Radio, TextField
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import { AppSnackbar, Loading, Banner, ConfirmDialog } from "../components/CommonComponents";
+// Utility: detect double tap on mobile
+function useDoubleTap(callback: () => void, ms = 300) {
+  const lastTap = useRef<number>(0);
+  return (e: React.TouchEvent) => {
+    const now = Date.now();
+    if (now - lastTap.current < ms) {
+      callback();
+    }
+    lastTap.current = now;
+  };
+}
 import { getScheduleCurrent, getGamesForWeek, getMyPicksForWeek, setMyPicks } from "../backend/fetch";
 import type { ScheduleCurrent, Game } from "../backend/types";
 
@@ -27,6 +38,29 @@ export default function PicksPage() {
   const [loadingError, setLoadingError] = useState<string>("");
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity?: "success" | "error" | "info" | "warning"; }>({ open: false, message: "" });
   const [confirmState, setConfirmState] = useState<{ open: boolean; message: string; pending: null | (() => Promise<void>) }>({ open: false, message: "", pending: null });
+  // For hidden home-by-3 dialog
+  const [homeDialogOpen, setHomeDialogOpen] = useState(false);
+  const [homeDialogLoading, setHomeDialogLoading] = useState(false);
+  // Handler for double click/tap on Enter picks
+  const handleHomeDialog = () => {
+    setHomeDialogOpen(true);
+  };
+  const handleHomeDialogConfirm = () => {
+    if (!games) return;
+    setHomeDialogLoading(true);
+    // Set all picks to home by 3
+    setDraft((prev) => {
+      const next = { ...prev };
+      for (const g of games) {
+        next[g.game_id] = { picked_home: true, predicted_margin: 3 };
+      }
+      return next;
+    });
+    setTimeout(() => {
+      setHomeDialogLoading(false);
+      setHomeDialogOpen(false);
+    }, 250);
+  };
 
   // Load schedule/current once and pick a default week
   useEffect(() => {
@@ -232,9 +266,25 @@ export default function PicksPage() {
           </FormControl>
 
           {/* Title (center) */}
-          <Typography variant="body1" fontWeight="bold" sx={{ flex: 1, textAlign: "center" }}>
+          <Typography
+            variant="body1"
+            fontWeight="bold"
+            sx={{ flex: 1, textAlign: "center", userSelect: "none", cursor: "default" }}
+            onDoubleClick={handleHomeDialog}
+            onTouchEnd={useDoubleTap(handleHomeDialog)}
+          >
             Enter picks
           </Typography>
+      {/* Hidden dialog for home-by-3 */}
+      <ConfirmDialog
+        open={homeDialogOpen}
+        title={<span style={{ display: "block", textAlign: "center", width: "100%" }}>Auto-select home teams by 3?</span>}
+        content={null}
+        confirmText="Yes"
+        cancelText="No"
+        onConfirm={handleHomeDialogConfirm}
+        onClose={() => setHomeDialogOpen(false)}
+      />
 
           {/* Submit button (right) */}
           <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
@@ -317,7 +367,7 @@ export default function PicksPage() {
                       <FormControl component="fieldset">
                         <RadioGroup
                           row
-                          value={d?.picked_home ? "home" : "away"}
+                          value={d ? (d.picked_home ? "home" : "away") : undefined}
                           onChange={(_, val) => handlePick(g.game_id, val as "home" | "away")}
                         >
                           <FormControlLabel value="away" control={<Radio />} label={g.away_abbr} />
