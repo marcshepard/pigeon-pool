@@ -17,70 +17,6 @@ import { useAuth } from "../auth/useAuth";
 import { useYtd } from "../hooks/useYtd";
 import type { YtdRow } from "../hooks/useYtd";
 
-import Dialog from "@mui/material/Dialog";
-import DialogTitle from "@mui/material/DialogTitle";
-import DialogContent from "@mui/material/DialogContent";
-import DialogActions from "@mui/material/DialogActions";
-
-function NotesContent() {
-  return (
-    <Box sx={{ maxWidth: 600 }}>
-      <Typography variant="h6" gutterBottom>Notes</Typography>
-      <Box component="table" sx={{ width: "100%", borderCollapse: "collapse" }}>
-        <tbody>
-          <tr>
-            <td style={{ fontWeight: "bold", padding: 4, borderBottom: "1px solid #ccc" }}>
-              <Typography variant="body1" fontWeight="bold">WEEK *</Typography>
-            </td>
-            <td style={{ padding: 4, borderBottom: "1px solid #ccc" }}>
-              <Typography variant="body1">Score for the week</Typography>
-            </td>
-          </tr>
-          <tr>
-            <td style={{ fontWeight: "bold", padding: 4, borderBottom: "1px solid #ccc" }}>
-              <Typography variant="body1" fontWeight="bold">POINTS</Typography>
-            </td>
-            <td style={{ padding: 4, borderBottom: "1px solid #ccc" }}>
-              <Typography variant="body1">Total weekly position points, minus worst week (x/o)</Typography>
-            </td>
-          </tr>
-          <tr>
-            <td style={{ fontWeight: "bold", padding: 4, borderBottom: "1px solid #ccc" }}>
-              <Typography variant="body1" fontWeight="bold">YEAR</Typography>
-            </td>
-            <td style={{ padding: 4, borderBottom: "1px solid #ccc" }}>
-              <Typography variant="body1">Ranking for year based on total points</Typography>
-            </td>
-          </tr>
-          <tr>
-            <td style={{ fontWeight: "bold", padding: 4, borderBottom: "1px solid #ccc" }}>
-              <Typography variant="body1" fontWeight="bold">TOP</Typography>
-            </td>
-            <td style={{ padding: 4, borderBottom: "1px solid #ccc" }}>
-              <Typography variant="body1">Number of weekly finishes in the top five (*/o)</Typography>
-            </td>
-          </tr>
-          <tr>
-            <td style={{ fontWeight: "bold", padding: 4, borderBottom: "1px solid #ccc" }}>
-              <Typography variant="body1" fontWeight="bold">RETURN</Typography>
-            </td>
-            <td style={{ padding: 4, borderBottom: "1px solid #ccc" }}>
-              <Typography variant="body1">Total return, year-to-date</Typography>
-            </td>
-          </tr>
-          <tr>
-            <td style={{ fontWeight: "bold", padding: 4 }}>
-              <Typography variant="body1" fontWeight="bold">RANK</Typography>
-            </td>
-            <td style={{ padding: 4 }}>
-              <Typography variant="body1">Ranking for year based on total return</Typography>
-            </td>
-          </tr>
-        </tbody>
-      </Box>
-    </Box>
-  );
-}
 
 export default function YtdPage() {
   const { state } = useAuth();
@@ -108,42 +44,40 @@ export default function YtdPage() {
         key: `w_${w}`,
         header: `W${w}`,
         align: "left",
-        valueGetter: (r) => r.byWeek[w]?.rank ?? Number.POSITIVE_INFINITY,
-        renderCell: (r) => (r.byWeek[w] ? String(r.byWeek[w].rank) : "—"),
+        valueGetter: (r) => r.byWeek[w]?.points ?? null,
+        renderCell: (r) => (r.byWeek[w] && typeof r.byWeek[w].points === "number"
+          ? r.byWeek[w].points.toFixed(1)
+          : "—"),
+        info: `Scores for week ${w}`,
       });
     }
 
     cols.push(
       { key: "pointsAdj",  header: "POINTS", align: "left",
-        valueGetter: (r) => r.pointsAdj, renderCell: (r) => r.pointsAdj.toFixed(1) },
+        valueGetter: (r) => r.pointsAdj, renderCell: (r) => r.pointsAdj.toFixed(1),
+        info: "Total weekly position points, excluding the worst week" },
       { key: "yearRankPts", header: "YEAR",   align: "left",
-        valueGetter: (r) => r.yearRankPts, renderCell: (r) => String(r.yearRankPts) },
+        valueGetter: (r) => r.yearRankPts, renderCell: (r) => String(r.yearRankPts),
+        info: "Ranking for year based on total points" },
       { key: "top5",        header: "TOP",    align: "left",
-        valueGetter: (r) => r.top5, renderCell: (r) => String(r.top5) },
+        valueGetter: (r) => r.top5, renderCell: (r) => String(r.top5),
+        info: "Number of weekly finishes in the top five" },
       { key: "returnTotal", header: "RETURN", align: "left",
-        valueGetter: (r) => r.returnTotal, renderCell: (r) => r.returnTotal.toFixed(2) },
+        valueGetter: (r) => r.returnTotal, renderCell: (r) => r.returnTotal.toFixed(2),
+        info: "Total return, year-to-date" },
       { key: "yearRankRet", header: "RANK",   align: "left",
-        valueGetter: (r) => r.yearRankRet, renderCell: (r) => String(r.yearRankRet) },
+        valueGetter: (r) => r.yearRankRet, renderCell: (r) => String(r.yearRankRet),
+        info: "Ranking for year based on total return" },
     );
 
     return cols;
   }, [weeks]);
 
-  const [notesOpen, setNotesOpen] = useState(false);
-
   return (
     <Box mt={4} mb={2}>
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
         <Typography variant="body1" fontWeight="bold" sx={{ flex: 1, textAlign: "left" }}>Year to Date</Typography>
-        <Box sx={{ flex: 1, textAlign: "center" }}>
-          <Button
-            variant="text"
-            onClick={() => setNotesOpen(true)}
-            sx={{ textTransform: "none", fontSize: "1rem" }}
-          >
-            Notes
-          </Button>
-        </Box>
+        <Box sx={{ flex: 1 }} />
         <Box sx={{ flex: 1, textAlign: "right" }}>
           <Button variant="outlined" onClick={() => window.print()}>Print</Button>
         </Box>
@@ -170,16 +104,6 @@ export default function YtdPage() {
         severity={snack.severity}
         onClose={() => setSnack(s => ({ ...s, open: false }))}
       />
-
-      <Dialog open={notesOpen} onClose={() => setNotesOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Notes</DialogTitle>
-        <DialogContent>
-          <NotesContent />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setNotesOpen(false)} color="primary">Close</Button>
-        </DialogActions>
-      </Dialog>
     </Box>
   );
 }

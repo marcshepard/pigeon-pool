@@ -7,6 +7,10 @@ import type { ReactNode } from "react";
 import { Box, Table, TableHead, TableRow, TableCell, TableBody } from "@mui/material";
 import type { Theme } from "@mui/material/styles";
 
+import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
+import IconButton from "@mui/material/IconButton";
+import Popover from "@mui/material/Popover";
+
 export type ColumnDef<T> = {
   key: string;
   header: ReactNode;
@@ -17,6 +21,7 @@ export type ColumnDef<T> = {
   renderCell?: (row: T) => ReactNode;
   sortComparator?: (a: unknown, b: unknown, rowA: T, rowB: T) => number;
   pin?: "left" | "right";
+  info?: ReactNode; // Optional info/hint for header
 };
 
 export type DataGridLiteProps<T> = {
@@ -97,6 +102,10 @@ export function DataGridLite<T>({
     });
   }, [rows, sortKey, sortDir, allowSort, orderedCols]);
 
+  // State for info popover
+  const [infoAnchor, setInfoAnchor] = useState<null | HTMLElement>(null);
+  const [infoContent, setInfoContent] = useState<ReactNode>(null);
+
   const headerCell = (c: ColumnDef<T>) => {
     const isSorted = sortKey === c.key;
     const sortable = allowSort && (c.sortable ?? true) && !!c.valueGetter;
@@ -129,7 +138,6 @@ export function DataGridLite<T>({
         sx={{
           position: "sticky",
           top: 0,
-          // Ensure headers sit above body cells
           zIndex: 10,
           fontWeight: 600,
           cursor: sortable ? "pointer" : "default",
@@ -137,16 +145,31 @@ export function DataGridLite<T>({
           px: 0.5,
           py: 0.25,
           whiteSpace: "nowrap",
-          // Fully opaque header background
           backgroundColor: (theme) => theme.palette.background.paper,
           ...(c.width ? { width: c.width, minWidth: c.width } : {}),
-          // Pinned headers must sit above pinned body cells
           ...(c.pin === "left"  && { left: 0,  zIndex: 12, boxShadow: "inset -1px 0 0 rgba(0,0,0,0.12)" }),
           ...(c.pin === "right" && { right: 0, zIndex: 12, boxShadow: "inset  1px 0 0 rgba(0,0,0,0.12)" }),
         }}
         aria-sort={isSorted ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
       >
-        {c.header}
+        <Box sx={{ display: "flex", alignItems: "flex-start", gap: 0.5 }}>
+          {c.header}
+          {c.info && (
+            <IconButton
+              size="small"
+              sx={{ ml: 0.5, p: 0.25, mt: '-2px' }}
+              onClick={e => {
+                e.stopPropagation();
+                setInfoAnchor(e.currentTarget);
+                setInfoContent(c.info);
+              }}
+              tabIndex={0}
+              aria-label="Column info"
+            >
+              <InfoOutlinedIcon fontSize="small" />
+            </IconButton>
+          )}
+        </Box>
       </TableCell>
     );
   };
@@ -218,12 +241,11 @@ export function DataGridLite<T>({
         overflow: "auto",
         maxHeight: "75vh",
 
-        // Compactification
-        "& .MuiTableRow-root": { height: "auto" },                 // no fixed row height
+        "& .MuiTableRow-root": { height: "auto" },
         "& .MuiTableCell-root": { px: 0.5, py: 0.25, lineHeight: 1.1, fontSize: "0.85rem" },
         "& .MuiTableCell-head": { fontSize: "0.85rem", fontWeight: 600, lineHeight: 1.1 },
-        "& .MuiIconButton-root": { p: 0.25 },                      // shrink sort button padding
-        "& .MuiSvgIcon-root": { fontSize: "0.9rem" },              // smaller sort chevron
+        "& .MuiIconButton-root": { p: 0.25 },
+        "& .MuiSvgIcon-root": { fontSize: "0.9rem" },
 
         ".print-hide": { "@media print": { display: "none !important" } },
         "@media print": {
@@ -261,6 +283,17 @@ export function DataGridLite<T>({
           {pinnedBottomRows.map((r, i) => renderRow(r, i + pinnedTopRows.length + sortedRows.length))}
         </TableBody>
       </Table>
+
+      <Popover
+        open={Boolean(infoAnchor)}
+        anchorEl={infoAnchor}
+        onClose={() => setInfoAnchor(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'center' }}
+        PaperProps={{ sx: { p: 1, maxWidth: 240 } }}
+      >
+        <Box sx={{ minWidth: 120, fontSize: '0.95em' }}>{infoContent}</Box>
+      </Popover>
     </Box>
   );
 //
