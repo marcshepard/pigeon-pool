@@ -12,7 +12,7 @@ import { useAuth } from "../auth/useAuth";
 import { useResults, type ResultsRow } from "../hooks/useResults";
 import { useSchedule } from "../hooks/useSchedule";
 
-export default function ResultsPage() {
+export default function PicksheetPage() {
   const { state } = useAuth();
   const { lockedWeeks } = useSchedule();
   const [week, setWeek] = useState<number | null>(null);

@@ -13,12 +13,12 @@ export default function AboutPage() {
                 If you don't submit picks by the deadline, you will get a last place finish for the week.
             </Typography>
             <Typography variant="body1">
-                <b>2.</b> You will be able to see everyone's picks on the <Link to="/results">Results page</Link> Thursday morning.
+                <b>2.</b> You will be able to see everyone's picks on the <Link to="/picksheet">Picksheet</Link> Thursday morning.
             </Typography>
             <Typography variant="body1">
                 <b>4.</b> Your score for the week is the total of the DIFFERENCES between your picked spreads and the actual spreads,
                 plus a seven point “penalty” for each game where you did not pick the winning team. The lower your weekly score, the better.
-                Partial and final scores will also be available on the <Link to="/results">Results page</Link> once the first game has started.
+                Partial and final scores will also be available on the <Link to="/picksheet">Picksheet</Link> once the first game has started.
             </Typography>
             <Typography variant="body1">
                 <b>5.</b> Your cumulative score is the sum of your weekly rankings, MINUS your highest weekly ranking.
