@@ -60,7 +60,7 @@ export default function AboutPage() {
                                 <TableCell align="center">270</TableCell>
                                 <TableCell align="center">160</TableCell>
                                 <TableCell align="center">100</TableCell>
-                                <TableCell align="center">7</TableCell>
+                                <TableCell align="center">70</TableCell>
                             </TableRow>
                         </TableBody>
                     </Table>
