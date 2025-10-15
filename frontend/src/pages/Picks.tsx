@@ -367,7 +367,7 @@ export default function PicksPage() {
                       <FormControl component="fieldset">
                         <RadioGroup
                           row
-                          value={d ? (d.picked_home ? "home" : "away") : undefined}
+                          value={d && d.predicted_margin > 0 ? (d.picked_home ? "home" : "away") : undefined}
                           onChange={(_, val) => handlePick(g.game_id, val as "home" | "away")}
                         >
                           <FormControlLabel value="away" control={<Radio />} label={g.away_abbr} />
