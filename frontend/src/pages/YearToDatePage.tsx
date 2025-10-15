@@ -48,7 +48,7 @@ export default function YtdPage() {
         renderCell: (r) => (r.byWeek[w] && typeof r.byWeek[w].points === "number"
           ? r.byWeek[w].points.toFixed(1)
           : "—"),
-        info: `Scores for week ${w}`,
+        info: `Points for week ${w}`,
       });
     }
 
