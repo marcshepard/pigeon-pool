@@ -19,7 +19,7 @@ const tiles = [
     {
         path: "/picksheet",
         icon: <ListAltIcon color="primary" sx={{ fontSize: 40 }} />,
-        label: "Picksheet & results",
+        label: "Picks and Results",
         desc: "View the picksheet and results for this or a previous week",
     },
     {

@@ -58,7 +58,7 @@ function getNavItems(isAdmin: boolean): NavItem[] {
   const items: NavItem[] = [
     { path: "/", label: "Home", icon: <HomeIcon fontSize="small" /> },
     { path: "/picks", label: "Enter Picks", icon: <EditNoteIcon fontSize="small" /> },
-    { path: "/picksheet", label: "Picksheet", icon: <ListAltIcon fontSize="small" /> },
+    { path: "/picksheet", label: "Picks and Results", icon: <ListAltIcon fontSize="small" /> },
     { path: "/mnf-outcomes", label: "MNF Outcomes", icon: <SportsFootballIcon fontSize="small" /> },
     { path: "/year-to-date", label: "Year-to-Date", icon: <EmojiEventsIcon fontSize="small" /> },
     { path: "/about", label: "About", icon: <InfoOutlinedIcon fontSize="small" /> },

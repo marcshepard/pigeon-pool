@@ -159,7 +159,7 @@ export default function PicksheetPage() {
         : <>
             {weekState !== "not started" && 
               <Typography variant="body1" sx={{ mb: 1 }}>
-                Bracketed numbers indicate points from completed games. For example, you might see "PHI 3 (4)" if they were picked by 3 and won by 7.
+                Numbers in parentheses indicate the player's score for each completed game. For example, you would see "PHI 3 (4)" if Phil was picked to win by 3 and won by 7.
               </Typography>
             }
             <PrintArea className="print-grid-area">
