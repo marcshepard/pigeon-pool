@@ -6,7 +6,14 @@
 import { create } from "zustand";
 import { LeaderboardRow, WeekPicksRow, ScheduleCurrent } from "../backend/types";
 
-export type GameMeta = { game_id: number; home_abbr: string; away_abbr: string };
+export type GameMeta = {
+  game_id: number;
+  home_abbr: string;
+  away_abbr: string;
+  status?: "scheduled" | "in_progress" | "final";
+  home_score?: number | null;
+  away_score?: number | null;
+};
 
 type TimeStamped<T> = { at: number; data: T };
 

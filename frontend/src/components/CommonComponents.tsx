@@ -250,7 +250,7 @@ export function PickCell({
   return (
     <Box sx={{ position: "relative", display: "inline-block", minWidth: 70 }}>
       {/* Removed colored bar background */}
-      <Box sx={{ position: "relative", textAlign: "center", fontVariantNumeric: "tabular-nums" }}>
+      <Box sx={{ position: "relative", textAlign: "left", fontVariantNumeric: "tabular-nums" }}>
         {label}
       </Box>
     </Box>

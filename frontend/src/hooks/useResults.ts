@@ -17,10 +17,29 @@ export type ResultsRow = {
   rank: number | null;
 };
 
+// Compute player score for a finished game given their signed prediction and the actual margin.
+function scoreForPick(predSigned: number, actualSigned: number): number {
+  const pickedHome = predSigned >= 0; // >=0 means home side
+  const winnerHome = actualSigned > 0; // >0 home won, 0 tie, <0 away won
+  const diff = Math.abs(Math.abs(predSigned) - Math.abs(actualSigned));
+  const wrongWinner = actualSigned === 0 || pickedHome !== winnerHome;
+  return diff + (wrongWinner ? 7 : 0);
+}
+
 function shapeRowsAndGames(picks: ApiWeekPick[], lb: ApiLeaderboardRow[]) {
   const games: GameMeta[] = [
     ...new Map(
-      picks.map((p) => [p.game_id, { game_id: p.game_id, home_abbr: p.home_abbr, away_abbr: p.away_abbr }])
+      picks.map((p) => [
+        p.game_id,
+        {
+          game_id: p.game_id,
+          home_abbr: p.home_abbr,
+          away_abbr: p.away_abbr,
+          status: p.status,
+          home_score: p.home_score ?? null,
+          away_score: p.away_score ?? null,
+        } satisfies GameMeta,
+      ])
     ).values(),
   ];
 
@@ -31,7 +50,14 @@ function shapeRowsAndGames(picks: ApiWeekPick[], lb: ApiLeaderboardRow[]) {
     const key = `g_${p.game_id}`;
     const signed = p.picked_home ? +p.predicted_margin : -p.predicted_margin;
     const team = p.picked_home ? p.home_abbr : p.away_abbr;
-    const label = p.predicted_margin === 0 ? "" : `${team} ${p.predicted_margin}`;
+    let label = p.predicted_margin === 0 ? "" : `${team} ${p.predicted_margin}`;
+
+    // If this game is final and a pick exists, append per-pick score e.g., "PHI 10 (3)".
+    if (label && p.status === "final" && p.home_score != null && p.away_score != null) {
+      const actualSigned = p.home_score - p.away_score; // + if home won, - if away won, 0 tie
+      const sc = scoreForPick(signed, actualSigned);
+      label = `${label} (${sc})`;
+    }
 
     let row = byPigeon.get(p.pigeon_number);
     if (!row) {
@@ -135,7 +161,7 @@ export function useResults(week: number | null) {
     }
     }, [week, liveWeek, rows]);
 
-    const consensusRow: ResultsRow | null = useMemo(() => {
+  const consensusRow: ResultsRow | null = useMemo(() => {
     if (!rows.length) return null;
 
     const out: ResultsRow = {
@@ -164,5 +190,27 @@ export function useResults(week: number | null) {
     return out;
     }, [rows, games]);
 
-    return { rows, games, weekState, consensusRow, loading, error };
+    // Pinned "Result" row for finished games: shows e.g., "PHI 3"
+    const resultRow: ResultsRow | null = useMemo(() => {
+      if (!games.length) return null;
+      const out: ResultsRow = {
+        pigeon_number: -1,
+        pigeon_name: "Result",
+        picks: {},
+        points: null,
+        rank: null,
+      };
+      for (const g of games) {
+        const key = `g_${g.game_id}`;
+        if (g.status === "final" && g.home_score != null && g.away_score != null) {
+          const signed = g.home_score - g.away_score; // +home, -away, 0 tie
+          const team = signed >= 0 ? g.home_abbr : g.away_abbr;
+          const label = signed === 0 ? "TIE 0" : `${team} ${Math.abs(signed)}`;
+          out.picks[key] = { signed, label, home_abbr: g.home_abbr, away_abbr: g.away_abbr };
+        }
+      }
+      return out;
+    }, [games]);
+
+    return { rows, games, weekState, consensusRow, resultRow, loading, error };
 }

@@ -26,7 +26,7 @@ export default function PicksheetPage() {
   }, [lockedWeeks, week]);
 
   // Cache-backed data for the selected week
-  const { rows, games, weekState, consensusRow, loading, error } = useResults(week);
+  const { rows, games, weekState, consensusRow, resultRow, loading, error } = useResults(week);
 
   useEffect(() => {
     if (error) setSnack({ open: true, message: error, severity: "error" });
@@ -65,8 +65,8 @@ export default function PicksheetPage() {
       const key = `g_${g.game_id}`;
       cols.push({
         key,
-        header: <Box sx={{ textAlign: "center" }}>{g.away_abbr} @ {g.home_abbr}</Box>,
-        align: "center",
+        header: <Box sx={{ textAlign: "left" }}>{g.away_abbr} @ {g.home_abbr}</Box>,
+        align: "left",
         sortable: true,
         valueGetter: (r) => r.picks[key]?.signed ?? 0,
         renderCell: (r) => {
@@ -139,7 +139,12 @@ export default function PicksheetPage() {
                 rows={rows}
                 columns={columns}
                 pinnedTopRows={[]}
-                pinnedBottomRows={consensusRow ? [consensusRow] : []}
+                pinnedBottomRows={
+                  consensusRow && resultRow ? [consensusRow, resultRow]
+                  : consensusRow ? [consensusRow]
+                  : resultRow ? [resultRow]
+                  : []
+                }
                 defaultSort={{ key: "pigeon_name", dir: "asc" }}
                 printTitle={`Results — Week ${week ?? ""}`}
                 getRowId={(r) => r.pigeon_number}
