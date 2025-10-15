@@ -81,8 +81,8 @@ export default function PicksheetPage() {
 
   return (
     <>
-  <PrintOnlyStyles areaClass="print-area" landscape margin="8mm" />
-  <PrintGridStyles />
+      <PrintOnlyStyles areaClass="print-area" landscape margin="8mm" />
+      <PrintGridStyles />
 
       <Box>
         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>

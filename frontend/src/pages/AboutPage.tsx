@@ -3,9 +3,9 @@ import { Link } from "react-router-dom";
 
 export default function AboutPage() {
     return (
-        <Box maxWidth={700} mx="auto" mt={4} p={2}>
-            <Typography variant="h6" gutterBottom align="center" fontWeight={700}>
-                PIGEON POOL RULES
+        <Box maxWidth={700} mx="auto">
+            <Typography variant="body1" gutterBottom align="center" fontWeight={700}>
+                Pigeon pool rules
             </Typography>
             <Typography variant="body1" sx={{ mb: 1 }}>
                 <b>1.</b> Submit your picks from the <Link to="/picks">Picks page</Link> by Tuesday midnight PST.

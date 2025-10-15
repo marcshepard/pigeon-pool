@@ -98,7 +98,7 @@ export default function YtdPage() {
   }, [weeks, rows]);
 
   return (
-    <Box mt={4} mb={2}>
+    <Box>
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
         <Typography variant="body1" fontWeight="bold" sx={{ flex: 1, textAlign: "left" }}>Year to Date</Typography>
         <Box sx={{ flex: 1 }} />

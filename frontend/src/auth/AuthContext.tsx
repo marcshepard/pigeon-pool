@@ -42,8 +42,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     refresh();
   }, []);
 
+
+  const adminEmails = [
+    //"marcshepard@outlook.com",
+    "pigeonfootballpool@gmail.com"
+  ];
+
+  const isAdmin = () => {
+    if (state.status === "signedIn") {
+      return adminEmails.includes(state.user.email);
+    }
+    return false;
+  };
+
   const value = useMemo<AuthContextValue>(
-    () => ({ state, refresh, signIn, signOut }),
+    () => ({ state, refresh, signIn, signOut, isAdmin }),
     [state]   // eslint-disable-line react-hooks/exhaustive-deps
   );
 

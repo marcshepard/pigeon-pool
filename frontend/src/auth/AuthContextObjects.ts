@@ -10,11 +10,13 @@ export type AuthState =
   | { status: "signedOut" }
   | { status: "signedIn"; user: Me };
 
+
 export type AuthContextValue = {
   state: AuthState;
   refresh: () => Promise<void>;
   signIn: (payload: LoginPayload) => Promise<void>;
   signOut: () => Promise<void>;
+  isAdmin: () => boolean;
 };
 
 // ✅ only export context + types (no React components)

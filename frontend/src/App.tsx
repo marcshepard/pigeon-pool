@@ -2,31 +2,38 @@
  * Main application component with routing and theming.
  */
 
-// src/App.tsx
+// React
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+
+// 3rd party
 import { CssBaseline, ThemeProvider, createTheme, LinearProgress, Box } from "@mui/material";
-import UserMenuAvatar from "./components/UserMenuAvatar";
-
-// auth
-import { AuthProvider } from "./auth/AuthContext";
-import { useAuth } from "./auth/useAuth";
-
-// shell + pages
-import ResponsiveNav from "./components/ResponsiveNav";
-import LoginPage from "./pages/Login";
-import PasswordResetConfirmPage from "./pages/PasswordResetConfirmPage";
-import HomePage from "./pages/Home";
-import PicksPage from "./pages/Picks";
-import PicksheetPage from "./pages/Picksheet";
-import YearToDatePage from "./pages/YearToDatePage";
-import AboutPage from "./pages/AboutPage";
-
-import type { NavItem } from "./components/ResponsiveNav";
 import HomeIcon from "@mui/icons-material/Home";
 import ListAltIcon from "@mui/icons-material/ListAlt";
 import EmojiEventsIcon from "@mui/icons-material/EmojiEvents";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import EditNoteIcon from "@mui/icons-material/EditNote";
+import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
+import SportsFootballIcon from "@mui/icons-material/SportsFootball";
+
+// auth
+import { AuthProvider } from "./auth/AuthContext";
+import { useAuth } from "./auth/useAuth";
+import LoginPage from "./pages/Login";
+import PasswordResetConfirmPage from "./pages/PasswordResetConfirmPage";
+
+// shell
+import UserMenuAvatar from "./components/UserMenuAvatar";
+import type { NavItem } from "./components/ResponsiveNav";
+import ResponsiveNav from "./components/ResponsiveNav";
+
+// pages
+import HomePage from "./pages/Home";
+import PicksPage from "./pages/Picks";
+import PicksheetPage from "./pages/Picksheet";
+import MnfOutcomesPage from "./pages/MnfOutcomes";
+import YearToDatePage from "./pages/YearToDatePage";
+import AboutPage from "./pages/AboutPage";
+import AdminPage from "./pages/Admin";
 
 // ---- optional theme ----
 const theme = createTheme({
@@ -46,16 +53,24 @@ function Brand() {
   );
 }
 
-const navItems: NavItem[] = [
-  { path: "/", label: "Home", icon: <HomeIcon fontSize="small" /> },
-  { path: "/picks", label: "Enter Picks", icon: <EditNoteIcon fontSize="small" /> },
-  { path: "/picksheet", label: "Picksheet", icon: <ListAltIcon fontSize="small" /> },
-  { path: "/year-to-date", label: "Year-to-Date", icon: <EmojiEventsIcon fontSize="small" /> },
-  { path: "/about", label: "About", icon: <InfoOutlinedIcon fontSize="small" /> },
-];
+
+function getNavItems(isAdmin: boolean): NavItem[] {
+  const items: NavItem[] = [
+    { path: "/", label: "Home", icon: <HomeIcon fontSize="small" /> },
+    { path: "/picks", label: "Enter Picks", icon: <EditNoteIcon fontSize="small" /> },
+    { path: "/picksheet", label: "Picksheet", icon: <ListAltIcon fontSize="small" /> },
+    { path: "/mnf-outcomes", label: "MNF Outcomes", icon: <SportsFootballIcon fontSize="small" /> },
+    { path: "/year-to-date", label: "Year-to-Date", icon: <EmojiEventsIcon fontSize="small" /> },
+    { path: "/about", label: "About", icon: <InfoOutlinedIcon fontSize="small" /> },
+  ];
+  if (isAdmin) {
+    items.push({ path: "/admin", label: "Admin", icon: <AdminPanelSettingsIcon fontSize="small" /> });
+  }
+  return items;
+}
 
 function PrivateShell() {
-  const { state, signOut } = useAuth();
+  const { state, signOut, isAdmin } = useAuth();
 
   // First boot: probing /auth/me
   if (state.status === "unknown") {
@@ -86,15 +101,17 @@ function PrivateShell() {
     <ResponsiveNav
       title="Pigeon Pool"
       brand={<Brand />}
-      navItems={navItems}
+      navItems={getNavItems(isAdmin())}
       userMenu={userMenu}
     >
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/picks" element={<PicksPage />} />
         <Route path="/picksheet" element={<PicksheetPage />} />
+        <Route path="/mnf-outcomes" element={<MnfOutcomesPage />} />
         <Route path="/year-to-date" element={<YearToDatePage />} />
         <Route path="/about" element={<AboutPage />} />
+        <Route path="/admin" element={isAdmin() ? <AdminPage /> : <Box p={3}>Not authorized</Box>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </ResponsiveNav>
