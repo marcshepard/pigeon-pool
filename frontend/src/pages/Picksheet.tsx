@@ -32,6 +32,16 @@ export default function PicksheetPage() {
     if (error) setSnack({ open: true, message: error, severity: "error" });
   }, [error]);
 
+  // Always bring the highlighted user row into view when rows or week change
+  useEffect(() => {
+    if (state.status !== "signedIn") return;
+    if (!rows.length) return;
+    const el = document.querySelector('.user-row');
+    if (el instanceof HTMLElement) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [rows, state.status, week]);
+
   // Columns ----------------------------------------------------------
   const columns: ColumnDef<ResultsRow>[] = useMemo(() => {
     const cols: ColumnDef<ResultsRow>[] = [
@@ -83,7 +93,7 @@ export default function PicksheetPage() {
           <Box sx={{ textAlign: "left", lineHeight: 1.15 }}>
             <Box>{g.away_abbr} @ {g.home_abbr}</Box>
             {subLabel && (
-              <Box component="span" sx={{ display: "block", fontSize: "0.75em", fontWeight: 400, color: "text.secondary" }}>
+              <Box component="span" sx={{ display: "block", fontSize: ".85em", fontWeight: 400, color: "text.secondary" }}>
                 {subLabel}
               </Box>
             )}
@@ -154,16 +164,22 @@ export default function PicksheetPage() {
             }
             <PrintArea className="print-grid-area">
               <DataGridLite<ResultsRow>
+                key={`grid-${weekState}`}
                 rows={rows}
                 columns={columns}
                 pinnedTopRows={[]}
                 pinnedBottomRows={
                   consensusRow ? [consensusRow] : []
                 }
-                defaultSort={{ key: "pigeon_name", dir: "asc" }}
+                defaultSort={
+                  weekState === "not started"
+                    ? { key: "pigeon_name", dir: "asc" }
+                    : { key: "points", dir: "asc" }
+                }
                 printTitle={`Results — Week ${week ?? ""}`}
                 getRowId={(r) => r.pigeon_number}
                 highlightRowId={state.status === "signedIn" ? state.user.pigeon_number : undefined}
+                autoScrollHighlightOnSort
               />
             </PrintArea>
           </>

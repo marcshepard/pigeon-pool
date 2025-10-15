@@ -2,7 +2,7 @@
  * DataGridLite lite component, sortable table with pinned columns
  */
 
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import type { ReactNode } from "react";
 import { Box, Table, TableHead, TableRow, TableCell, TableBody } from "@mui/material";
 import type { Theme } from "@mui/material/styles";
@@ -39,6 +39,8 @@ export type DataGridLiteProps<T> = {
   getRowId?: (row: T, index: number) => string | number;
   /** If provided, the row with this id will be highlighted */
   highlightRowId?: string | number;
+  /** When true, automatically scroll the highlighted row into view after sort changes */
+  autoScrollHighlightOnSort?: boolean;
 };
 
 function defaultComparator(a: unknown, b: unknown) {
@@ -64,9 +66,11 @@ export function DataGridLite<T>({
   printTitle,
   getRowId,
   highlightRowId,
+  autoScrollHighlightOnSort = false,
 }: DataGridLiteProps<T>) {
   const [sortKey, setSortKey] = useState<string | null>(defaultSort?.key ?? null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">(defaultSort?.dir ?? "asc");
+  const containerRef = useRef<HTMLDivElement | null>(null);
 
   const orderedCols = useMemo(() => {
     const left = columns.filter(c => c.pin === "left");
@@ -101,6 +105,17 @@ export function DataGridLite<T>({
       return sortDir === "asc" ? s : -s;
     });
   }, [rows, sortKey, sortDir, allowSort, orderedCols]);
+
+  // When sorting changes, optionally scroll the highlighted row into view
+  useEffect(() => {
+    if (!autoScrollHighlightOnSort) return;
+    if (!containerRef.current) return;
+    if (highlightRowId === undefined || highlightRowId === null) return;
+    const el = containerRef.current.querySelector('.user-row');
+    if (el instanceof HTMLElement) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [sortKey, sortDir, autoScrollHighlightOnSort, highlightRowId]);
 
   // State for info popover
   const [infoAnchor, setInfoAnchor] = useState<null | HTMLElement>(null);
@@ -234,6 +249,7 @@ export function DataGridLite<T>({
   return (
     <Box
       className="print-container"
+      ref={containerRef}
       sx={{
         border: 1,
         borderColor: "divider",
