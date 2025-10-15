@@ -26,7 +26,7 @@ export default function PicksheetPage() {
   }, [lockedWeeks, week]);
 
   // Cache-backed data for the selected week
-  const { rows, games, weekState, consensusRow, resultRow, loading, error } = useResults(week);
+  const { rows, games, weekState, consensusRow, loading, error } = useResults(week);
 
   useEffect(() => {
     if (error) setSnack({ open: true, message: error, severity: "error" });
@@ -63,9 +63,32 @@ export default function PicksheetPage() {
 
     for (const g of games) {
       const key = `g_${g.game_id}`;
+      // Build a sub-label under the matchup: Not started | In progress | Final score
+      // Only show when the week has started (i.e., not in "not started" state)
+      let subLabel: string = "";
+      if (weekState !== "not started") {
+        if (g.status === "scheduled") {
+          subLabel = "Not started";
+        } else if (g.status === "in_progress") {
+          subLabel = "In progress";
+        } else if (g.status === "final" && g.home_score != null && g.away_score != null) {
+          const signed = g.home_score - g.away_score; // +home, -away, 0 tie
+          subLabel = signed === 0 ? "TIE 0" : `${signed >= 0 ? g.home_abbr : g.away_abbr} ${Math.abs(signed)}`;
+        }
+      }
+
       cols.push({
         key,
-        header: <Box sx={{ textAlign: "left" }}>{g.away_abbr} @ {g.home_abbr}</Box>,
+        header: (
+          <Box sx={{ textAlign: "left", lineHeight: 1.15 }}>
+            <Box>{g.away_abbr} @ {g.home_abbr}</Box>
+            {subLabel && (
+              <Box component="span" sx={{ display: "block", fontSize: "0.75em", fontWeight: 400, color: "text.secondary" }}>
+                {subLabel}
+              </Box>
+            )}
+          </Box>
+        ),
         align: "left",
         sortable: true,
         valueGetter: (r) => r.picks[key]?.signed ?? 0,
@@ -135,10 +158,7 @@ export default function PicksheetPage() {
                 columns={columns}
                 pinnedTopRows={[]}
                 pinnedBottomRows={
-                  consensusRow && resultRow ? [consensusRow, resultRow]
-                  : consensusRow ? [consensusRow]
-                  : resultRow ? [resultRow]
-                  : []
+                  consensusRow ? [consensusRow] : []
                 }
                 defaultSort={{ key: "pigeon_name", dir: "asc" }}
                 printTitle={`Results — Week ${week ?? ""}`}

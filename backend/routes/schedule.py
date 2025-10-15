@@ -93,13 +93,24 @@ async def get_current_weeks(db: AsyncSession = Depends(get_db)):
     """))).first()
     next_picks_week = next_row[0] if next_row else None
 
-    # "Live" week = latest locked week with any non-final game
+    # "Live" week = latest locked week started but not completed
     live_row = (await db.execute(text("""
         SELECT g.week_number
         FROM games g
         JOIN weeks w ON w.week_number = g.week_number
         WHERE w.lock_at <= now()
-          AND g.status IN ('scheduled', 'in_progress')
+            AND EXISTS ( -- At least one game started
+                    SELECT 1
+                    FROM games g2
+                    WHERE g2.week_number = g.week_number
+                        AND g2.status IN ('in_progress', 'completed')
+            )
+            AND EXISTS ( -- But not all games completed
+                    SELECT 1
+                    FROM games g3
+                    WHERE g3.week_number = g.week_number
+                        AND g3.status != 'completed'
+            )
         ORDER BY g.week_number DESC
         LIMIT 1
     """))).first()

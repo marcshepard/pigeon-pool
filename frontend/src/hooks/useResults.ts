@@ -79,53 +79,54 @@ function shapeRowsAndGames(picks: ApiWeekPick[], lb: ApiLeaderboardRow[]) {
 }
 
 export function useResults(week: number | null) {
-    // Select each store accessor separately to avoid infinite re-renders
-    const getResultsWeek = useAppCache((s) => s.getResultsWeek);
-    const setResultsWeek = useAppCache((s) => s.setResultsWeek);
-    const getSchedule    = useAppCache((s) => s.getSchedule);
-    const setSchedule    = useAppCache((s) => s.setSchedule);
+  // Select each store accessor separately to avoid infinite re-renders
+  const getResultsWeek = useAppCache((s) => s.getResultsWeek);
+  const setResultsWeek = useAppCache((s) => s.setResultsWeek);
+  const getSchedule    = useAppCache((s) => s.getSchedule);
+  const setSchedule    = useAppCache((s) => s.setSchedule);
 
-    const [rows, setRows]   = useState<ResultsRow[]>([]);
-    const [games, setGames] = useState<GameMeta[]>([]);
-    const [liveWeek, setLiveWeek] = useState<number | null>(null);
-    const [weekState, setWeekState] = useState<"completed" | "in progress" | "not started">("completed");
-    const [loading, setLoading] = useState(false);
-    const [error, setError]     = useState<string | null>(null);
+  const [rows, setRows]   = useState<ResultsRow[]>([]);
+  const [games, setGames] = useState<GameMeta[]>([]);
+  const [liveWeek, setLiveWeek] = useState<number | null>(null);
+  const [nextPickWeek, setNextPickWeek] = useState<number | null>(null);
+  const [weekState, setWeekState] = useState<"completed" | "in progress" | "not started">("completed");
+  const [loading, setLoading] = useState(false);
+  const [error, setError]     = useState<string | null>(null);
 
     // EFFECT 1: fetch/cache data for the selected week (no liveWeek read here)
     useEffect(() => {
-    if (week == null) return;
-    let cancelled = false;
-    (async () => {
-        try {
-        setLoading(true);
-        const cached = getResultsWeek(week);
-        if (cached) {
-            const shapedRows = (cached.rows as ResultsRow[] | undefined)
-            ?? shapeRowsAndGames(cached.picks, cached.lb).rows;
-            if (!cancelled) {
-            setRows([...shapedRows]);   // make mutable copy
-            setGames(cached.games);
-            }
-        } else {
-            const [picks, lb] = await Promise.all([
-            getResultsWeekPicks(week),
-            getResultsWeekLeaderboard(week),
-            ]);
-            const shaped = shapeRowsAndGames(picks, lb);
-            if (!cancelled) {
-            setRows([...shaped.rows]);
-            setGames(shaped.games);
-            }
-            setResultsWeek(week, { picks, lb, games: shaped.games, rows: shaped.rows as unknown[] });
-        }
-        } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e ?? ""));
-        } finally {
-        if (!cancelled) setLoading(false);
-        }
-    })();
-    return () => { cancelled = true; };
+      if (week == null) return;
+      let cancelled = false;
+      (async () => {
+          try {
+          setLoading(true);
+          const cached = getResultsWeek(week);
+          if (cached) {
+              const shapedRows = (cached.rows as ResultsRow[] | undefined)
+              ?? shapeRowsAndGames(cached.picks, cached.lb).rows;
+              if (!cancelled) {
+              setRows([...shapedRows]);   // make mutable copy
+              setGames(cached.games);
+              }
+          } else {
+              const [picks, lb] = await Promise.all([
+              getResultsWeekPicks(week),
+              getResultsWeekLeaderboard(week),
+              ]);
+              const shaped = shapeRowsAndGames(picks, lb);
+              if (!cancelled) {
+              setRows([...shaped.rows]);
+              setGames(shaped.games);
+              }
+              setResultsWeek(week, { picks, lb, games: shaped.games, rows: shaped.rows as unknown[] });
+          }
+          } catch (e) {
+          if (!cancelled) setError(e instanceof Error ? e.message : String(e ?? ""));
+          } finally {
+          if (!cancelled) setLoading(false);
+          }
+      })();
+      return () => { cancelled = true; };
     }, [week, getResultsWeek, setResultsWeek]);
 
     // EFFECT 2 (cache-first schedule):
@@ -136,7 +137,8 @@ export function useResults(week: number | null) {
           // 1) try cache
           const cached = getSchedule();
           if (cached && !cancelled) {
-            setLiveWeek(cached.live_week ?? null);   // ✅ use the setter
+            setLiveWeek(cached.live_week ?? null);
+            setNextPickWeek(cached.next_picks_week ?? null);
             return;
           }
 
@@ -144,7 +146,10 @@ export function useResults(week: number | null) {
           const sc = await getScheduleCurrent();
           const sig = { live_week: sc.live_week ?? null, next_picks_week: sc.next_picks_week ?? null };
           setSchedule(sig);
-          if (!cancelled) setLiveWeek(sig.live_week);  // ✅ use the setter
+          if (!cancelled) {
+            setLiveWeek(sig.live_week);
+            setNextPickWeek(sig.next_picks_week);
+          }
         } catch {
           // ignore
         }
@@ -152,15 +157,42 @@ export function useResults(week: number | null) {
       return () => { cancelled = true; };
     }, [getSchedule, setSchedule]);
 
-    // EFFECT 3: compute weekState from liveWeek + rows
+    // EFFECT 3: compute weekState from liveWeek + nextPickWeek
     useEffect(() => {
-    if (week == null || liveWeek == null || week !== liveWeek) {
-        setWeekState("completed");
-    } else {
-        const allZero = rows.every(r => (r.points ?? 0) === 0);
-        setWeekState(allZero ? "not started" : "in progress");
-    }
-    }, [week, liveWeek, rows]);
+      if (week == null) {
+        setWeekState("not started");
+        return;
+      }
+
+      if (liveWeek !== null) {
+        if (week === liveWeek) {
+          setWeekState("in progress");
+          return;
+        }
+        if (week < liveWeek) {
+          setWeekState("completed");
+          return;
+        }
+        if (week > liveWeek) {
+          setWeekState("not started");
+          return;
+        }
+      }
+      // Else no week is live, so state is based on nextPickWeek
+      if (nextPickWeek !== null) {
+        if (week < nextPickWeek - 1) {
+          setWeekState("completed");
+          return;
+        }
+        if (week >= nextPickWeek - 1) {
+          setWeekState("not started");
+          return;
+        }
+      }
+      // If liveWeek and nextPick week are both null, log an error and set a default
+      console.error("Both liveWeek and nextPickWeek are null; cannot determine weekState");
+      setWeekState("not started");
+    }, [week, liveWeek, nextPickWeek, weekState]);
 
   const consensusRow: ResultsRow | null = useMemo(() => {
     if (!rows.length) return null;
@@ -191,27 +223,5 @@ export function useResults(week: number | null) {
     return out;
     }, [rows, games]);
 
-    // Pinned "Result" row for finished games: shows e.g., "PHI 3"
-    const resultRow: ResultsRow | null = useMemo(() => {
-      if (!games.length) return null;
-      const out: ResultsRow = {
-        pigeon_number: -1,
-        pigeon_name: "Result",
-        picks: {},
-        points: null,
-        rank: null,
-      };
-      for (const g of games) {
-        const key = `g_${g.game_id}`;
-        if (g.status === "final" && g.home_score != null && g.away_score != null) {
-          const signed = g.home_score - g.away_score; // +home, -away, 0 tie
-          const team = signed >= 0 ? g.home_abbr : g.away_abbr;
-          const label = signed === 0 ? "TIE 0" : `${team} ${Math.abs(signed)}`;
-          out.picks[key] = { signed, label, home_abbr: g.home_abbr, away_abbr: g.away_abbr };
-        }
-      }
-      return out;
-    }, [games]);
-
-    return { rows, games, weekState, consensusRow, resultRow, loading, error };
+    return { rows, games, weekState, consensusRow, loading, error };
 }
