@@ -13,6 +13,7 @@ export type GameMeta = {
   status?: "scheduled" | "in_progress" | "final";
   home_score?: number | null;
   away_score?: number | null;
+  kickoff_at: string;
 };
 
 type TimeStamped<T> = { at: number; data: T };

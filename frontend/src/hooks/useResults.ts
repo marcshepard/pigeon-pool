@@ -39,6 +39,7 @@ function shapeRowsAndGames(picks: ApiWeekPick[], lb: ApiLeaderboardRow[]) {
           status: p.status,
           home_score: p.home_score ?? null,
           away_score: p.away_score ?? null,
+          kickoff_at: p.kickoff_at,
         } satisfies GameMeta,
       ])
     ).values(),
