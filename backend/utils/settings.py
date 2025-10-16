@@ -56,6 +56,12 @@ class Settings:
     email_endpoint: str         # Azure email URL. e.g. https://<resource>.communication.azure.com/
     email_access_key: str       # Azure email access key
 
+    # Scheduler configuration
+    heartbeat_seconds: int
+    live_poll_seconds: int
+    kickoff_sync_hour: int
+    tue_warning_hour: int
+
     # Helpers
     def psycopg_kwargs(self) -> dict:
         """Return dict suitable for psycopg.connect(**kwargs) """
@@ -88,7 +94,11 @@ def get_settings() -> Settings:
         session_minutes=int(os.getenv("SESSION_MINUTES", "60")),
         slide_threshold_seconds=int(os.getenv("SLIDE_THRESHOLD_SECONDS", str(15 * 60))),
         email_endpoint=_req("EMAIL_ENDPOINT"),
-        email_access_key=_req("EMAIL_ACCESS_KEY")
+        email_access_key=_req("EMAIL_ACCESS_KEY"),
+        heartbeat_seconds=int(_req("PP_HEARTBEAT_SECONDS")),
+        live_poll_seconds=int(_req("PP_LIVE_POLL_SECONDS")),
+        kickoff_sync_hour=int(_req("PP_KICKOFF_SYNC_HOUR")),
+        tue_warning_hour=int(_req("PP_TUE_WARNING_HOUR")),
     )
 
 def reset_settings_cache() -> None:

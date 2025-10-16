@@ -224,6 +224,12 @@ JOIN weeks   w  ON w.week_number = g.week_number
 JOIN players pl ON pl.pigeon_number = f.pigeon_number
 WHERE w.lock_at <= now();
 
+-- === Track the last run of scheduled jobs ===
+CREATE TABLE IF NOT EXISTS scheduler_runs (
+  job_name TEXT PRIMARY KEY,
+  last_at  TIMESTAMPTZ NOT NULL
+);
+
 -- Trigger the lock check on picks insert/update/delete
 DROP TRIGGER IF EXISTS trg_picks_insert_lock ON picks;
 CREATE TRIGGER trg_picks_insert_lock
