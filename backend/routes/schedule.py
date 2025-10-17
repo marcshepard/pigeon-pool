@@ -103,13 +103,13 @@ async def get_current_weeks(db: AsyncSession = Depends(get_db)):
                     SELECT 1
                     FROM games g2
                     WHERE g2.week_number = g.week_number
-                        AND g2.status IN ('in_progress', 'completed')
+                        AND g2.status IN ('in_progress', 'final')
             )
             AND EXISTS ( -- But not all games completed
                     SELECT 1
                     FROM games g3
                     WHERE g3.week_number = g.week_number
-                        AND g3.status != 'completed'
+                        AND g3.status != 'final'
             )
         ORDER BY g.week_number DESC
         LIMIT 1
