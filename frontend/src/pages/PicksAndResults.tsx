@@ -3,7 +3,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { Box, Stack, Typography, Alert, Button, MenuItem, Select, FormControl, InputLabel, Checkbox, FormControlLabel, Divider } from "@mui/material";
+import { Box, Stack, Typography, Alert, Button, MenuItem, Select, FormControl, InputLabel, Checkbox, FormControlLabel } from "@mui/material";
 import { AppSnackbar, PickCell, PrintOnlyStyles, PrintArea, PrintGridStyles, PointsText } from "../components/CommonComponents";
 import type { Severity } from "../components/CommonComponents";
 import { DataGridLite } from "../components/DataGridLite";
