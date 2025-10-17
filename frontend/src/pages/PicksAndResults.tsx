@@ -4,7 +4,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Box, Stack, Typography, Alert, Button, MenuItem, Select, FormControl, InputLabel } from "@mui/material";
-import { AppSnackbar, PickCell, PrintOnlyStyles, PrintArea, PrintGridStyles } from "../components/CommonComponents";
+import { AppSnackbar, PickCell, PrintOnlyStyles, PrintArea, PrintGridStyles, PointsText } from "../components/CommonComponents";
 import type { Severity } from "../components/CommonComponents";
 import { DataGridLite } from "../components/DataGridLite";
 import type { ColumnDef } from "../components/DataGridLite";
@@ -103,9 +103,7 @@ export default function PicksheetPage() {
           <Box sx={{ textAlign: "left", lineHeight: 1.15 }}>
             <Box>{g.away_abbr} @ {g.home_abbr}</Box>
             {subLabel && (
-              <Box component="span" sx={{ display: "block", fontSize: ".85em", fontWeight: 400, color: "text.secondary" }}>
-                {subLabel}
-              </Box>
+              <PointsText sx={{ display: "block" }}>{subLabel}</PointsText>
             )}
           </Box>
         ),
@@ -174,7 +172,7 @@ export default function PicksheetPage() {
         : <>
             {weekState !== "not started" && 
               <Typography variant="body1" sx={{ mb: 1 }}>
-                Numbers in parentheses indicate the player's score for each completed game. For example, you would see "PHI 3 (4)" if Phil was picked to win by 3 and won by 7.
+                <PointsText>(x)</PointsText> are per-game scores.
               </Typography>
             }
             <PrintArea className="print-grid-area">

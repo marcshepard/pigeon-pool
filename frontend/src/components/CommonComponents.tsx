@@ -30,6 +30,23 @@ import DialogActions from "@mui/material/DialogActions";
 import Visibility from "@mui/icons-material/Visibility";
 import VisibilityOff from "@mui/icons-material/VisibilityOff";
 
+//PointsText – shared styling for per-game points/score text (e.g., (3))
+// This shows up in three places, so good to centralize the style.
+export function PointsText({ children, sx = {} }: { children: React.ReactNode; sx?: SxProps<Theme> }) {
+  return (
+    <Box
+      component="span"
+      sx={{
+        color: "text.secondary",
+        fontSize: ".85em",
+        fontWeight: 400,
+        ...sx,
+      }}
+    >
+      {children}
+    </Box>
+  );
+}
 // Centralized print styles for grids (striping, user row, fit, portrait)
 export function PrintGridStyles() {
   return (
@@ -263,17 +280,7 @@ export function PickCell({
         <>
           {baseText}
           {pointsText && (
-            <Box
-              component="span"
-              sx={{
-                ml: 0.25,
-                color: "text.secondary",
-                fontSize: ".85em",
-                fontWeight: 400,
-              }}
-            >
-              {pointsText}
-            </Box>
+            <PointsText sx={{ ml: 0.25 }}>{pointsText}</PointsText>
           )}
         </>
       </Box>
