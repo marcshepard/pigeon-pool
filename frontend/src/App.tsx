@@ -28,7 +28,7 @@ import ResponsiveNav from "./components/ResponsiveNav";
 
 // pages
 import HomePage from "./pages/Home";
-import PicksPage from "./pages/Picks";
+import EnterPicksPage from "./pages/EnterPicks";
 import PicksheetPage from "./pages/Picksheet";
 import MnfOutcomesPage from "./pages/MnfOutcomes";
 import YearToDatePage from "./pages/YearToDatePage";
@@ -106,7 +106,7 @@ function PrivateShell() {
     >
       <Routes>
         <Route path="/" element={<HomePage />} />
-        <Route path="/picks" element={<PicksPage />} />
+        <Route path="/picks" element={<EnterPicksPage />} />
         <Route path="/picksheet" element={<PicksheetPage />} />
         <Route path="/mnf-outcomes" element={<MnfOutcomesPage />} />
         <Route path="/year-to-date" element={<YearToDatePage />} />

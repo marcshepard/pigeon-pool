@@ -29,7 +29,7 @@ type PickDraft = {
   predicted_margin: number;  // 0–99
 };
 
-export default function PicksPage() {
+export default function EnterPicksPage() {
   const [current, setCurrent] = useState<ScheduleCurrent | null>(null);
   const [week, setWeek] = useState<number | "">("");
   const [games, setGames] = useState<Game[] | null>(null);
