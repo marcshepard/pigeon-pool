@@ -3,7 +3,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { Box, Stack, Typography, Alert, Button, MenuItem, Select, FormControl, InputLabel } from "@mui/material";
+import { Box, Stack, Typography, Alert, Button, MenuItem, Select, FormControl, InputLabel, Checkbox, FormControlLabel, Divider } from "@mui/material";
 import { AppSnackbar, PickCell, PrintOnlyStyles, PrintArea, PrintGridStyles, PointsText } from "../components/CommonComponents";
 import type { Severity } from "../components/CommonComponents";
 import { DataGridLite } from "../components/DataGridLite";
@@ -13,6 +13,17 @@ import { useResults, type ResultsRow } from "../hooks/useResults";
 import { useSchedule } from "../hooks/useSchedule";
 
 export default function PicksheetPage() {
+  // Auto-scroll toggle state, persisted in localStorage
+  const AUTO_SCROLL_KEY = "autoScrollToPicks";
+  const [autoScroll, setAutoScroll] = useState(() => {
+    const v = localStorage.getItem(AUTO_SCROLL_KEY);
+    return v === null ? true : v === "true";
+  });
+
+  // Persist autoScroll to localStorage
+  useEffect(() => {
+    localStorage.setItem(AUTO_SCROLL_KEY, String(autoScroll));
+  }, [autoScroll]);
   const { state } = useAuth();
   const { lockedWeeks } = useSchedule();
   const [week, setWeek] = useState<number | null>(null);
@@ -34,13 +45,14 @@ export default function PicksheetPage() {
 
   // Always bring the highlighted user row into view when rows or week change
   useEffect(() => {
+    if (!autoScroll) return;
     if (state.status !== "signedIn") return;
     if (!rows.length) return;
     const el = document.querySelector('.user-row');
     if (el instanceof HTMLElement) {
       el.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
-  }, [rows, state.status, week]);
+  }, [rows, state.status, week, autoScroll]);
 
   // Columns ----------------------------------------------------------
   const columns: ColumnDef<ResultsRow>[] = useMemo(() => {
@@ -170,11 +182,17 @@ export default function PicksheetPage() {
         {loading ?
           <Alert severity="info">Loading…</Alert>
         : <>
-            {weekState !== "not started" && 
-              <Typography variant="body1" sx={{ mb: 1 }}>
-                <PointsText>(x)</PointsText> are per-game scores.
-              </Typography>
-            }
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={autoScroll}
+                  onChange={e => setAutoScroll(e.target.checked)}
+                  size="small"
+                />
+              }
+              label={<Typography variant="body2">Auto-scroll to my picks</Typography>}
+              sx={{ mr: 2, mb: 0 }}
+            />
             <PrintArea className="print-grid-area">
               <DataGridLite<ResultsRow>
                 key={`grid-${weekState}`}
@@ -192,7 +210,7 @@ export default function PicksheetPage() {
                 printTitle={`Results — Week ${week ?? ""}`}
                 getRowId={(r) => r.pigeon_number}
                 highlightRowId={state.status === "signedIn" ? state.user.pigeon_number : undefined}
-                autoScrollHighlightOnSort
+                autoScrollHighlightOnSort={autoScroll}
               />
             </PrintArea>
           </>
