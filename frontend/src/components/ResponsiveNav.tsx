@@ -69,7 +69,7 @@ export default function ResponsiveNav({
         ? navItems
         : [
             { path: "/", label: "Home", icon: "home" },
-            { path: "/picks", label: "Enter Picks", icon: "picks" },
+            { path: "/enter-picks", label: "Enter Picks", icon: "picks" },
           ],
     [navItems]
   );

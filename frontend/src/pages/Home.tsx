@@ -11,13 +11,13 @@ import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 
 const tiles = [
     {
-        path: "/picks",
+        path: "/enter-picks",
         icon: <EditNoteIcon color="primary" sx={{ fontSize: 40 }} />,
         label: "Enter Picks",
         desc: "Enter picks for an upcoming week",
     },
     {
-        path: "/picksheet",
+        path: "/picks-and-results",
         icon: <ListAltIcon color="primary" sx={{ fontSize: 40 }} />,
         label: "Picks and Results",
         desc: "View the picksheet and results for this or a previous week",

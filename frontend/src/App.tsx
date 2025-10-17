@@ -57,8 +57,8 @@ function Brand() {
 function getNavItems(isAdmin: boolean): NavItem[] {
   const items: NavItem[] = [
     { path: "/", label: "Home", icon: <HomeIcon fontSize="small" /> },
-    { path: "/picks", label: "Enter Picks", icon: <EditNoteIcon fontSize="small" /> },
-    { path: "/picksheet", label: "Picks and Results", icon: <ListAltIcon fontSize="small" /> },
+    { path: "/enter-picks", label: "Enter Picks", icon: <EditNoteIcon fontSize="small" /> },
+    { path: "/picks-and-results", label: "Picks and Results", icon: <ListAltIcon fontSize="small" /> },
     { path: "/mnf-outcomes", label: "MNF Outcomes", icon: <SportsFootballIcon fontSize="small" /> },
     { path: "/year-to-date", label: "Year-to-Date", icon: <EmojiEventsIcon fontSize="small" /> },
     { path: "/about", label: "About", icon: <InfoOutlinedIcon fontSize="small" /> },
@@ -106,8 +106,8 @@ function PrivateShell() {
     >
       <Routes>
         <Route path="/" element={<HomePage />} />
-        <Route path="/picks" element={<EnterPicksPage />} />
-        <Route path="/picksheet" element={<PicksheetPage />} />
+        <Route path="/enter-picks" element={<EnterPicksPage />} />
+        <Route path="/picks-and-results" element={<PicksheetPage />} />
         <Route path="/mnf-outcomes" element={<MnfOutcomesPage />} />
         <Route path="/year-to-date" element={<YearToDatePage />} />
         <Route path="/about" element={<AboutPage />} />
