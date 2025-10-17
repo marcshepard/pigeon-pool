@@ -252,11 +252,30 @@ export function PickCell({
   signed: number;
   max?: number;
 }) {
+  // Split trailing " (N)" to style computed points differently
+  const match = /^(.*?)(\s*\((\d+)\))$/.exec(label);
+  const baseText = match ? match[1] : label;
+  const pointsText = match ? match[2] : null; // includes parentheses, e.g., " (3)"
   return (
     <Box sx={{ position: "relative", display: "inline-block", minWidth: 70 }}>
       {/* Removed colored bar background */}
       <Box sx={{ position: "relative", textAlign: "left", fontVariantNumeric: "tabular-nums" }}>
-        {label}
+        <>
+          {baseText}
+          {pointsText && (
+            <Box
+              component="span"
+              sx={{
+                ml: 0.25,
+                color: "text.secondary",
+                fontSize: ".85em",
+                fontWeight: 400,
+              }}
+            >
+              {pointsText}
+            </Box>
+          )}
+        </>
       </Box>
     </Box>
   );
