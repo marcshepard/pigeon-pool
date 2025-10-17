@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -48,10 +48,13 @@ TUE_WARNING_HOUR = _SETTINGS.tue_warning_hour
 # Utilities
 # -------------------------------------------------------------------
 
-def _now_local() -> datetime:
+def _now_pst() -> datetime:
     """Return current time in PST."""
-    return datetime.utcnow().astimezone(PST)
+    return datetime.now(PST)
 
+def _now_utc() -> datetime:
+    """Timezone-aware UTC 'now' (use for DB and interval deltas)."""
+    return datetime.now(timezone.utc)
 
 def _start_of_local_week_sun(dt: datetime) -> datetime:
     """Return Sunday 00:00 of current local week."""
@@ -112,20 +115,27 @@ async def _any_live_games(session: AsyncSession) -> bool:
 
 
 async def _all_sun_games_final_and_week_not_done(session: AsyncSession) -> bool:
+    # current week = latest locked week
     q = text(
         """
-        WITH current_week AS (SELECT MIN(week_number) AS w FROM weeks WHERE lock_at > now())
+        WITH current_week AS (
+          SELECT MAX(week_number) AS w
+          FROM weeks
+          WHERE lock_at <= now()
+        )
         SELECT
           (NOT EXISTS (
-            SELECT 1 FROM games
-            WHERE week_number=(SELECT w FROM current_week)
-              AND EXTRACT(ISODOW FROM kickoff_at)=7
-              AND status<>'final'
+            SELECT 1
+            FROM games
+            WHERE week_number = (SELECT w FROM current_week)
+              AND EXTRACT(ISODOW FROM kickoff_at) = 7  -- Sunday
+              AND status <> 'final'
           ))
           AND EXISTS (
-            SELECT 1 FROM games
-            WHERE week_number=(SELECT w FROM current_week)
-              AND status<>'final'
+            SELECT 1
+            FROM games
+            WHERE week_number = (SELECT w FROM current_week)
+              AND status <> 'final'
           )
         """
     )
@@ -134,13 +144,19 @@ async def _all_sun_games_final_and_week_not_done(session: AsyncSession) -> bool:
 
 
 async def _all_games_final(session: AsyncSession) -> bool:
+    # current week = latest locked week
     q = text(
         """
-        WITH current_week AS (SELECT MIN(week_number) AS w FROM weeks WHERE lock_at > now())
+        WITH current_week AS (
+          SELECT MAX(week_number) AS w
+          FROM weeks
+          WHERE lock_at <= now()
+        )
         SELECT NOT EXISTS (
-            SELECT 1 FROM games
-            WHERE week_number=(SELECT w FROM current_week)
-              AND status<>'final'
+          SELECT 1
+          FROM games
+          WHERE week_number = (SELECT w FROM current_week)
+            AND status <> 'final'
         )
         """
     )
@@ -197,7 +213,7 @@ async def _maybe_run(session: AsyncSession, job_name: str, due: bool, run_fn, pr
             info(
                 "component=scheduler",
                 job=job_name,
-                now_local=_now_local().isoformat(),
+                now_local=_now_pst().isoformat(),
                 duration_ms=dur,
                 result=result,
                 message="run ok",
@@ -207,7 +223,7 @@ async def _maybe_run(session: AsyncSession, job_name: str, due: bool, run_fn, pr
             error(
                 "component=scheduler",
                 job=job_name,
-                now_local=_now_local().isoformat(),
+                now_local=_now_pst().isoformat(),
                 duration_ms=dur,
                 err_type=type(ex).__name__,
                 err=str(ex),
@@ -229,7 +245,7 @@ async def _coordinator_loop():
     Evaluates each job and runs when due.
     """
     while True:
-        now_loc = _now_local()
+        now_loc = _now_pst()
         try:
             async with AsyncSessionLocal() as session:
                 # kickoff_sync (daily)
@@ -242,7 +258,7 @@ async def _coordinator_loop():
                 last_score = await _get_last_run(session, "score_sync")
                 due_score = (
                     not last_score
-                    or (datetime.utcnow() - last_score).total_seconds() >= LIVE_POLL_SECONDS
+                    or (_now_utc() - last_score.astimezone(timezone.utc)).total_seconds() >= LIVE_POLL_SECONDS
                 )
                 await _maybe_run(session, "score_sync", due_score, run_poll_scores, _any_live_games)
 
@@ -305,7 +321,7 @@ def start_scheduler() -> None:
     info(
         "component=scheduler",
         event="bootstrap",
-        now_local=_now_local().isoformat(),
+        now_local=_now_pst().isoformat(),
         message="scheduler started",
     )
 
@@ -324,6 +340,6 @@ async def stop_scheduler() -> None:
     info(
         "component=scheduler",
         event="bootstrap",
-        now_local=_now_local().isoformat(),
+        now_local=_now_pst().isoformat(),
         message="scheduler stopped",
     )

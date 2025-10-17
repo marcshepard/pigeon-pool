@@ -87,20 +87,13 @@ async def run_poll_scores(session: AsyncSession) -> dict[str, Any]:
     Poll live scores and status for the current week.
     Uses AsyncSession only to fetch the current week; ScoreSync runs in a thread.
     """
-    res = await session.execute(
-        text("SELECT MIN(week_number) FROM weeks WHERE lock_at > now()")
-    )
+    res = await session.execute(text(
+        "SELECT MAX(week_number) FROM weeks WHERE lock_at <= now()"
+    ))
     row = res.first()
     if not row or row[0] is None:
-        info(
-            "component=jobs",
-            job="score_sync",
-            week=None,
-            games_updated=0,
-            note="no active week",
-        )
-        return {"updated": 0, "note": "no active week"}
-
+        info("component=jobs", job="score_sync", week=None, games_updated=0, note="no current week")
+        return {"updated": 0, "note": "no current week"}
     week = int(row[0])
 
     def _work() -> int:
