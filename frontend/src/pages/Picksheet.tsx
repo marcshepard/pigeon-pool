@@ -59,7 +59,9 @@ export default function PicksheetPage() {
         key: "points",
         header: "Score",
         align: "left",
-        valueGetter: (r) => (r.points ?? Number.POSITIVE_INFINITY),
+        // If user has no picks at all (points null), sort as 800 so they're bottom on asc
+        // Display remains "—" for null
+        valueGetter: (r) => (r.points == null ? 800 : r.points),
         renderCell: (r) => (r.points ?? "—"),
       });
       cols.push({
@@ -109,7 +111,12 @@ export default function PicksheetPage() {
         ),
         align: "left",
         sortable: true,
-        valueGetter: (r) => r.picks[key]?.signed ?? 0,
+        nullsLastAlways: true,
+        // For sorting: treat no pick or placeholder 0 as missing (null)
+        valueGetter: (r) => {
+          const v = r.picks[key]?.signed;
+          return (v == null || v === 0) ? null : v;
+        },
         renderCell: (r) => {
           const cell = r.picks[key];
           return cell ? <PickCell label={cell.label} signed={cell.signed} /> : "—";

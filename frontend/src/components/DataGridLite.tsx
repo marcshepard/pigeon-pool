@@ -22,6 +22,8 @@ export type ColumnDef<T> = {
   sortComparator?: (a: unknown, b: unknown, rowA: T, rowB: T) => number;
   pin?: "left" | "right";
   info?: ReactNode; // Optional info/hint for header
+  /** When true, null/undefined values always sort to the bottom regardless of sort direction */
+  nullsLastAlways?: boolean;
 };
 
 export type DataGridLiteProps<T> = {
@@ -101,6 +103,14 @@ export function DataGridLite<T>({
     return [...rows].sort((ra, rb) => {
       const a = getVal(ra);
       const b = getVal(rb);
+
+      if (col.nullsLastAlways && (a == null || b == null)) {
+        // Always push nulls/undefined to bottom regardless of direction
+        if (a == null && b == null) return 0;
+        if (a == null) return 1;
+        if (b == null) return -1;
+      }
+
       const s = cmp(a, b, ra, rb);
       return sortDir === "asc" ? s : -s;
     });
