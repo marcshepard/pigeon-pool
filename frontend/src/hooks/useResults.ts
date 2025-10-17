@@ -54,11 +54,13 @@ function shapeRowsAndGames(picks: ApiWeekPick[], lb: ApiLeaderboardRow[]) {
     const team = p.picked_home ? p.home_abbr : p.away_abbr;
     let label = p.predicted_margin === 0 ? "" : `${team} ${p.predicted_margin}`;
 
-    // If this game is final and a pick exists, append per-pick score e.g., "PHI 10 (3)".
-    if (label && p.status === "final" && p.home_score != null && p.away_score != null) {
-      const actualSigned = p.home_score - p.away_score; // + if home won, - if away won, 0 tie
-      const sc = scoreForPick(signed, actualSigned);
-      label = `${label} (${sc})`;
+    // If this game is final or live and a pick exists, append per-pick score e.g., "PHI 10 (3)".
+    if (label && p.home_score != null && p.away_score != null) {
+      if (p.status === "final" || p.status === "in_progress") {
+        const actualSigned = p.home_score - p.away_score; // + if home won, - if away won, 0 tie
+        const sc = scoreForPick(signed, actualSigned);
+        label = `${label} (${sc})`;
+      }
     }
 
     let row = byPigeon.get(p.pigeon_number);

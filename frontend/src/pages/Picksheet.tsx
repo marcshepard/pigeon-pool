@@ -73,14 +73,22 @@ export default function PicksheetPage() {
 
     for (const g of games) {
       const key = `g_${g.game_id}`;
-      // Build a sub-label under the matchup: Not started | In progress | Final score
+  // Build a sub-label under the matchup: Not started | Live: TEAM M | Final score
       // Only show when the week has started (i.e., not in "not started" state)
       let subLabel: string = "";
       if (weekState !== "not started") {
         if (g.status === "scheduled") {
           subLabel = "Not started";
         } else if (g.status === "in_progress") {
-          subLabel = "In progress";
+          // Show running margin like finals but with Live: prefix
+          if (g.home_score != null && g.away_score != null) {
+            const signed = g.home_score - g.away_score; // +home, -away, 0 tie
+            subLabel = signed === 0
+              ? "Live: TIE 0"
+              : `Live: ${signed >= 0 ? g.home_abbr : g.away_abbr} ${Math.abs(signed)}`;
+          } else {
+            subLabel = "Live";
+          }
         } else if (g.status === "final" && g.home_score != null && g.away_score != null) {
           const signed = g.home_score - g.away_score; // +home, -away, 0 tie
           subLabel = signed === 0 ? "TIE 0" : `${signed >= 0 ? g.home_abbr : g.away_abbr} ${Math.abs(signed)}`;
