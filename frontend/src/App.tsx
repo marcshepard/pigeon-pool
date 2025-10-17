@@ -29,7 +29,7 @@ import ResponsiveNav from "./components/ResponsiveNav";
 // pages
 import HomePage from "./pages/Home";
 import EnterPicksPage from "./pages/EnterPicks";
-import PicksheetPage from "./pages/Picksheet";
+import PicksheetPage from "./pages/PicksAndResults";
 import MnfOutcomesPage from "./pages/MnfOutcomes";
 import YearToDatePage from "./pages/YearToDatePage";
 import AboutPage from "./pages/AboutPage";
