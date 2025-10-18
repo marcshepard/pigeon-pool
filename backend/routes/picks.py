@@ -12,11 +12,14 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
+from backend.utils.submit_picks_to_andy import build_submit_body_from_db, submit_to_andy
 from backend.utils.db import get_db
+from backend.utils.logger import error
 from .auth import require_user
 
 router = APIRouter(prefix="/picks", tags=["picks"])
 
+#pylint: disable=line-too-long
 
 # =========================
 # Pydantic models
@@ -200,7 +203,19 @@ async def upsert_picks_bulk(
                 created_at=r[4],
             )
         )
-
-    # Commit once for the batch
     await db.commit()
+
+    # Also submit to Andy's system
+    try:
+        body = await build_submit_body_from_db(
+            session=db, week=payload.week_number, pigeon_number=me.pigeon_number, pin=9182
+        )
+        await submit_to_andy(body, deadline_sec=20)
+    except Exception as exc:  #pylint: disable=broad-except
+        error (f"Failed to submit picks to Andy for pigeon {me.pigeon_number}, week {payload.week_number}: {exc}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to submit picks to external system"
+        ) from exc
+
     return out

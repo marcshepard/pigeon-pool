@@ -74,7 +74,10 @@ class Settings:
         """Return SQLAlchemy async connection URL (for create_async_engine)"""
         u = quote_plus(self.pg_user or "")
         p = quote_plus(self.pg_password or "")
-        return f"postgresql+psycopg_async://{u}:{p}@{self.pg_host}:{self.pg_port}/{self.pg_db}"
+        host = self.pg_host
+        port = self.pg_port
+        db   = self.pg_db
+        return f"postgresql+asyncpg://{u}:{p}@{host}:{port}/{db}"
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

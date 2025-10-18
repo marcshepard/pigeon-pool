@@ -19,7 +19,7 @@ from pydantic import BaseModel, EmailStr
 
 from backend.utils.settings import get_settings
 from backend.utils.logger import debug, info, warn, error
-from backend.utils.email import send_email
+from backend.utils.emailer import send_email
 
 # --- Config ---
 S = get_settings()

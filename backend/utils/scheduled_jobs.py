@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .logger import info
 from .settings import get_settings
 from .score_sync import ScoreSync
-from .email import send_bulk_email_bcc  # top-level import per request
+from .emailer import send_bulk_email_bcc  # top-level import per request
 
 #pylint: disable=line-too-long
 

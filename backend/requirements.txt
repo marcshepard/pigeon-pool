@@ -4,6 +4,7 @@
 
 # --- Core database + environment ---
 psycopg[binary] >=3.1,<4.0         # PostgreSQL driver (modern async support)
+asyncpg >=0.29,<1.0
 SQLAlchemy[asyncio] >=2.0,<3.0     # ORM + async engine support
 python-dotenv >=1.0.1              # Load .env files for local config/secrets
 requests >=2.31.0                  # HTTP requests (for ESPN data import)
@@ -25,8 +26,9 @@ PyJWT >=2.9.0                      # JWT signing/verification (sessions, resets)
 pydantic >=2.9.0                   # Schema validation and settings management
 email-validator >=2.2.0            # RFC-compliant email validation for EmailStr
 
-# --- Excel import/export ---
-openpyxl>=3.1
+# --- For interacting with Andy's current system; goes away when we fully move over ---
+openpyxl>=3.1       # For importing Andy's Excel format picks
+playwright>=1.47    # For submitting picks to Andy's survey site
 
 # --- Email (Azure Communication Services) ---
 azure-communication-email >=1.0.0
