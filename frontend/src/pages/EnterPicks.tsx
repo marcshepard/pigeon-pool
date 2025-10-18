@@ -4,8 +4,22 @@
 
 import { useEffect, useMemo, useState, useRef } from "react";
 import {
-  Box, Stack, Typography, FormControl, InputLabel, Select, MenuItem,
-  Button, RadioGroup, FormControlLabel, Radio, TextField
+  Box,
+  Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  FormControl,
+  FormControlLabel,
+  InputLabel,
+  MenuItem,
+  Radio,
+  RadioGroup,
+  Select,
+  Stack,
+  TextField,
+  Typography,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import { AppSnackbar, Loading, Banner, ConfirmDialog } from "../components/CommonComponents";
@@ -39,6 +53,7 @@ export default function EnterPicksPage() {
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity?: "success" | "error" | "info" | "warning"; }>({ open: false, message: "" });
   const [confirmState, setConfirmState] = useState<{ open: boolean; message: string; pending: null | (() => Promise<void>) }>({ open: false, message: "", pending: null });
   const [homeDialogOpen, setHomeDialogOpen] = useState(false);
+  const [submitDialog, setSubmitDialog] = useState<{ open: boolean; error: string | null }>({ open: false, error: null });
   const handleHomeDoubleTap = useDoubleTap(() => setHomeDialogOpen(true));
 
   const handleHomeDialog = () => {
@@ -195,10 +210,21 @@ export default function EnterPicksPage() {
     }));
 
     try {
+      // Show submitting dialog
+      setSubmitDialog({ open: true, error: null });
       await setMyPicks({ week_number: week, picks });
+      // Close dialog immediately once submission succeeds
+      setSubmitDialog({ open: false, error: null });
       setSnackbar({ open: true, message: "Picks submitted!", severity: "success" });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Failed to submit picks";
+      // Keep dialog open and show error
+      setSubmitDialog({ open: true, error: msg });
+      return;
+    }
 
-      // Re-fetch picks to reflect server-side normalization, if any
+    // Re-fetch picks to reflect server-side normalization, if any (best-effort)
+    try {
       const newPicks = await getMyPicksForWeek(week);
       const byGame: Record<number, PickDraft> = {};
       for (const p of newPicks) byGame[p.game_id] = { picked_home: p.picked_home, predicted_margin: p.predicted_margin };
@@ -207,8 +233,8 @@ export default function EnterPicksPage() {
         for (const g of games) if (byGame[g.game_id]) updated[g.game_id] = byGame[g.game_id];
         return updated;
       });
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Failed to submit picks";
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Failed to refresh picks after submission";
       setSnackbar({ open: true, message: msg, severity: "error" });
     }
   };
@@ -290,7 +316,7 @@ export default function EnterPicksPage() {
 
           {/* Submit button (right) */}
           <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
-            <Button variant="contained" size="large" onClick={handleSubmit}>
+            <Button variant="contained" size="large" onClick={handleSubmit} disabled={submitDialog.open && !submitDialog.error}>
               Submit
             </Button>
           </Box>
@@ -431,6 +457,29 @@ export default function EnterPicksPage() {
           </Stack>
         )}
       </Box>
+
+      {/* Submitting dialog – shows spinner, and shows error if submission failed */}
+      <Dialog
+        open={submitDialog.open}
+        onClose={() => {
+          if (submitDialog.error) setSubmitDialog({ open: false, error: null });
+        }}
+        maxWidth="xs"
+        fullWidth
+        disableEscapeKeyDown={!submitDialog.error}
+      >
+        <DialogTitle sx={{ textAlign: 'center' }}>
+          {submitDialog.error ? 'Submission failed' : 'Submitting picks…'}
+        </DialogTitle>
+        <DialogContent>
+          <Loading error={submitDialog.error ?? undefined} />
+        </DialogContent>
+        {submitDialog.error && (
+          <DialogActions sx={{ justifyContent: 'center', pt: 0 }}>
+            <Button onClick={() => setSubmitDialog({ open: false, error: null })} variant="contained">Close</Button>
+          </DialogActions>
+        )}
+      </Dialog>
     </Box>
   );
 }
