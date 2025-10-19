@@ -47,8 +47,12 @@ function computeBaseScores(rows: ResultsRow[], games: GameMeta[]): Map<number, n
 
 // Kinks: the only A values where winners can change are unique predicted signed margins & 0.
 function kinkValues(preds: number[]): number[] {
-  const uniq = new Set<number>([0, ...preds.map(Math.trunc)]); // integer reps are enough
-  return Array.from(uniq).sort((a,b)=>a-b);
+  // Include all integer margins between min and max prediction, plus 0
+  const min = Math.min(0, ...preds.map(Math.floor));
+  const max = Math.max(0, ...preds.map(Math.ceil));
+  const vals: number[] = [];
+  for (let i = min; i <= max; ++i) vals.push(i);
+  return vals;
 }
 
 type OneGameWhatIf = {
