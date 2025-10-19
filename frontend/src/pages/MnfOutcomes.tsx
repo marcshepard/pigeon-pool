@@ -271,6 +271,56 @@ function TwoGameGrid(props: {
 }) {
   const { xLabel, yLabel, xBuckets, yBuckets, grid } = props;
 
+  // Helper to format the outcome as '<Team> <points>'
+  function formatOutcome(actual: number, home: string, away: string): string {
+    if (actual === 0) return 'Tie 0';
+    if (actual > 0) return `${home} ${actual}`;
+    return `${away} ${Math.abs(actual)}`;
+  }
+
+  // Prune top/bottom rows and left/right columns recursively if identical
+  function winnersRowKey(row: Array<{ winners: { pn: number; name: string }[]; bestTotal: number }>): string {
+    return row.map(cell => cell.winners.map(w => w.name).join(",") + ":" + cell.bestTotal).join("|");
+  }
+  function winnersColKey(col: Array<{ winners: { pn: number; name: string }[]; bestTotal: number }>): string {
+    return col.map(cell => cell.winners.map(w => w.name).join(",") + ":" + cell.bestTotal).join("|");
+  }
+
+  // Prune rows (top/bottom)
+  let rowStart = 0;
+  while (
+    rowStart < grid.length - 1 &&
+    winnersRowKey(grid[rowStart]) === winnersRowKey(grid[rowStart + 1])
+  ) {
+    rowStart++;
+  }
+  let rowEnd = grid.length - 1;
+  while (
+    rowEnd > rowStart &&
+    winnersRowKey(grid[rowEnd]) === winnersRowKey(grid[rowEnd - 1])
+  ) {
+    rowEnd--;
+  }
+  // Prune columns (left/right)
+  let colStart = 0;
+  while (
+    colStart < xBuckets.length - 1 &&
+    winnersColKey(grid.map(row => row[colStart])) === winnersColKey(grid.map(row => row[colStart + 1]))
+  ) {
+    colStart++;
+  }
+  let colEnd = xBuckets.length - 1;
+  while (
+    colEnd > colStart &&
+    winnersColKey(grid.map(row => row[colEnd])) === winnersColKey(grid.map(row => row[colEnd - 1]))
+  ) {
+    colEnd--;
+  }
+  // Always include all rows and columns between start and end, inclusive
+  const displayYBuckets = yBuckets.slice(rowStart, rowEnd + 1);
+  const displayXBuckets = xBuckets.slice(colStart, colEnd + 1);
+  const displayGrid = grid.slice(rowStart, rowEnd + 1).map(row => row.slice(colStart, colEnd + 1));
+
   // Build a simple legend of initials → name
   const legendMap = useMemo(() => {
     const names = new Set<string>();
@@ -279,41 +329,59 @@ function TwoGameGrid(props: {
     return arr.map(name => ({ name, tag: initials(name) }));
   }, [grid]);
 
+  // Get home/away for x and y axes from labels
+  function parseTeams(label: string): { home: string; away: string } {
+    const m = label.match(/([A-Z]{2,})\s*@\s*([A-Z]{2,})/);
+    if (!m) return { home: "Home", away: "Away" };
+    return { away: m[1], home: m[2] };
+  }
+  const xTeams = parseTeams(xLabel);
+  const yTeams = parseTeams(yLabel);
+
   return (
     <Box>
       <Typography variant="subtitle1" gutterBottom>
         First place by MNF outcome
-      </Typography>
-      <Typography variant="body2" gutterBottom sx={{ mb: 1 }}>
-        Columns: {xLabel} (home + / away −) &nbsp; • &nbsp; Rows: {yLabel}
       </Typography>
       <Box sx={{ overflowX: "auto", border: "1px solid", borderColor: "divider", borderRadius: 1 }}>
         <Table size="small">
           <TableHead>
             <TableRow>
               <TableCell sx={{ fontWeight: 600 }}>{/* corner cell */}</TableCell>
-              {xBuckets.map(x => (
-                <TableCell key={x} align="center" sx={{ fontWeight: 600 }}>
-                  {formatBucket(x)}
-                </TableCell>
-              ))}
+              {displayXBuckets.map((x, xi) => {
+                let label = formatOutcome(x, xTeams.home, xTeams.away);
+                // Add '+' to first and last column
+                if (xi === 0) label += '+';
+                if (xi === displayXBuckets.length - 1) label += '+';
+                return (
+                  <TableCell key={x} align="center" sx={{ fontWeight: 600 }}>
+                    {label}
+                  </TableCell>
+                );
+              })}
             </TableRow>
           </TableHead>
           <TableBody>
-            {yBuckets.map((y, yi) => (
-              <TableRow key={y}>
-                <TableCell sx={{ fontWeight: 600 }}>{formatBucket(y)}</TableCell>
-                {xBuckets.map((x, xi) => {
-                  const cell = grid[yi][xi];
-                  const tags = cell.winners.map(w => initials(w.name)).join(" ");
-                  return (
-                    <TableCell key={`${y}:${x}`} align="center">
-                      {tags || "—"}
-                    </TableCell>
-                  );
-                })}
-              </TableRow>
-            ))}
+            {displayYBuckets.map((y, yi) => {
+              let label = formatOutcome(y, yTeams.home, yTeams.away);
+              // Add '+' to first and last row
+              if (yi === 0) label += '+';
+              if (yi === displayYBuckets.length - 1) label += '+';
+              return (
+                <TableRow key={y}>
+                  <TableCell sx={{ fontWeight: 600 }}>{label}</TableCell>
+                  {displayXBuckets.map((x, xi) => {
+                    const cell = displayGrid[yi][xi];
+                    const tags = cell.winners.map(w => initials(w.name)).join(" ");
+                    return (
+                      <TableCell key={`${y}:${x}`} align="center">
+                        {tags || "—"}
+                      </TableCell>
+                    );
+                  })}
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       </Box>
@@ -331,10 +399,6 @@ function TwoGameGrid(props: {
           </Box>
         ))}
       </Stack>
-
-      <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: "block" }}>
-        Positive = home wins by that margin; negative = away. 0 = tie. Cells show winner initials.
-      </Typography>
     </Box>
   );
 }
@@ -353,9 +417,3 @@ function initials(name: string): string {
   return tag;
 }
 
-function formatBucket(n: number): string {
-  // You can swap this for your “V10 / 6+ / 0 / …” labeling later.
-  if (n === 0) return "0 (tie)";
-  if (n > 0) return `+${n}`;
-  return String(n);
-}
