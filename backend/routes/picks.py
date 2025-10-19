@@ -215,7 +215,7 @@ async def upsert_picks_bulk(
         error (f"Failed to submit picks to Andy for pigeon {me.pigeon_number}, week {payload.week_number}: {exc}")
         raise HTTPException(
             status_code=500,
-            detail="Failed to submit picks to external system"
+            detail="Failed to submit to Andy's form (so you'll have to do that yourself)"
         ) from exc
 
     return out

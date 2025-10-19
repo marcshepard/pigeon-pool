@@ -5,6 +5,7 @@
 import { useMemo, useState, useEffect, useRef } from "react";
 import type { ReactNode } from "react";
 import { Box, Table, TableHead, TableRow, TableCell, TableBody } from "@mui/material";
+import TableSortLabel from "@mui/material/TableSortLabel";
 import type { Theme } from "@mui/material/styles";
 
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
@@ -151,15 +152,6 @@ export function DataGridLite<T>({
         align={c.align ?? "left"}
         component="th"
         scope="col"
-        onClick={onToggle}
-        onKeyDown={(e) => {
-          if (!sortable) return;
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            onToggle();
-          }
-        }}
-        tabIndex={sortable ? 0 : -1}
         sx={{
           position: "sticky",
           top: 0,
@@ -170,25 +162,44 @@ export function DataGridLite<T>({
           px: 0.5,
           py: 0.25,
           whiteSpace: "nowrap",
-          backgroundColor: (theme) => theme.palette.background.paper,
+          backgroundColor: (theme) =>
+            isSorted
+              ? (theme.palette.mode === 'light'
+                  ? theme.palette.grey[100]
+                  : theme.palette.grey[900])
+              : theme.palette.background.paper,
           ...(c.width ? { width: c.width, minWidth: c.width } : {}),
           ...(c.pin === "left"  && { left: 0,  zIndex: 12, boxShadow: "inset -1px 0 0 rgba(0,0,0,0.12)" }),
           ...(c.pin === "right" && { right: 0, zIndex: 12, boxShadow: "inset  1px 0 0 rgba(0,0,0,0.12)" }),
         }}
         aria-sort={isSorted ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
       >
-        <Box sx={{ display: "flex", alignItems: "flex-start", gap: 0.5 }}>
-          {c.header}
+        <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+          {sortable ? (
+            <TableSortLabel
+              active={isSorted}
+              direction={isSorted ? sortDir : 'asc'}
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggle();
+              }}
+              hideSortIcon={!isSorted}
+            >
+              {c.header}
+            </TableSortLabel>
+          ) : (
+            <span>{c.header}</span>
+          )}
           {c.info && (
             <IconButton
               size="small"
-              sx={{ ml: 0.5, p: 0.25, mt: '-2px' }}
-              onClick={e => {
+              className="print-hide"
+              sx={{ ml: 0.25, p: 0.25 }}
+              onClick={(e) => {
                 e.stopPropagation();
                 setInfoAnchor(e.currentTarget);
                 setInfoContent(c.info);
               }}
-              tabIndex={0}
               aria-label="Column info"
             >
               <InfoOutlinedIcon fontSize="small" />
