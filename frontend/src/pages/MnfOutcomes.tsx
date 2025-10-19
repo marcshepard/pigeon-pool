@@ -67,7 +67,7 @@ export default function MnfOutcomesPage() {
   const whatIf = useMnfOutcomes(typeof week === "number" ? week : null, rows, games);
 
   // Only show the 'come back after Sunday' message for the current week (not completed weeks)
-  const { shouldShow, endOfMonday } = useMemo(() => {
+  const { shouldShow } = useMemo(() => {
     const now = new Date();
     const sundayDone = allSundayGamesFinal(games);
     const eom = endOfLocalMondayForWeek(games);
@@ -100,7 +100,7 @@ export default function MnfOutcomesPage() {
   // Week selector UI
   const weekSelector = (
     <Box sx={{ mb: 2, display: "flex", alignItems: "center", gap: 2 }}>
-      <Typography variant="body1" fontWeight="bold">Week:</Typography>
+      <Typography variant="body1" fontWeight="bold">Week</Typography>
       <select
         value={week}
         onChange={e => setWeek(Number(e.target.value))}
@@ -142,9 +142,6 @@ export default function MnfOutcomesPage() {
   return (
     <Box sx={{ maxWidth: 1100, mx: "auto", p: 2 }}>
       {weekSelector}
-      <Typography variant="h6" gutterBottom>
-        MNF Outcomes {endOfMonday ? `(through ${endOfMonday.toLocaleString()})` : ""}
-      </Typography>
 
       {whatIf.kind === "one" && (
         <OneGameTable
@@ -235,8 +232,8 @@ function OneGameTable(props: {
 
   return (
     <Box>
-      <Typography variant="subtitle1" gutterBottom>
-        Forecast (per MNF margin): top 5 finishers
+      <Typography variant="body1">
+        Top five finishers by MNF outcome
       </Typography>
       <Table size="small" sx={{ mb: 2 }}>
         <TableHead>
@@ -285,7 +282,7 @@ function TwoGameGrid(props: {
   return (
     <Box>
       <Typography variant="subtitle1" gutterBottom>
-        1st place by MNF outcomes
+        First place by MNF outcome
       </Typography>
       <Typography variant="body2" gutterBottom sx={{ mb: 1 }}>
         Columns: {xLabel} (home + / away −) &nbsp; • &nbsp; Rows: {yLabel}
