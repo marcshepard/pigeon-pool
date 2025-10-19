@@ -280,46 +280,69 @@ function TwoGameGrid(props: {
 
   // Prune top/bottom rows and left/right columns recursively if identical
   function winnersRowKey(row: Array<{ winners: { pn: number; name: string }[]; bestTotal: number }>): string {
-    return row.map(cell => cell.winners.map(w => w.name).join(",") + ":" + cell.bestTotal).join("|");
+    // Consider rows identical if the winners per cell are identical; ignore score totals
+    return row.map(cell => cell.winners.map(w => w.name).join(",")).join("|");
   }
   function winnersColKey(col: Array<{ winners: { pn: number; name: string }[]; bestTotal: number }>): string {
-    return col.map(cell => cell.winners.map(w => w.name).join(",") + ":" + cell.bestTotal).join("|");
+    // Consider columns identical if the winners per cell are identical; ignore score totals
+    return col.map(cell => cell.winners.map(w => w.name).join(",")).join("|");
   }
 
-  // Prune rows (top/bottom)
-  let rowStart = 0;
+  // Prune only the top run and bottom run of identical rows (middle rows always shown)
+  let topRowEnd = 0;
   while (
-    rowStart < grid.length - 1 &&
-    winnersRowKey(grid[rowStart]) === winnersRowKey(grid[rowStart + 1])
+    topRowEnd < grid.length - 1 &&
+    winnersRowKey(grid[0]) === winnersRowKey(grid[topRowEnd + 1])
   ) {
-    rowStart++;
+    topRowEnd++;
   }
-  let rowEnd = grid.length - 1;
+  let bottomRowStart = grid.length - 1;
   while (
-    rowEnd > rowStart &&
-    winnersRowKey(grid[rowEnd]) === winnersRowKey(grid[rowEnd - 1])
+    bottomRowStart > topRowEnd &&
+    winnersRowKey(grid[grid.length - 1]) === winnersRowKey(grid[bottomRowStart - 1])
   ) {
-    rowEnd--;
+    bottomRowStart--;
   }
-  // Prune columns (left/right)
-  let colStart = 0;
+  const keepRowIdx: number[] = [];
+  // Keep the last row of the top run (closest to middle)
+  keepRowIdx.push(topRowEnd);
+  // Keep all middle rows between runs
+  for (let i = topRowEnd + 1; i <= bottomRowStart - 1; i++) {
+    keepRowIdx.push(i);
+  }
+  // Keep the first row of the bottom run (closest to middle)
+  if (bottomRowStart > topRowEnd) keepRowIdx.push(bottomRowStart);
+
+  const displayYBuckets = keepRowIdx.map(i => yBuckets[i]);
+  const displayRowsGrid = keepRowIdx.map(i => grid[i]);
+
+  // Prune columns (left/right) similarly: collapse left and right identical runs
+  let leftColEnd = 0;
   while (
-    colStart < xBuckets.length - 1 &&
-    winnersColKey(grid.map(row => row[colStart])) === winnersColKey(grid.map(row => row[colStart + 1]))
+    leftColEnd < xBuckets.length - 1 &&
+    winnersColKey(grid.map(row => row[0])) === winnersColKey(grid.map(row => row[leftColEnd + 1]))
   ) {
-    colStart++;
+    leftColEnd++;
   }
-  let colEnd = xBuckets.length - 1;
+  let rightColStart = xBuckets.length - 1;
   while (
-    colEnd > colStart &&
-    winnersColKey(grid.map(row => row[colEnd])) === winnersColKey(grid.map(row => row[colEnd - 1]))
+    rightColStart > leftColEnd &&
+    winnersColKey(grid.map(row => row[xBuckets.length - 1])) === winnersColKey(grid.map(row => row[rightColStart - 1]))
   ) {
-    colEnd--;
+    rightColStart--;
   }
-  // Always include all rows and columns between start and end, inclusive
-  const displayYBuckets = yBuckets.slice(rowStart, rowEnd + 1);
-  const displayXBuckets = xBuckets.slice(colStart, colEnd + 1);
-  const displayGrid = grid.slice(rowStart, rowEnd + 1).map(row => row.slice(colStart, colEnd + 1));
+  const keepColIdx: number[] = [];
+  // Keep the last column of the left run (closest to middle)
+  keepColIdx.push(leftColEnd);
+  // Keep all middle columns
+  for (let i = leftColEnd + 1; i <= rightColStart - 1; i++) {
+    keepColIdx.push(i);
+  }
+  // Keep the first column of the right run (closest to middle)
+  if (rightColStart > leftColEnd) keepColIdx.push(rightColStart);
+
+  const displayXBuckets = keepColIdx.map(i => xBuckets[i]);
+  const finalDisplayGrid = displayRowsGrid.map(row => keepColIdx.map(i => row[i]));
 
   // Build a simple legend of initials → name
   const legendMap = useMemo(() => {
@@ -371,7 +394,7 @@ function TwoGameGrid(props: {
                 <TableRow key={y}>
                   <TableCell sx={{ fontWeight: 600 }}>{label}</TableCell>
                   {displayXBuckets.map((x, xi) => {
-                    const cell = displayGrid[yi][xi];
+                    const cell = finalDisplayGrid[yi][xi];
                     const tags = cell.winners.map(w => initials(w.name)).join(" ");
                     return (
                       <TableCell key={`${y}:${x}`} align="center">
