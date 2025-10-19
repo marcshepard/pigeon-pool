@@ -56,6 +56,8 @@ type OneGameWhatIf = {
     winners: { pn: number; name: string }[];
     top5: Array<{ pn: number; name: string; total: number }>;
   }>;
+  home: string;
+  away: string;
 };
 
 type TwoGameWhatIf = {
@@ -102,6 +104,8 @@ export function useMnfOutcomes(week: number | null, rows: ResultsRow[], games: G
         kind: "one",
         buckets: Avals,
         rows: rowsOut,
+        home: g.home_abbr,
+        away: g.away_abbr,
       };
     }
 

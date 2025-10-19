@@ -147,7 +147,12 @@ export default function MnfOutcomesPage() {
       </Typography>
 
       {whatIf.kind === "one" && (
-        <OneGameTable buckets={whatIf.buckets} rows={whatIf.rows} />
+        <OneGameTable
+          buckets={whatIf.buckets}
+          rows={whatIf.rows}
+          home={whatIf.home}
+          away={whatIf.away}
+        />
       )}
 
       {whatIf.kind === "two" && (
@@ -172,39 +177,90 @@ function OneGameTable(props: {
     winners: { pn: number; name: string }[];
     top5: Array<{ pn: number; name: string; total: number }>;
   }>;
+  home: string;
+  away: string;
 }) {
-  const { rows } = props;
+  const { rows, home, away } = props;
+
+  // Helper to join top5 with '-' if tied, '|' if not
+  function joinTop5(top5: Array<{ name: string; total: number }>) {
+    if (!top5.length) return '';
+    let out = `${top5[0].name} ${top5[0].total}`;
+    for (let i = 1; i < top5.length; ++i) {
+      const sep = top5[i].total === top5[i-1].total ? ' - ' : '  |  ';
+      out += sep + `${top5[i].name} ${top5[i].total}`;
+    }
+    return out;
+  }
+
+  // Helper to format the outcome as '<Team> <points>'
+  function formatOutcome(actual: number): string {
+    if (actual === 0) return 'Tie 0';
+    if (actual > 0) return `${home} ${actual}`;
+    return `${away} ${Math.abs(actual)}`;
+  }
+
+  // Collapse consecutive rows with identical Top 5 (names and order)
+  // Helper to get both order and tie structure for Top 5
+  function top5OrderAndTiesKey(top5: Array<{ name: string; total: number }>) {
+    if (!top5.length) return '';
+    let key = '';
+    let prevScore = top5[0].total;
+    key += top5[0].name;
+    for (let i = 1; i < top5.length; ++i) {
+      key += (top5[i].total === prevScore ? '=' : '>') + top5[i].name;
+      prevScore = top5[i].total;
+    }
+    return key;
+  }
+
+  // Prune both the highest and lowest margin rows for each team as described
+  // Prune only the top run and bottom run of identical Top 5 order (including ties)
+  let start = 0;
+  while (
+    start < rows.length - 1 &&
+    top5OrderAndTiesKey(rows[start].top5) === top5OrderAndTiesKey(rows[start + 1].top5)
+  ) {
+    start++;
+  }
+  let end = rows.length - 1;
+  while (
+    end > start &&
+    top5OrderAndTiesKey(rows[end].top5) === top5OrderAndTiesKey(rows[end - 1].top5)
+  ) {
+    end--;
+  }
+  // Always include all rows between start and end, inclusive
+  const displayRows = rows.slice(start, end + 1);
 
   return (
     <Box>
       <Typography variant="subtitle1" gutterBottom>
-        Forecast (per MNF margin): 1st place winners and top 5
+        Forecast (per MNF margin): top 5 finishers
       </Typography>
       <Table size="small" sx={{ mb: 2 }}>
         <TableHead>
           <TableRow>
-            <TableCell sx={{ fontWeight: 600 }}>Actual signed margin</TableCell>
-            <TableCell sx={{ fontWeight: 600 }}>Winner(s)</TableCell>
-            <TableCell sx={{ fontWeight: 600 }}>Top 5 (name • score)</TableCell>
+            <TableCell sx={{ fontWeight: 600 }}>Outcome</TableCell>
+            <TableCell sx={{ fontWeight: 600 }}>Top 5</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
-          {rows.map((r) => (
-            <TableRow key={r.actual}>
-              <TableCell>{formatBucket(r.actual)}</TableCell>
-              <TableCell>
-                {r.winners.map(w => w.name).join(", ")}
-              </TableCell>
-              <TableCell>
-                {r.top5.map(t => `${t.name} • ${t.total}`).join("  |  ")}
-              </TableCell>
-            </TableRow>
-          ))}
+          {displayRows.map((r, idx) => {
+            // Add '+' to first and last row
+            let outcome = formatOutcome(r.actual);
+            if (idx === 0 || idx === displayRows.length - 1) outcome += '+';
+            return (
+              <TableRow key={r.actual}>
+                <TableCell>{outcome}</TableCell>
+                <TableCell>
+                  {joinTop5(r.top5)}
+                </TableCell>
+              </TableRow>
+            );
+          })}
         </TableBody>
       </Table>
-      <Typography variant="caption" color="text.secondary">
-        Positive = home wins by that margin; negative = away. 0 = tie.
-      </Typography>
     </Box>
   );
 }
