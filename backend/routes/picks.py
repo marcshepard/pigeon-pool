@@ -110,16 +110,6 @@ async def _ensure_week_unlocked(db: AsyncSession, week_number: int) -> None:
     if lock_at <= now:
         raise HTTPException(status_code=409, detail=f"Week {week_number} is locked")
 
-async def _ensure_game_unlocked(db: AsyncSession, game_id: int) -> int:
-    row = (await db.execute(GAME_WITH_WEEK_SQL, {"game_id": game_id})).first()
-    if not row:
-        raise HTTPException(status_code=404, detail=f"Game {game_id} not found")
-    week_number, lock_at = row
-    now = datetime.now(timezone.utc)
-    if lock_at <= now:
-        raise HTTPException(status_code=409, detail=f"Week {week_number} is locked")
-    return week_number
-
 async def _ensure_all_games_in_week(
     db: AsyncSession, week_number: int, game_ids: Iterable[int]
 ) -> None:

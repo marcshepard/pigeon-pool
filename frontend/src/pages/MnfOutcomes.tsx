@@ -120,7 +120,7 @@ export default function MnfOutcomesPage() {
         {weekSelector}
         <Typography variant="h6" gutterBottom>MNF Outcomes</Typography>
         <Typography variant="body1">
-          Check back here after the Sunday night football game to see the top&nbsp;5 finishers for each possible MNF result.
+          Check back here after the Sunday night football game to see the top finishers for each possible MNF result.
         </Typography>
       </Box>
     );
