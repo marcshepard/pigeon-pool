@@ -3,7 +3,7 @@
  */
 
 // src/pages/MnfOutcomesPage.tsx
-import { useMemo } from "react";
+import React, { useMemo } from "react";
 import { Box, Typography, Stack, Table, TableHead, TableRow, TableCell, TableBody, Divider } from "@mui/material";
 import { useSchedule } from "../hooks/useSchedule";
 import { useResults } from "../hooks/useResults";
@@ -51,22 +51,37 @@ function allSundayGamesFinal(games: GameMeta[]): boolean {
 }
 
 export default function MnfOutcomesPage() {
-  // What week to show? Use the live week; if null, there’s no active week.
-  const { schedule } = useSchedule();
+  // Week selector logic
+  const { schedule, lockedWeeks, loading: scheduleLoading } = useSchedule();
   const liveWeek = schedule?.live_week ?? null;
 
-  const { rows, games, loading, error } = useResults(liveWeek);
-  const whatIf = useMnfOutcomes(liveWeek, rows, games);
+  // Default week: liveWeek if available, else last locked week
+  const [week, setWeek] = React.useState<number | "">("");
+  React.useEffect(() => {
+    if (week === "" && lockedWeeks.length) {
+      setWeek(liveWeek ?? lockedWeeks[lockedWeeks.length - 1]);
+    }
+  }, [lockedWeeks, liveWeek, week]);
 
+  const { rows, games, weekState, loading, error } = useResults(typeof week === "number" ? week : null);
+  const whatIf = useMnfOutcomes(typeof week === "number" ? week : null, rows, games);
+
+  // Only show the 'come back after Sunday' message for the current week (not completed weeks)
   const { shouldShow, endOfMonday } = useMemo(() => {
     const now = new Date();
     const sundayDone = allSundayGamesFinal(games);
     const eom = endOfLocalMondayForWeek(games);
+    // If the selected week is completed, always show outcomes (if available)
+    if (weekState === "completed") {
+      return { shouldShow: true, endOfMonday: eom };
+    }
+    // Otherwise, use the original logic for the current week
     const withinWindow = sundayDone && (!!eom && now <= eom);
     return { shouldShow: withinWindow, endOfMonday: eom };
-  }, [games]);
+  }, [games, weekState]);
 
-  if (loading) {
+  // Loading states
+  if (loading || scheduleLoading) {
     return (
       <Box sx={{ maxWidth: 1000, mx: "auto", p: 2 }}>
         <Typography variant="body1">Loading MNF outcomes…</Typography>
@@ -82,9 +97,27 @@ export default function MnfOutcomesPage() {
     );
   }
 
+  // Week selector UI
+  const weekSelector = (
+    <Box sx={{ mb: 2, display: "flex", alignItems: "center", gap: 2 }}>
+      <Typography variant="body1" fontWeight="bold">Week:</Typography>
+      <select
+        value={week}
+        onChange={e => setWeek(Number(e.target.value))}
+        disabled={lockedWeeks.length === 0}
+        style={{ fontSize: "1rem", padding: "0.25em 0.5em" }}
+      >
+        {lockedWeeks.map(w => (
+          <option key={w} value={w}>Week {w}</option>
+        ))}
+      </select>
+    </Box>
+  );
+
   if (!shouldShow) {
     return (
       <Box sx={{ maxWidth: 1000, mx: "auto", p: 2 }}>
+        {weekSelector}
         <Typography variant="h6" gutterBottom>MNF Outcomes</Typography>
         <Typography variant="body1">
           Check back here after the Sunday night football game to see the top&nbsp;5 finishers for each possible MNF result.
@@ -97,6 +130,7 @@ export default function MnfOutcomesPage() {
   if (whatIf.kind === "none") {
     return (
       <Box sx={{ maxWidth: 1000, mx: "auto", p: 2 }}>
+        {weekSelector}
         <Typography variant="h6" gutterBottom>MNF Outcomes</Typography>
         <Typography variant="body1">
           No MNF scenarios to display (either no Monday games this week, or data isn’t ready yet).
@@ -107,6 +141,7 @@ export default function MnfOutcomesPage() {
 
   return (
     <Box sx={{ maxWidth: 1100, mx: "auto", p: 2 }}>
+      {weekSelector}
       <Typography variant="h6" gutterBottom>
         MNF Outcomes {endOfMonday ? `(through ${endOfMonday.toLocaleString()})` : ""}
       </Typography>

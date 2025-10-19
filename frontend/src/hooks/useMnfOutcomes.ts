@@ -5,8 +5,8 @@ import type { GameMeta } from "../hooks/useAppCache";
 function isMonday(d: Date) { return d.getDay() === 1; } // 0=Sun .. 6=Sat
 
 function selectMnfGames(games: GameMeta[]): GameMeta[] {
+  // For completed weeks, allow MNF games regardless of status
   return games
-    .filter(g => g.status !== "final")
     .filter(g => {
       if (!g.kickoff_at) return false;
       const dt = new Date(g.kickoff_at);

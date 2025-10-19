@@ -96,11 +96,9 @@ async def run_poll_scores(session: AsyncSession) -> dict[str, Any]:
         return {"updated": 0, "note": "no current week"}
     week = int(row[0])
 
-    def _work() -> int:
-        with psycopg.connect(**_SETTINGS.psycopg_kwargs()) as conn:
-            return ScoreSync(conn).sync_scores_and_status(week)
-
-    updated = await asyncio.to_thread(_work)
+    # Use async ScoreSync directly
+    syncer = ScoreSync(session)
+    updated = await syncer.sync_scores_and_status(week)
 
     # Log only when we actually ran (scheduler already guards with predicate).
     info(

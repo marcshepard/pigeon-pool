@@ -14,7 +14,9 @@ from __future__ import annotations
 from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 from typing import Any, Optional
-import requests
+import httpx
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
 
 PT = ZoneInfo("America/Los_Angeles")
 
@@ -35,20 +37,20 @@ def _calc_lock_at_pacific(kickoffs_utc: list[datetime]) -> datetime:
     return lock_wed_pt.astimezone(timezone.utc)
 
 class ScoreSync:
-    """Tiny sync class; one instance per DB connection is fine."""
+    """Tiny async sync class; one instance per DB session is fine."""
 
-    def __init__(self, connection: Any) -> None:
+    def __init__(self, session: AsyncSession) -> None:
         """
         Args:
-            connection: psycopg2/psycopg3-style connection object (has .cursor(), .commit()).
+            session: SQLAlchemy AsyncSession object.
         """
-        self.conn = connection
+        self.session = session
 
     # -------------------------------------------------------------------------
     # Public API
     # -------------------------------------------------------------------------
 
-    def load_schedule(self) -> int:
+    async def load_schedule(self) -> int:
         """
         Populate/refresh the current season’s schedule for weeks 1–18.
 
@@ -64,7 +66,7 @@ class ScoreSync:
         total_changed = 0
 
         for week in range(1, 19):
-            sb = _fetch_scoreboard(season=season, week=week)
+            sb = await _fetch_scoreboard(season=season, week=week)
             events = sb.get("events", []) or []
             if not events:
                 continue
@@ -72,16 +74,15 @@ class ScoreSync:
             # --- upsert the week first (compute lock_at from earliest kickoff) ---
             kickoffs = [_parse_event_kickoff(ev) for ev in events]
             lock_at_utc = _calc_lock_at_pacific(kickoffs)
-            with self.conn.cursor() as cur:
-                cur.execute(
-                    """
+            await self.session.execute(
+                text("""
                     INSERT INTO weeks (week_number, lock_at)
-                    VALUES (%s, %s)
+                    VALUES (:week, :lock_at)
                     ON CONFLICT (week_number)
                     DO UPDATE SET lock_at = EXCLUDED.lock_at
-                    """,
-                    (week, lock_at_utc),
-                )
+                """),
+                {"week": week, "lock_at": lock_at_utc},
+            )
 
             # --- then teams + games ---
             for ev in events:
@@ -90,11 +91,11 @@ class ScoreSync:
                 home_abbr, home_name, away_abbr, away_name = _parse_team_abbrs_and_names(ev)
 
                 # Teams
-                self._upsert_team(abbr=home_abbr, name=home_name)
-                self._upsert_team(abbr=away_abbr, name=away_name)
+                await self._upsert_team(abbr=home_abbr, name=home_name)
+                await self._upsert_team(abbr=away_abbr, name=away_name)
 
                 # Game row
-                changed = self._upsert_game_schedule_row(
+                changed = await self._upsert_game_schedule_row(
                     week_number=week,
                     kickoff_at=kickoff_at,
                     home_abbr=home_abbr,
@@ -104,10 +105,10 @@ class ScoreSync:
                 if changed:
                     total_changed += 1
 
-        self.conn.commit()
+        await self.session.commit()
         return total_changed
 
-    def sync_scores_and_status(self, week: int) -> int:
+    async def sync_scores_and_status(self, week: int) -> int:
         """
         For the given week, pull scores/status from ESPN and update matching games.
 
@@ -122,7 +123,7 @@ class ScoreSync:
             httpx.HTTPError or database exceptions on failure.
         """
         season = _current_nfl_season_year()
-        sb = _fetch_scoreboard(season=season, week=week)
+        sb = await _fetch_scoreboard(season=season, week=week)
         updated_count = 0
 
         for ev in sb.get("events", []):
@@ -131,7 +132,7 @@ class ScoreSync:
             home_abbr, _, away_abbr, _ = _parse_team_abbrs_and_names(ev)
 
             # First try by espn_event_id
-            rows = self._update_scores_by_event_id(
+            rows = await self._update_scores_by_event_id(
                 espn_event_id=event_id,
                 home_score=home_score,
                 away_score=away_score,
@@ -139,7 +140,7 @@ class ScoreSync:
             )
             if rows == 0:
                 # Fallback to (week, home, away) if event id not set yet
-                rows = self._update_scores_by_triplet(
+                rows = await self._update_scores_by_triplet(
                     week_number=week,
                     home_abbr=home_abbr,
                     away_abbr=away_abbr,
@@ -150,10 +151,10 @@ class ScoreSync:
                 )
             updated_count += rows
 
-        self.conn.commit()
+        await self.session.commit()
         return updated_count
 
-    def refresh_kickoffs(self, week: int) -> int:
+    async def refresh_kickoffs(self, week: int) -> int:
         """
         For the given week, fetch schedule and update kickoff_at for any game that differs.
 
@@ -167,7 +168,7 @@ class ScoreSync:
             httpx.HTTPError or database exceptions on failure.
         """
         season = _current_nfl_season_year()
-        sb = _fetch_scoreboard(season=season, week=week)
+        sb = await _fetch_scoreboard(season=season, week=week)
         updates = 0
 
         for ev in sb.get("events", []):
@@ -176,34 +177,33 @@ class ScoreSync:
             home_abbr, _, away_abbr, _ = _parse_team_abbrs_and_names(ev)
 
             # Try by event id first
-            rows = self._update_kickoff_by_event_id(espn_event_id=event_id, new_kickoff=new_kick)
+            rows = await self._update_kickoff_by_event_id(espn_event_id=event_id, new_kickoff=new_kick)
             if rows == 0:
                 # Fallback to (week, home, away)
-                rows = self._update_kickoff_by_triplet(
+                rows = await self._update_kickoff_by_triplet(
                     week_number=week, home_abbr=home_abbr, away_abbr=away_abbr, new_kickoff=new_kick, espn_event_id=event_id
                 )
             updates += rows
 
-        self.conn.commit()
+        await self.session.commit()
         return updates
 
     # -------------------------------------------------------------------------
     # Private DB helpers (raw SQL; psycopg-style)
     # -------------------------------------------------------------------------
 
-    def _upsert_team(self, *, abbr: str, name: str) -> None:
-        with self.conn.cursor() as cur:
-            cur.execute(
-                """
+    async def _upsert_team(self, *, abbr: str, name: str) -> None:
+        await self.session.execute(
+            text("""
                 INSERT INTO teams (abbr, name)
-                VALUES (%s, %s)
+                VALUES (:abbr, :name)
                 ON CONFLICT (abbr)
                 DO UPDATE SET name = EXCLUDED.name
-                """,
-                (abbr, name),
-            )
+            """),
+            {"abbr": abbr, "name": name},
+        )
 
-    def _upsert_game_schedule_row(
+    async def _upsert_game_schedule_row(
         self,
         *,
         week_number: int,
@@ -212,26 +212,29 @@ class ScoreSync:
         away_abbr: str,
         espn_event_id: int,
     ) -> int:
-        # Upsert by (week_number, home_abbr, away_abbr); set event id if missing
-        with self.conn.cursor() as cur:
-            cur.execute(
-                """
+        result = await self.session.execute(
+            text("""
                 INSERT INTO games (
                     week_number, kickoff_at, home_abbr, away_abbr, status, home_score, away_score, espn_event_id
                 )
-                VALUES (%s, %s, %s, %s, 'scheduled', NULL, NULL, %s)
+                VALUES (:week_number, :kickoff_at, :home_abbr, :away_abbr, 'scheduled', NULL, NULL, :espn_event_id)
                 ON CONFLICT (week_number, home_abbr, away_abbr)
                 DO UPDATE SET
                     kickoff_at    = EXCLUDED.kickoff_at,
                     espn_event_id = COALESCE(games.espn_event_id, EXCLUDED.espn_event_id),
                     updated_at    = now()
-                """,
-                (week_number, kickoff_at, home_abbr, away_abbr, espn_event_id),
-            )
-            # rowcount is 1 for both insert and update here
-            return cur.rowcount
+            """),
+            {
+                "week_number": week_number,
+                "kickoff_at": kickoff_at,
+                "home_abbr": home_abbr,
+                "away_abbr": away_abbr,
+                "espn_event_id": espn_event_id,
+            },
+        )
+        return result.rowcount if hasattr(result, "rowcount") else 1
 
-    def _update_scores_by_event_id(
+    async def _update_scores_by_event_id(
         self,
         *,
         espn_event_id: int,
@@ -239,27 +242,31 @@ class ScoreSync:
         away_score: Optional[int],
         status: str,
     ) -> int:
-        with self.conn.cursor() as cur:
-            cur.execute(
-                """
+        result = await self.session.execute(
+            text("""
                 UPDATE games
                 SET
-                    home_score = %s,
-                    away_score = %s,
-                    status     = %s,
+                    home_score = :home_score,
+                    away_score = :away_score,
+                    status     = :status,
                     updated_at = now()
-                WHERE espn_event_id = %s
+                WHERE espn_event_id = :espn_event_id
                   AND (
-                    home_score IS DISTINCT FROM %s OR
-                    away_score IS DISTINCT FROM %s OR
-                    status     IS DISTINCT FROM %s
+                    home_score IS DISTINCT FROM :home_score OR
+                    away_score IS DISTINCT FROM :away_score OR
+                    status     IS DISTINCT FROM :status
                   )
-                """,
-                (home_score, away_score, status, espn_event_id, home_score, away_score, status),
-            )
-            return cur.rowcount
+            """),
+            {
+                "home_score": home_score,
+                "away_score": away_score,
+                "status": status,
+                "espn_event_id": espn_event_id,
+            },
+        )
+        return result.rowcount if hasattr(result, "rowcount") else 1
 
-    def _update_scores_by_triplet(
+    async def _update_scores_by_triplet(
         self,
         *,
         week_number: int,
@@ -270,56 +277,51 @@ class ScoreSync:
         status: str,
         espn_event_id: int,
     ) -> int:
-        with self.conn.cursor() as cur:
-            cur.execute(
-                """
+        result = await self.session.execute(
+            text("""
                 UPDATE games
                 SET
-                    home_score    = %s,
-                    away_score    = %s,
-                    status        = %s,
-                    espn_event_id = COALESCE(espn_event_id, %s),
+                    home_score    = :home_score,
+                    away_score    = :away_score,
+                    status        = :status,
+                    espn_event_id = COALESCE(espn_event_id, :espn_event_id),
                     updated_at    = now()
-                WHERE week_number = %s
-                  AND home_abbr = %s
-                  AND away_abbr = %s
+                WHERE week_number = :week_number
+                  AND home_abbr = :home_abbr
+                  AND away_abbr = :away_abbr
                   AND (
-                    home_score IS DISTINCT FROM %s OR
-                    away_score IS DISTINCT FROM %s OR
-                    status     IS DISTINCT FROM %s OR
+                    home_score IS DISTINCT FROM :home_score OR
+                    away_score IS DISTINCT FROM :away_score OR
+                    status     IS DISTINCT FROM :status OR
                     espn_event_id IS NULL
                   )
-                """,
-                (
-                    home_score,
-                    away_score,
-                    status,
-                    espn_event_id,
-                    week_number,
-                    home_abbr,
-                    away_abbr,
-                    home_score,
-                    away_score,
-                    status,
-                ),
-            )
-            return cur.rowcount
+            """),
+            {
+                "home_score": home_score,
+                "away_score": away_score,
+                "status": status,
+                "espn_event_id": espn_event_id,
+                "week_number": week_number,
+                "home_abbr": home_abbr,
+                "away_abbr": away_abbr,
+            },
+        )
+        return result.rowcount if hasattr(result, "rowcount") else 1
 
-    def _update_kickoff_by_event_id(self, *, espn_event_id: int, new_kickoff: datetime) -> int:
-        with self.conn.cursor() as cur:
-            cur.execute(
-                """
+    async def _update_kickoff_by_event_id(self, *, espn_event_id: int, new_kickoff: datetime) -> int:
+        result = await self.session.execute(
+            text("""
                 UPDATE games
-                SET kickoff_at = %s,
+                SET kickoff_at = :new_kickoff,
                     updated_at = now()
-                WHERE espn_event_id = %s
-                  AND kickoff_at IS DISTINCT FROM %s
-                """,
-                (new_kickoff, espn_event_id, new_kickoff),
-            )
-            return cur.rowcount
+                WHERE espn_event_id = :espn_event_id
+                  AND kickoff_at IS DISTINCT FROM :new_kickoff
+            """),
+            {"new_kickoff": new_kickoff, "espn_event_id": espn_event_id},
+        )
+        return result.rowcount if hasattr(result, "rowcount") else 1
 
-    def _update_kickoff_by_triplet(
+    async def _update_kickoff_by_triplet(
         self,
         *,
         week_number: int,
@@ -328,21 +330,26 @@ class ScoreSync:
         new_kickoff: datetime,
         espn_event_id: Optional[int] = None,
     ) -> int:
-        with self.conn.cursor() as cur:
-            cur.execute(
-                """
+        result = await self.session.execute(
+            text("""
                 UPDATE games
-                SET kickoff_at = %s,
-                    espn_event_id = COALESCE(espn_event_id, %s),
+                SET kickoff_at = :new_kickoff,
+                    espn_event_id = COALESCE(espn_event_id, :espn_event_id),
                     updated_at = now()
-                WHERE week_number = %s
-                  AND home_abbr = %s
-                  AND away_abbr = %s
-                  AND kickoff_at IS DISTINCT FROM %s
-                """,
-                (new_kickoff, espn_event_id, week_number, home_abbr, away_abbr, new_kickoff),
-            )
-            return cur.rowcount
+                WHERE week_number = :week_number
+                  AND home_abbr = :home_abbr
+                  AND away_abbr = :away_abbr
+                  AND kickoff_at IS DISTINCT FROM :new_kickoff
+            """),
+            {
+                "new_kickoff": new_kickoff,
+                "espn_event_id": espn_event_id,
+                "week_number": week_number,
+                "home_abbr": home_abbr,
+                "away_abbr": away_abbr,
+            },
+        )
+        return result.rowcount if hasattr(result, "rowcount") else 1
 
 
 # -----------------------------------------------------------------------------
@@ -357,15 +364,15 @@ def _current_nfl_season_year() -> int:
     return datetime.now(timezone.utc).year
 
 
-def _fetch_scoreboard(*, season: int, week: int) -> dict[str, Any]:
+async def _fetch_scoreboard(*, season: int, week: int) -> dict[str, Any]:
     """
     GET ESPN NFL scoreboard for given season+week (regular season `seasontype=2`).
     Adjust `seasontype` if you want preseason(1) or postseason(3) later.
     """
     url = "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard"
     params = {"year": season, "week": week, "seasontype": 2}
-    with requests.Session() as session:
-        resp = session.get(url, params=params, timeout=15)
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.get(url, params=params)
         resp.raise_for_status()
         return resp.json()
 

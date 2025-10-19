@@ -22,7 +22,9 @@ import argparse
 import os
 from typing import Any, Dict
 
+import asyncio
 import psycopg
+from backend.utils.db import AsyncSessionLocal
 
 from backend.utils.score_sync import ScoreSync
 from backend.utils.settings import get_settings
@@ -62,32 +64,28 @@ def cmd_load_schedule(_: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_sync_scores(args: argparse.Namespace) -> int:
+async def cmd_sync_scores(args: argparse.Namespace) -> int:
     """
     Update scores & status for the given week using ScoreSync.sync_scores_and_status(week).
     """
     week = _validated_week(args.week)
-    settings = get_settings()
-    cfg = settings.psycopg_kwargs()
-    print(f"[cli] sync-scores {week} → {cfg['user']}@{cfg['host']}:{cfg['port']}/{cfg['dbname']}")
-    with get_connection(cfg) as conn:
-        sync = ScoreSync(conn)
-        updated = sync.sync_scores_and_status(week)
+    print(f"[cli] sync-scores {week} (async SQLAlchemy)")
+    async with AsyncSessionLocal() as session:
+        sync = ScoreSync(session)
+        updated = await sync.sync_scores_and_status(week)
         print(f"[cli] sync-scores: updated {updated} game rows.")
     return 0
 
 
-def cmd_sync_kickoffs(args: argparse.Namespace) -> int:
+async def cmd_sync_kickoffs(args: argparse.Namespace) -> int:
     """
     Refresh kickoff times for the given week using ScoreSync.refresh_kickoffs(week).
     """
     week = _validated_week(args.week)
-    settings = get_settings()
-    cfg = settings.psycopg_kwargs()
-    print(f"[cli] sync-kickoffs {week} → {cfg['user']}@{cfg['host']}:{cfg['port']}/{cfg['dbname']}")
-    with get_connection(cfg) as conn:
-        sync = ScoreSync(conn)
-        updates = sync.refresh_kickoffs(week)
+    print(f"[cli] sync-kickoffs {week} (async SQLAlchemy)")
+    async with AsyncSessionLocal() as session:
+        sync = ScoreSync(session)
+        updates = await sync.refresh_kickoffs(week)
         print(f"[cli] sync-kickoffs: updated kickoff_at for {updates} game rows.")
     return 0
 
@@ -210,7 +208,11 @@ def main(argv: list[str] | None = None) -> int:
     if not getattr(args, "func", None):
         parser.print_help()
         return 2
-    return args.func(args)
+    func = args.func
+    if asyncio.iscoroutinefunction(func):
+        return asyncio.run(func(args))
+    else:
+        return func(args)
 
 
 if __name__ == "__main__":
