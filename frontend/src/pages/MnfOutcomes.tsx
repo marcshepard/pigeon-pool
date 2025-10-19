@@ -173,22 +173,14 @@ function OneGameTable(props: {
     actual: number;
     winners: { pn: number; name: string }[];
     top5: Array<{ pn: number; name: string; total: number }>;
+    top5Ranks?: Array<Array<{ pn: number; name: string; total: number }>>;
   }>;
   home: string;
   away: string;
 }) {
   const { rows, home, away } = props;
 
-  // Helper to join top5 with '-' if tied, '|' if not
-  function joinTop5(top5: Array<{ name: string; total: number }>) {
-    if (!top5.length) return '';
-    let out = `${top5[0].name} ${top5[0].total}`;
-    for (let i = 1; i < top5.length; ++i) {
-      const sep = top5[i].total === top5[i-1].total ? ' - ' : '  |  ';
-      out += sep + `${top5[i].name} ${top5[i].total}`;
-    }
-    return out;
-  }
+  // (table now renders per-rank columns; no need for joinTop5 string)
 
   // Helper to format the outcome as '<Team> <points>'
   function formatOutcome(actual: number): string {
@@ -210,6 +202,17 @@ function OneGameTable(props: {
     }
     return key;
   }
+
+  // Build a legend like the two-game grid
+  const legendMap = useMemo(() => {
+    const names = new Set<string>();
+    rows.forEach(r => {
+      (r.top5Ranks ?? []).forEach(rank => rank.forEach(p => names.add(p.name)));
+      r.top5.forEach(p => names.add(p.name));
+    });
+    const arr = Array.from(names).sort();
+    return arr.map(name => ({ name, tag: initials(name) }));
+  }, [rows]);
 
   // Prune both the highest and lowest margin rows for each team as described
   // Prune only the top run and bottom run of identical Top 5 order (including ties)
@@ -239,25 +242,66 @@ function OneGameTable(props: {
         <TableHead>
           <TableRow>
             <TableCell sx={{ fontWeight: 600 }}>Outcome</TableCell>
-            <TableCell sx={{ fontWeight: 600 }}>Top 5</TableCell>
+            <TableCell sx={{ fontWeight: 600 }} align="center">1st</TableCell>
+            <TableCell sx={{ fontWeight: 600 }} align="center">2nd</TableCell>
+            <TableCell sx={{ fontWeight: 600 }} align="center">3rd</TableCell>
+            <TableCell sx={{ fontWeight: 600 }} align="center">4th</TableCell>
+            <TableCell sx={{ fontWeight: 600 }} align="center">5th</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
           {displayRows.map((r, idx) => {
-            // Add '+' to first and last row
             let outcome = formatOutcome(r.actual);
             if (idx === 0 || idx === displayRows.length - 1) outcome += '+';
+            // Build rank columns 1..5 from groups, leaving blanks for skipped ranks when a tie spans multiple positions
+            const ranks = r.top5Ranks ?? (() => {
+              const t = r.top5;
+              if (!t || t.length === 0) return [] as Array<Array<{ pn: number; name: string; total: number }>>;
+              const groups: Array<Array<{ pn: number; name: string; total: number }>> = [];
+              let i = 0;
+              while (i < t.length && groups.length < 5) {
+                const g: Array<{ pn: number; name: string; total: number }> = [t[i]];
+                let j = i + 1;
+                while (j < t.length && t[j].total === t[i].total) { g.push(t[j]); j++; }
+                groups.push(g);
+                i = j;
+              }
+              return groups;
+            })();
+            const rankCols: Array<Array<{ pn: number; name: string; total: number }>> = [[], [], [], [], []];
+            let pos = 1;
+            for (const g of ranks) {
+              if (pos > 5) break;
+              rankCols[pos - 1] = g;
+              pos += g.length; // skip subsequent positions covered by the tie
+            }
             return (
               <TableRow key={r.actual}>
-                <TableCell>{outcome}</TableCell>
-                <TableCell>
-                  {joinTop5(r.top5)}
-                </TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{outcome}</TableCell>
+                {[0, 1, 2, 3, 4].map(rankIdx => (
+                  <TableCell key={rankIdx} align="center">
+                    {rankCols[rankIdx].length
+                      ? rankCols[rankIdx].map(p => initials(p.name)).join(" · ")
+                      : "—"}
+                  </TableCell>
+                ))}
               </TableRow>
             );
           })}
         </TableBody>
       </Table>
+      <Divider sx={{ my: 2 }} />
+      <Typography variant="subtitle2" gutterBottom>Legend</Typography>
+      <Stack direction="row" spacing={2} useFlexGap flexWrap="wrap">
+        {legendMap.map(({ name, tag }) => (
+          <Box key={name} sx={{ display: "flex", gap: 1, alignItems: "center" }}>
+            <Box sx={{ fontFamily: "monospace", px: 1, py: 0.25, border: "1px solid", borderColor: "divider", borderRadius: 1 }}>
+              {tag}
+            </Box>
+            <Typography variant="body2">{name}</Typography>
+          </Box>
+        ))}
+      </Stack>
     </Box>
   );
 }

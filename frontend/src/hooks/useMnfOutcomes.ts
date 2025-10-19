@@ -62,6 +62,7 @@ type OneGameWhatIf = {
     actual: number;
     winners: { pn: number; name: string }[];
     top5: Array<{ pn: number; name: string; total: number }>;
+    top5Ranks?: Array<Array<{ pn: number; name: string; total: number }>>;
   }>;
   home: string;
   away: string;
@@ -104,7 +105,20 @@ export function useMnfOutcomes(week: number | null, rows: ResultsRow[], games: G
         const best = totals[0].total;
         const winners = totals.filter(t => t.total === best).map(t => ({ pn: t.pn, name: t.name }));
         const top5 = totals.slice(0, 5);
-        return { actual: A, winners, top5 };
+        // Build rank groups (ties grouped), include up to 5 ranks; the last group may exceed position 5 if it crosses the boundary
+        const groups: Array<Array<{ pn: number; name: string; total: number }>> = [];
+        let i = 0;
+        while (i < totals.length && groups.length < 5) {
+          const group: Array<{ pn: number; name: string; total: number }> = [totals[i]];
+          let j = i + 1;
+          while (j < totals.length && totals[j].total === totals[i].total) {
+            group.push(totals[j]);
+            j++;
+          }
+          groups.push(group);
+          i = j;
+        }
+        return { actual: A, winners, top5, top5Ranks: groups };
       });
 
       return {
