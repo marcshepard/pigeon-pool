@@ -30,6 +30,9 @@ function computeBaseScores(rows: ResultsRow[], games: GameMeta[]): Map<number, n
 
   for (const g of games) {
     if (g.status !== "final") continue;
+    // Exclude MNF games (Monday games) from baseline
+    const dt = g.kickoff_at ? new Date(g.kickoff_at) : null;
+    if (dt && dt.getDay() === 1) continue;
     const key = `g_${g.game_id}`;
     const actualSigned = (g.home_score ?? 0) - (g.away_score ?? 0);
     for (const r of rows) {
