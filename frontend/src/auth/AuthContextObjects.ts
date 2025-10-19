@@ -16,7 +16,7 @@ export type AuthContextValue = {
   refresh: () => Promise<void>;
   signIn: (payload: LoginPayload) => Promise<void>;
   signOut: () => Promise<void>;
-  isAdmin: () => boolean;
+  me?: Me;
 };
 
 // ✅ only export context + types (no React components)

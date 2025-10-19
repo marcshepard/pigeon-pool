@@ -9,8 +9,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { apiMe, apiLogin, apiLogout } from "../backend/fetch";
-import type { AuthContextValue, AuthState } from "./AuthContextObjects";
-import { AuthCtx } from "./AuthContextObjects";
+import { type AuthContextValue, type AuthState, AuthCtx } from "./authContextObjects";
 import { LoginPayload } from "../backend/types";
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -43,20 +42,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
 
-  const adminEmails = [
-    //"marcshepard@outlook.com",
-    "pigeonfootballpool@gmail.com"
-  ];
 
-  const isAdmin = () => {
-    if (state.status === "signedIn") {
-      return adminEmails.includes(state.user.email);
-    }
-    return false;
-  };
 
   const value = useMemo<AuthContextValue>(
-    () => ({ state, refresh, signIn, signOut, isAdmin }),
+    () => ({ state, refresh, signIn, signOut }),
     [state]   // eslint-disable-line react-hooks/exhaustive-deps
   );
 

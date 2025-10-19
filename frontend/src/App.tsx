@@ -70,7 +70,7 @@ function getNavItems(isAdmin: boolean): NavItem[] {
 }
 
 function PrivateShell() {
-  const { state, signOut, isAdmin } = useAuth();
+  const { state, signOut, me } = useAuth();
 
   // First boot: probing /auth/me
   if (state.status === "unknown") {
@@ -101,7 +101,7 @@ function PrivateShell() {
     <ResponsiveNav
       title="Pigeon Pool"
       brand={<Brand />}
-      navItems={getNavItems(isAdmin())}
+      navItems={getNavItems(me?.is_admin ?? false)}
       userMenu={userMenu}
     >
       <Routes>
@@ -111,7 +111,7 @@ function PrivateShell() {
         <Route path="/mnf-outcomes" element={<MnfOutcomesPage />} />
         <Route path="/year-to-date" element={<YearToDatePage />} />
         <Route path="/about" element={<AboutPage />} />
-        <Route path="/admin" element={isAdmin() ? <AdminPage /> : <Box p={3}>Not authorized</Box>} />
+        <Route path="/admin" element={me?.is_admin ? <AdminPage /> : <Box p={3}>Not authorized</Box>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </ResponsiveNav>
