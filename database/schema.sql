@@ -224,6 +224,26 @@ JOIN weeks   w  ON w.week_number = g.week_number
 JOIN players pl ON pl.pigeon_number = f.pigeon_number
 WHERE w.lock_at <= now();
 
+-- Admin version - can see unlocked weeks too
+CREATE OR REPLACE VIEW v_admin_week_picks_with_names AS
+SELECT
+  pl.pigeon_number,
+  pl.pigeon_name,
+  g.game_id,
+  g.week_number,
+  f.picked_home,
+  f.predicted_margin,
+  g.home_abbr,
+  g.away_abbr,
+  g.kickoff_at,
+  g.status,
+  g.home_score,
+  g.away_score
+FROM v_picks_filled f
+JOIN games   g  ON g.game_id = f.game_id
+JOIN weeks   w  ON w.week_number = g.week_number
+JOIN players pl ON pl.pigeon_number = f.pigeon_number;
+
 -- === Track the last run of scheduled jobs ===
 CREATE TABLE IF NOT EXISTS scheduler_runs (
   job_name TEXT PRIMARY KEY,

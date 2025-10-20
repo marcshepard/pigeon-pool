@@ -248,3 +248,22 @@ export function getResultsAllLeaderboards(): Promise<LeaderboardRow[]> {
     },
   });
 }
+
+
+// =============================
+// Admin APIs
+// =============================
+
+/**
+ * Fetch all picks (joined with game metadata) for any week (admin only).
+ * Backend will return 403 if the user is not admin.
+ */
+export function adminGetWeekPicks(week: number): Promise<WeekPicksRow[]> {
+  return apiFetch(`/admin/weeks/${week}/picks`, {
+    method: "GET",
+    factory: (data: unknown) => {
+      if (!Array.isArray(data)) throw new Error("Invalid payload: expected array");
+      return data.map((row) => new WeekPicksRow(row));
+    },
+  });
+}

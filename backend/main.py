@@ -11,6 +11,7 @@ from backend.routes.auth import router as auth_router
 from backend.routes.picks import router as picks_router
 from backend.routes.schedule import router as schedule_router
 from backend.routes.results import router as results_router
+from backend.routes.admin import router as admin_router
 from backend.utils.scheduler import start_scheduler, stop_scheduler
 
 # Early initialization
@@ -47,3 +48,4 @@ app.include_router(auth_router)
 app.include_router(picks_router)
 app.include_router(schedule_router)
 app.include_router(results_router)
+app.include_router(admin_router)
