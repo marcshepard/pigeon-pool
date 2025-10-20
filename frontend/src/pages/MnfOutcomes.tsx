@@ -233,6 +233,18 @@ function OneGameTable(props: {
   // Always include all rows between start and end, inclusive
   const displayRows = rows.slice(start, end + 1);
 
+  // If only one row is displayed, show '<TEAM> any' (no margin, no '+')
+  const singleRowAnyLabel = React.useMemo(() => {
+    if (displayRows.length !== 1) return null;
+    const actual = displayRows[0].actual;
+    let team: string;
+    if (actual === 0) team = 'Tie';
+    else if (actual > 0) team = home;
+    else team = away;
+    return `${team} any`;
+  }, [displayRows, home, away]);
+
+
   return (
     <Box>
       <Typography variant="body1">
@@ -251,8 +263,15 @@ function OneGameTable(props: {
         </TableHead>
         <TableBody>
           {displayRows.map((r, idx) => {
-            let outcome = formatOutcome(r.actual);
-            if (idx === 0 || idx === displayRows.length - 1) outcome += '+';
+            // Build the outcome label; if only one row, use '<TEAM> any' without '+'
+            let outcome = singleRowAnyLabel ?? formatOutcome(r.actual);
+            if (!singleRowAnyLabel) {
+              const firstSide = displayRows.length ? (displayRows[0].actual === 0 ? 'tie' : (displayRows[0].actual > 0 ? 'home' : 'away')) : null;
+              const lastSide = displayRows.length ? (displayRows[displayRows.length - 1].actual === 0 ? 'tie' : (displayRows[displayRows.length - 1].actual > 0 ? 'home' : 'away')) : null;
+              const bottomSuffix = firstSide && lastSide && firstSide === lastSide ? '-' : '+';
+              if (idx === 0) outcome += '+';
+              if (idx === displayRows.length - 1) outcome += bottomSuffix;
+            }
             // Build rank columns 1..5 from groups, leaving blanks for skipped ranks when a tie spans multiple positions
             const ranks = r.top5Ranks ?? (() => {
               const t = r.top5;
@@ -405,6 +424,13 @@ function TwoGameGrid(props: {
   const xTeams = parseTeams(xLabel);
   const yTeams = parseTeams(yLabel);
 
+  // If only one column or one row remains after pruning, show '<TEAM> any' for that axis (no margin, no '+')
+  function formatAny(actual: number, home: string, away: string): string {
+    if (actual === 0) return 'Tie any';
+    return actual > 0 ? `${home} any` : `${away} any`;
+  }
+
+
   return (
     <Box>
       <Typography variant="subtitle1" gutterBottom>
@@ -416,10 +442,15 @@ function TwoGameGrid(props: {
             <TableRow>
               <TableCell sx={{ fontWeight: 600 }}>{/* corner cell */}</TableCell>
               {displayXBuckets.map((x, xi) => {
-                let label = formatOutcome(x, xTeams.home, xTeams.away);
-                // Add '+' to first and last column
-                if (xi === 0) label += '+';
-                if (xi === displayXBuckets.length - 1) label += '+';
+                const singleCol = displayXBuckets.length === 1;
+                let label = singleCol
+                  ? formatAny(x, xTeams.home, xTeams.away)
+                  : formatOutcome(x, xTeams.home, xTeams.away);
+                // Add '+' to first and last column only when more than one column
+                if (!singleCol) {
+                  if (xi === 0) label += '+';
+                  if (xi === displayXBuckets.length - 1) label += '+';
+                }
                 return (
                   <TableCell key={x} align="center" sx={{ fontWeight: 600 }}>
                     {label}
@@ -430,10 +461,18 @@ function TwoGameGrid(props: {
           </TableHead>
           <TableBody>
             {displayYBuckets.map((y, yi) => {
-              let label = formatOutcome(y, yTeams.home, yTeams.away);
-              // Add '+' to first and last row
-              if (yi === 0) label += '+';
-              if (yi === displayYBuckets.length - 1) label += '+';
+              const singleRow = displayYBuckets.length === 1;
+              let label = singleRow
+                ? formatAny(y, yTeams.home, yTeams.away)
+                : formatOutcome(y, yTeams.home, yTeams.away);
+              // Add '+' to first and last row only when more than one row
+              if (!singleRow) {
+                const firstSide = displayYBuckets.length ? (displayYBuckets[0] === 0 ? 'tie' : (displayYBuckets[0] > 0 ? 'home' : 'away')) : null;
+                const lastSide = displayYBuckets.length ? (displayYBuckets[displayYBuckets.length - 1] === 0 ? 'tie' : (displayYBuckets[displayYBuckets.length - 1] > 0 ? 'home' : 'away')) : null;
+                const bottomSuffix = firstSide && lastSide && firstSide === lastSide ? '-' : '+';
+                if (yi === 0) label += '+';
+                if (yi === displayYBuckets.length - 1) label += bottomSuffix;
+              }
               return (
                 <TableRow key={y}>
                   <TableCell sx={{ fontWeight: 600 }}>{label}</TableCell>
