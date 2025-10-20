@@ -4,8 +4,8 @@
 
 // src/auth/useAuth.ts
 import { useContext } from "react";
-import { AuthCtx } from "./authContextObjects";
-import type { AuthContextValue } from "./authContextObjects";
+import { AuthCtx } from "./_authContextObjects";
+import type { AuthContextValue } from "./_authContextObjects";
 
 export function useAuth(): AuthContextValue {
   const ctx = useContext(AuthCtx);
