@@ -8,27 +8,78 @@ import { useState } from "react";
 import {
   Alert,
   Box,
+  type BoxProps,
   Button,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  FormControl,
   GlobalStyles,
   IconButton,
   InputAdornment,
+  InputLabel,
+  MenuItem,
   Paper,
+  Select,
+  type SelectChangeEvent,
   Snackbar,
   Stack,
   TextField,
   Typography,
 } from "@mui/material";
-import type { BoxProps } from "@mui/material";
-import type { SxProps, Theme } from "@mui/material/styles";
-import { alpha } from "@mui/material/styles";
-import Dialog from "@mui/material/Dialog";
-import DialogTitle from "@mui/material/DialogTitle";
-import DialogContent from "@mui/material/DialogContent";
-import DialogActions from "@mui/material/DialogActions";
+import { alpha, type SxProps, type Theme } from "@mui/material/styles";
 
 import Visibility from "@mui/icons-material/Visibility";
 import VisibilityOff from "@mui/icons-material/VisibilityOff";
+
+
+export type LabeledSelectOption = {
+  value: string; // normalize to string for MUI Select typing
+  label: string;
+};
+
+export interface LabeledSelectProps {
+  label: string;
+  value: string;
+  onChange: (event: SelectChangeEvent<string>) => void;
+  options: LabeledSelectOption[];
+  id?: string;
+  labelId?: string;
+  size?: "small" | "medium";
+  sx?: object;
+}
+
+export function LabeledSelect({
+  label,
+  value,
+  onChange,
+  options,
+  id,
+  labelId,
+  size = "small",
+  sx,
+}: LabeledSelectProps) {
+  const selectId = id || `${label.replace(/\s+/g, "-").toLowerCase()}-select`;
+  const selectLabelId = labelId || `${selectId}-label`;
+  return (
+    <FormControl size={size} sx={sx}>
+      <InputLabel id={selectLabelId}>{label}</InputLabel>
+      <Select<string>
+        labelId={selectLabelId}
+        id={selectId}
+        label={label}
+        value={value}
+        onChange={onChange}
+      >
+        {options.map((opt) => (
+          <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
+        ))}
+      </Select>
+    </FormControl>
+  );
+}
 
 //PointsText – shared styling for per-game points/score text (e.g., (3))
 // This shows up in three places, so good to centralize the style.

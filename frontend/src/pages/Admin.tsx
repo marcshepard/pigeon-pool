@@ -9,10 +9,11 @@ import { adminGetWeekPicks, getGamesForWeek } from "../backend/fetch";
 import { WeekPicksRow, Game } from "../backend/types";
 import { DataGridLite } from "../components/DataGridLite";
 import type { ColumnDef } from "../components/DataGridLite";
-import { PickCell } from "../components/CommonComponents";
+import { PickCell, LabeledSelect } from "../components/CommonComponents";
 
 export default function AdminPage() {
   const [tab, setTab] = useState(0);
+  const [selectedPigeon, setSelectedPigeon] = useState<string>("");
   const { schedule } = useSchedule();
   const nextWeek = schedule?.next_picks_week;
   const [picks, setPicks] = useState<WeekPicksRow[]>([]);
@@ -144,7 +145,7 @@ export default function AdminPage() {
         View or edit picks for week {nextWeek}
       </Typography>
       <Typography variant="body1" align="center" mb={2}>
-        At midnight on Tuesday, data becomes uneditable and this page will instead let you view and edit the {nextWeek + 1} picks instead
+        At midnight on Tuesday, week {nextWeek} picks become uneditable and this page will let you view and edit the {nextWeek + 1} picks instead
       </Typography>
       <Tabs value={tab} onChange={(_, v) => setTab(v)} centered sx={{ mb: 2 }}>
         <Tab label="View Picks" />
@@ -168,7 +169,16 @@ export default function AdminPage() {
         )}
       {tab === 1 && (
         <Box p={3} textAlign="center">
-          <Typography variant="body1">coming soon</Typography>
+          <LabeledSelect
+            label="Select Pigeon"
+            value={selectedPigeon}
+            onChange={(e) => setSelectedPigeon(e.target.value as string)}
+            options={Array.from(new Set(picks.map(p => `${p.pigeon_number}|${p.pigeon_name}`))).map(str => {
+              const [num, name] = str.split("|");
+              return { value: String(num), label: `${num} ${name}` };
+            })}
+            sx={{ minWidth: 240 }}
+          />
         </Box>
       )}
     </Box>

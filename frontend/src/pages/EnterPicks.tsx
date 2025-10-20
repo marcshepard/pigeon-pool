@@ -3,26 +3,9 @@
  */
 
 import { useEffect, useMemo, useState, useRef } from "react";
-import {
-  Box,
-  Button,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  FormControl,
-  FormControlLabel,
-  InputLabel,
-  MenuItem,
-  Radio,
-  RadioGroup,
-  Select,
-  Stack,
-  TextField,
-  Typography,
-} from "@mui/material";
+import { Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, FormControl, FormControlLabel, Radio, RadioGroup, Stack, TextField, Typography } from "@mui/material";
 import { alpha } from "@mui/material/styles";
-import { AppSnackbar, Loading, Banner, ConfirmDialog } from "../components/CommonComponents";
+import { AppSnackbar, Loading, Banner, ConfirmDialog, LabeledSelect } from "../components/CommonComponents";
 // Utility: detect double tap on mobile
 function useDoubleTap(callback: () => void, ms = 300) {
   const lastTap = useRef<number>(0);
@@ -274,19 +257,12 @@ export default function EnterPicksPage() {
       >
         <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}>
           {/* Week selector (left) */}
-          <FormControl size="small">
-            <InputLabel id="week-select-label">Week</InputLabel>
-            <Select
-              labelId="week-select-label"
-              label="Week"
-              value={week}
-              onChange={(e) => setWeek(Number(e.target.value))}
-            >
-              {futureWeeks.map((w) => (
-                <MenuItem key={w} value={w}>Week {w}</MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+          <LabeledSelect
+            label="Week"
+            value={String(week)}
+            onChange={(e) => setWeek(Number(e.target.value))}
+            options={futureWeeks.map((w) => ({ value: String(w), label: `Week ${w}` }))}
+          />
 
           {/* Title (center) */}
           <Typography
