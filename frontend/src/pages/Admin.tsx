@@ -3,7 +3,7 @@
  */
 
 import { useState, useEffect, useMemo } from "react";
-import { Typography, Box, Tabs, Tab, Alert, Stack, Button, FormControl, FormControlLabel, RadioGroup, Radio, TextField } from "@mui/material";
+import { Typography, Box, Tabs, Tab, Alert, Stack, Button, FormControl, FormControlLabel, RadioGroup, Radio, TextField, Dialog, DialogActions, DialogContent, DialogTitle } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import { useSchedule } from "../hooks/useSchedule";
 import { adminGetWeekPicks, getGamesForWeek, adminGetPigeonPicksForWeek, adminSetPigeonPicks } from "../backend/fetch";
@@ -11,6 +11,7 @@ import { WeekPicksRow, Game, PickOut } from "../backend/types";
 import { DataGridLite } from "../components/DataGridLite";
 import type { ColumnDef } from "../components/DataGridLite";
 import { PickCell, LabeledSelect } from "../components/CommonComponents";
+import { AppSnackbar, Loading, ConfirmDialog } from "../components/CommonComponents";
 
 export default function AdminPage() {
   const [tab, setTab] = useState(0);
@@ -177,7 +178,10 @@ function EditPicksTab({ week }: { week: number }) {
   type PickDraft = { picked_home: boolean; predicted_margin: number };
   const [draft, setDraft] = useState<Record<number, PickDraft>>({});
   const [editLoading, setEditLoading] = useState(false);
-  const [editError, setEditError] = useState<string | null>(null);
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity?: "success" | "error" | "info" | "warning"; }>({ open: false, message: "" });
+  const [confirmState, setConfirmState] = useState<{ open: boolean; message: string; pending: null | (() => Promise<void>) }>({ open: false, message: "", pending: null });
+  const [submitDialog, setSubmitDialog] = useState<{ open: boolean; error: string | null }>({ open: false, error: null });
+  const [touchedPickSide, setTouchedPickSide] = useState<Record<number, boolean>>({});
 
   // Load games and derive pigeon options from admin week picks
   useEffect(() => {
@@ -197,7 +201,7 @@ function EditPicksTab({ week }: { week: number }) {
           });
         setPigeonOptions(opts);
       } catch (e) {
-        setEditError(e instanceof Error ? e.message : String(e));
+        setSnackbar({ open: true, message: e instanceof Error ? e.message : String(e), severity: "error" });
       }
     })();
     return () => { cancelled = true; };
@@ -206,21 +210,42 @@ function EditPicksTab({ week }: { week: number }) {
   // Load selected pigeon's picks
   useEffect(() => {
     if (!selectedPigeon) return;
-    setEditLoading(true);
-    setEditError(null);
+  setEditLoading(true);
     adminGetPigeonPicksForWeek(week, Number(selectedPigeon))
       .then((po: PickOut[]) => {
         const initial: Record<number, PickDraft> = {};
         for (const p of po) initial[p.game_id] = { picked_home: p.picked_home, predicted_margin: p.predicted_margin };
         setDraft(initial);
+        setTouchedPickSide({});
       })
-      .catch((e) => setEditError(e instanceof Error ? e.message : String(e)))
+  .catch((e) => setSnackbar({ open: true, message: e instanceof Error ? e.message : String(e), severity: "error" }))
       .finally(() => setEditLoading(false));
   }, [week, selectedPigeon]);
 
+  // Submission logic matching EnterPicks
+  const actuallySubmit = async () => {
+    if (!selectedPigeon || !games.length) return;
+    const picks = games.map((g) => ({
+      game_id: g.game_id,
+      picked_home: draft[g.game_id].picked_home,
+      predicted_margin: draft[g.game_id].predicted_margin,
+    }));
+    try {
+      setSubmitDialog({ open: true, error: null });
+      await adminSetPigeonPicks({ week_number: week, picks }, Number(selectedPigeon));
+      setSubmitDialog({ open: false, error: null });
+      setSnackbar({ open: true, message: "Picks submitted!", severity: "success" });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Failed to submit picks";
+      setSubmitDialog({ open: true, error: msg });
+      return;
+    }
+    // Optionally re-fetch picks to reflect server-side normalization
+    // (not strictly necessary for admin, but could be added)
+  };
   return (
     <Box p={3}>
-      <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2} sx={{ mb: 2 }}>
+          <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2} sx={{ mb: 2 }}>
         <LabeledSelect
           label="Pigeon"
           value={selectedPigeon}
@@ -233,31 +258,87 @@ function EditPicksTab({ week }: { week: number }) {
           disabled={!selectedPigeon || editLoading || !games.length}
           onClick={async () => {
             if (!selectedPigeon || !games.length) return;
-            const missing = games.find((g) => !draft[g.game_id]);
-            if (missing) { setEditError("Please make a pick and margin for every game."); return; }
-            const zero = games.find((g) => (draft[g.game_id]?.predicted_margin ?? 0) === 0);
-            if (zero) { setEditError("All picks must have non-zero margins."); return; }
-            setEditError(null);
-            try {
-              await adminSetPigeonPicks({
-                week_number: week,
-                picks: games.map((g) => ({
-                  game_id: g.game_id,
-                  picked_home: draft[g.game_id].picked_home,
-                  predicted_margin: draft[g.game_id].predicted_margin,
-                })),
-              }, Number(selectedPigeon));
-            } catch (e) {
-              setEditError(e instanceof Error ? e.message : String(e));
+            // Helper to determine if a team has been explicitly chosen
+            const isTeamChosen = (gid: number) => {
+              const d = draft[gid];
+              if (!d) return false;
+              return d.predicted_margin > 0 || !!touchedPickSide[gid];
+            };
+            const zeroMargin = games.find((g) => draft[g.game_id]?.predicted_margin === 0);
+            if (zeroMargin) {
+              setSnackbar({ open: true, message: "All picks must have non-zero margins", severity: "warning" });
+              return;
             }
+            const missingTeam = games.find((g) => !isTeamChosen(g.game_id));
+            if (missingTeam) {
+              setSnackbar({ open: true, message: "Please make a pick and margin for every game.", severity: "warning" });
+              return;
+            }
+            const overFifty = games.find((g) => (draft[g.game_id]?.predicted_margin ?? 0) > 50);
+            if (overFifty) {
+              setSnackbar({ open: true, message: "Margins must be 50 or less.", severity: "warning" });
+              return;
+            }
+            const anyOverTwentyNine = games.some((g) => (draft[g.game_id]?.predicted_margin ?? 0) > 29);
+            if (anyOverTwentyNine) {
+              const performSubmit = async () => {
+                await actuallySubmit();
+              };
+              setConfirmState({
+                open: true,
+                message: "You have one or more spreads greater than 29. Are you sure you want to submit?",
+                pending: performSubmit,
+              });
+              return;
+            }
+            await actuallySubmit();
           }}
         >
           Submit
         </Button>
       </Stack>
 
+      <AppSnackbar
+        open={snackbar.open}
+        message={snackbar.message}
+        severity={snackbar.severity}
+        onClose={() => setSnackbar((s) => ({ ...s, open: false }))}
+      />
       {editLoading && <Alert severity="info">Loading pigeon picks…</Alert>}
-      {editError && <Alert severity="error">{editError}</Alert>}
+      <ConfirmDialog
+        open={confirmState.open}
+        title="Confirm submission"
+        content={confirmState.message}
+        confirmText="Submit"
+        cancelText="Cancel"
+        onConfirm={async () => {
+          const pending = confirmState.pending;
+          setConfirmState({ open: false, message: "", pending: null });
+          if (pending) await pending();
+        }}
+        onClose={() => setConfirmState({ open: false, message: "", pending: null })}
+      />
+      <Dialog
+        open={submitDialog.open}
+        onClose={() => {
+          if (submitDialog.error) setSubmitDialog({ open: false, error: null });
+        }}
+        maxWidth="xs"
+        fullWidth
+        disableEscapeKeyDown={!submitDialog.error}
+      >
+        <DialogTitle sx={{ textAlign: 'center' }}>
+          {submitDialog.error ? 'Submission failed' : 'Submitting picks…'}
+        </DialogTitle>
+        <DialogContent>
+          <Loading error={submitDialog.error ?? undefined} />
+        </DialogContent>
+        {submitDialog.error && (
+          <DialogActions sx={{ justifyContent: 'center', pt: 0 }}>
+            <Button onClick={() => setSubmitDialog({ open: false, error: null })} variant="contained">Close</Button>
+          </DialogActions>
+        )}
+      </Dialog>
 
       {selectedPigeon && games.length > 0 && (
         <Stack spacing={2}>
@@ -272,6 +353,8 @@ function EditPicksTab({ week }: { week: number }) {
             const isOverFifty = margin > 50;
             const isWarn = margin > 29 && margin <= 50;
             const isError = isZero || isOverFifty;
+            const teamChosen = d ? (d.predicted_margin > 0 || !!touchedPickSide[g.game_id]) : false;
+            const needPickTeam = margin > 0 && !teamChosen;
             return (
               <Box key={g.game_id} sx={{ border: "1px solid", borderColor: "divider", borderRadius: 2, p: 2 }}>
                 <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ xs: "flex-start", sm: "center" }} spacing={1.5}>
@@ -283,8 +366,13 @@ function EditPicksTab({ week }: { week: number }) {
                     <FormControl component="fieldset">
                       <RadioGroup
                         row
-                        value={d && margin > 0 ? (d.picked_home ? "home" : "away") : ""}
-                        onChange={(_, val) => setDraft((old) => ({ ...old, [g.game_id]: { ...old[g.game_id], picked_home: (val as string) === "home" } }))}
+                        value={d && (d.predicted_margin > 0 || !!touchedPickSide[g.game_id]) ? (d.picked_home ? "home" : "away") : ""}
+                        onChange={(_, val) => setDraft((old) => {
+                          const prev = old[g.game_id] ?? { picked_home: (val as string) === "home", predicted_margin: 0 };
+                          const next = { ...old, [g.game_id]: { ...prev, picked_home: (val as string) === "home" } };
+                          setTouchedPickSide((m) => ({ ...m, [g.game_id]: true }));
+                          return next;
+                        })}
                       >
                         <FormControlLabel value="away" control={<Radio />} label={g.away_abbr} />
                         <FormControlLabel value="home" control={<Radio />} label={g.home_abbr} />
@@ -301,17 +389,21 @@ function EditPicksTab({ week }: { week: number }) {
                         setDraft((old) => ({ ...old, [g.game_id]: { ...old[g.game_id], predicted_margin: n } }));
                       }}
                       error={isError}
-                      helperText={isError ? (isZero ? "Required" : "Max 50") : (isWarn ? "Very large" : " ")}
+                      helperText={
+                        isError ? (isZero ? "Required" : "Max 50")
+                        : needPickTeam ? "pick a team"
+                        : (isWarn ? "Very large" : " ")
+                      }
                       sx={{
                         width: 100,
                         '& .MuiFormHelperText-root': { mt: 0.25 },
                         backgroundColor: (theme) =>
                           isError ? alpha(theme.palette.error.main, 0.06)
-                          : isWarn ? alpha(theme.palette.warning.main, 0.06)
+                          : (needPickTeam || isWarn) ? alpha(theme.palette.warning.main, 0.06)
                           : undefined,
                         transition: 'background 0.2s',
                         '& .MuiOutlinedInput-notchedOutline': {
-                          borderColor: (theme) => (isWarn ? theme.palette.warning.main : undefined),
+                          borderColor: (theme) => ((needPickTeam || isWarn) ? theme.palette.warning.main : undefined),
                         },
                       }}
                       slotProps={{

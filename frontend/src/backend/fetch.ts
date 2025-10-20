@@ -204,17 +204,35 @@ export function setMyPicks(payload: PicksBulkIn): Promise<PickOut[]> {
   });
 }
 
-// Admin versions (temporary passthrough to non-admin endpoints)
-export function adminGetPigeonPicksForWeek(weekNumber: number, _pigeonNumber: number): Promise<PickOut[]> {
-  void _pigeonNumber;
-  // For now, ignore pigeonNumber and call the current user's picks
-  return getMyPicksForWeek(weekNumber);
+// Admin versions (real endpoints)
+export function adminGetPigeonPicksForWeek(weekNumber: number, pigeonNumber: number): Promise<PickOut[]> {
+  if (!Number.isInteger(weekNumber) || weekNumber < 1 || weekNumber > 18) {
+    return Promise.reject(new Error(`Invalid weekNumber: ${weekNumber}`));
+  }
+  if (!Number.isInteger(pigeonNumber) || pigeonNumber < 1) {
+    return Promise.reject(new Error(`Invalid pigeonNumber: ${pigeonNumber}`));
+  }
+  return apiFetch(`/admin/pigeons/${pigeonNumber}/weeks/${weekNumber}/picks`, {
+    method: "GET",
+    factory: (d) => {
+      if (!Array.isArray(d)) throw new Error("Expected array");
+      return d.map((item) => new PickOut(item));
+    },
+  });
 }
 
-export function adminSetPigeonPicks(payload: PicksBulkIn, _pigeonNumber: number): Promise<PickOut[]> {
-  void _pigeonNumber;
-  // For now, ignore pigeonNumber and call the current user's set picks
-  return setMyPicks(payload);
+export function adminSetPigeonPicks(payload: PicksBulkIn, pigeonNumber: number): Promise<PickOut[]> {
+  if (!Number.isInteger(pigeonNumber) || pigeonNumber < 1) {
+    return Promise.reject(new Error(`Invalid pigeonNumber: ${pigeonNumber}`));
+  }
+  return apiFetch(`/admin/pigeons/${pigeonNumber}/picks`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+    factory: (d) => {
+      if (!Array.isArray(d)) throw new Error("Expected array");
+      return d.map((item) => new PickOut(item));
+    },
+  });
 }
 
 // =============================

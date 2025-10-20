@@ -37,6 +37,8 @@ export default function EnterPicksPage() {
   const [confirmState, setConfirmState] = useState<{ open: boolean; message: string; pending: null | (() => Promise<void>) }>({ open: false, message: "", pending: null });
   const [homeDialogOpen, setHomeDialogOpen] = useState(false);
   const [submitDialog, setSubmitDialog] = useState<{ open: boolean; error: string | null }>({ open: false, error: null });
+  // Track if user explicitly picked a side for a given game this session
+  const [touchedPickSide, setTouchedPickSide] = useState<Record<number, boolean>>({});
   const handleHomeDoubleTap = useDoubleTap(() => setHomeDialogOpen(true));
 
   const handleHomeDialog = () => {
@@ -94,6 +96,7 @@ export default function EnterPicksPage() {
         setLoadingError("");
         setGames(null);
         setDraft({});
+  setTouchedPickSide({});
 
         const [gs, picks] = await Promise.all([
           getGamesForWeek(week),
@@ -132,7 +135,12 @@ export default function EnterPicksPage() {
 
   // — handlers —
   const handlePick = (gameId: number, value: "home" | "away") => {
-    setDraft((d) => ({ ...d, [gameId]: { ...d[gameId], picked_home: value === "home" } }));
+    setDraft((d) => {
+      const prev = d[gameId] ?? { picked_home: value === "home", predicted_margin: 0 };
+      const next = { ...d, [gameId]: { ...prev, picked_home: value === "home" } };
+      return next;
+    });
+    setTouchedPickSide((m) => ({ ...m, [gameId]: true }));
   };
 
   const handleMargin = (gameId: number, raw: string) => {
@@ -145,15 +153,23 @@ export default function EnterPicksPage() {
     if (typeof week !== "number" || !games) return;
 
 
-    // Validate: every game has a draft entry and non-zero margin
-    const missing = games.find((g) => !draft[g.game_id]);
-    if (missing) {
-      setSnackbar({ open: true, message: "Please make a pick and margin for every game.", severity: "warning" });
-      return;
-    }
+    // Helper to determine if a team has been explicitly chosen
+    const isTeamChosen = (gid: number) => {
+      const d = draft[gid];
+      if (!d) return false;
+      // If a saved pick exists (margin > 0), consider chosen. Otherwise require user touch.
+      return d.predicted_margin > 0 || !!touchedPickSide[gid];
+    };
+
+    // Validate: each game must have a chosen team and a non-zero margin
     const zeroMargin = games.find((g) => draft[g.game_id]?.predicted_margin === 0);
     if (zeroMargin) {
       setSnackbar({ open: true, message: "All picks must have non-zero margins", severity: "warning" });
+      return;
+    }
+    const missingTeam = games.find((g) => !isTeamChosen(g.game_id));
+    if (missingTeam) {
+      setSnackbar({ open: true, message: "Please make a pick and margin for every game.", severity: "warning" });
       return;
     }
 
@@ -342,6 +358,8 @@ export default function EnterPicksPage() {
               const isOverFifty = margin > 50;
               const isWarn = margin > 29 && margin <= 50;
               const isError = isZero || isOverFifty;
+              const teamChosen = d ? (d.predicted_margin > 0 || !!touchedPickSide[g.game_id]) : false;
+              const needPickTeam = margin > 0 && !teamChosen;
 
               return (
                 <Box
@@ -371,7 +389,7 @@ export default function EnterPicksPage() {
                       <FormControl component="fieldset">
                         <RadioGroup
                           row
-                          value={d && d.predicted_margin > 0 ? (d.picked_home ? "home" : "away") : ""}
+                          value={d && (d.predicted_margin > 0 || !!touchedPickSide[g.game_id]) ? (d.picked_home ? "home" : "away") : ""}
                           onChange={(_, val) => handlePick(g.game_id, val as "home" | "away")}
                         >
                           <FormControlLabel value="away" control={<Radio />} label={g.away_abbr} />
@@ -396,7 +414,11 @@ export default function EnterPicksPage() {
                         }}
                         error={isError}
                         helperText={
-                          isError ? (isZero ? "Required" : "Max 50") : (isWarn ? "Very large" : " ")
+                          isError
+                            ? (isZero ? "Required" : "Max 50")
+                            : needPickTeam
+                              ? "pick a team"
+                              : (isWarn ? "Very large" : " ")
                         }
                         sx={{
                           width: 100,
@@ -404,12 +426,12 @@ export default function EnterPicksPage() {
                           backgroundColor: (theme) =>
                             isError
                               ? alpha(theme.palette.error.main, 0.06)
-                              : isWarn
+                              : (needPickTeam || isWarn)
                                 ? alpha(theme.palette.warning.main, 0.06)
                                 : undefined,
                           transition: 'background 0.2s',
                           '& .MuiOutlinedInput-notchedOutline': {
-                            borderColor: (theme) => (isWarn ? theme.palette.warning.main : undefined),
+                            borderColor: (theme) => ((needPickTeam || isWarn) ? theme.palette.warning.main : undefined),
                           },
                         }}
                         InputProps={{
