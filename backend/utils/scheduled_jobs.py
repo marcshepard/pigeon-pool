@@ -11,24 +11,47 @@ from __future__ import annotations
 
 import asyncio
 from typing import Any
+import json
 
-import psycopg
+
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .logger import info
-
-from .settings import get_settings
 from .score_sync import ScoreSync
-from .emailer import send_bulk_email_bcc  # top-level import per request
+from .emailer import send_bulk_email_bcc
 
 #pylint: disable=line-too-long
 
-_SETTINGS = get_settings()
 
 # ---------------------------------------------------------------------
-# Kickoff sync (daily) — refresh *current + next* week kickoffs only
+# Helper to get all emails (primary + secondary)
 # ---------------------------------------------------------------------
+
+async def get_all_player_emails(session: AsyncSession, pigeon_numbers: list[int] | None = None) -> list[str]:
+    """
+    Returns a list of all emails (primary and secondary) for all players,
+    or for a subset of pigeon_numbers if provided.
+    """
+    if pigeon_numbers is None:
+        q = text("SELECT email, secondary_emails FROM players ORDER BY pigeon_number")
+        rows = await session.execute(q)
+    else:
+        q = text("SELECT email, secondary_emails FROM players WHERE pigeon_number = ANY(:nums) ORDER BY pigeon_number")
+        rows = await session.execute(q, {"nums": pigeon_numbers})
+    emails = []
+    for r in rows:
+        primary = r[0]
+        secondary = r[1] or []
+        # If secondary_emails is a string, parse JSON
+        if isinstance(secondary, str):
+            try:
+                secondary = json.loads(secondary)
+            except Exception: #pylint: disable=broad-except
+                secondary = []
+        emails.append(primary)
+        emails.extend(secondary)
+    return emails
 
 async def run_kickoff_sync(session: AsyncSession) -> dict[str, Any]:
     """
@@ -116,13 +139,12 @@ async def run_email_sun(session: AsyncSession) -> dict[str, Any]:
     """
     Send the Sunday-night summary email to all players (BCC in email.py).
     """
-    rows = await session.execute(text("SELECT email FROM players ORDER BY pigeon_number"))
-    emails = [r[0] for r in rows]
     # current week = latest week already locked
     res = await session.execute(text("SELECT MAX(week_number) FROM weeks WHERE lock_at <= now()"))
     row = res.first()
     week = int(row[0]) if row and row[0] is not None else None
 
+    emails = await get_all_player_emails(session)
     subject = f"Interim Results for week {week}"
     plain = (
         "To ALL Pigeons --\n\n"
@@ -159,9 +181,6 @@ async def run_email_mon(session: AsyncSession) -> dict[str, Any]:
     """
     Send the Monday-night wrap-up email to all players (BCC in email.py).
     """
-    rows = await session.execute(text("SELECT email FROM players ORDER BY pigeon_number"))
-    emails = [r[0] for r in rows]
-
     # current week = latest week already locked
     res = await session.execute(text("SELECT MAX(week_number) FROM weeks WHERE lock_at <= now()"))
     row = res.first()
@@ -183,6 +202,7 @@ async def run_email_mon(session: AsyncSession) -> dict[str, Any]:
     """))
     winners = [r[0] for r in winners.all()]
 
+    emails = await get_all_player_emails(session)
     subject = f"Weekly {week} Results"
     plain = (
         "To ALL Pigeons --\n\n"
@@ -225,20 +245,19 @@ async def run_email_tue_warn(session: AsyncSession) -> dict[str, Any]:
     Send a Tuesday warning email to players who haven't submitted all picks
     for the upcoming (next unlocked) week.
     """
-    q = text(
-        """
-        WITH next_week AS (SELECT MIN(week_number) AS w FROM weeks WHERE lock_at > now())
-        SELECT DISTINCT pl.email
-        FROM v_picks_filled f
-        JOIN players pl ON pl.pigeon_number = f.pigeon_number
-        JOIN games g ON g.game_id = f.game_id
-        WHERE f.is_made = FALSE
-          AND g.week_number = (SELECT w FROM next_week)
-        ORDER BY pl.email
-        """
-    )
+    q = text("""
+WITH next_week AS (SELECT MIN(week_number) AS w FROM weeks WHERE lock_at > now())
+SELECT DISTINCT pl.pigeon_number
+FROM v_picks_filled f
+JOIN players pl ON pl.pigeon_number = f.pigeon_number
+JOIN games g ON g.game_id = f.game_id
+WHERE f.is_made = FALSE
+  AND g.week_number = (SELECT w FROM next_week)
+ORDER BY pl.pigeon_number
+""")
     rows = await session.execute(q)
-    emails = [r[0] for r in rows]
+    pigeon_numbers = [r[0] for r in rows]
+    emails = await get_all_player_emails(session, pigeon_numbers)
 
     if not emails:
         info(
