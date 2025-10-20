@@ -76,6 +76,13 @@ type TwoGameWhatIf = {
     winners: { pn: number; name: string }[];
     bestTotal: number;
   }>>;
+  // Additional summary: for players who never place 1st in any scenario, what is their best possible finish (2..5)?
+  othersBestFinishes: Array<{
+    pn: number;
+    name: string;
+    bestRank: 2 | 3 | 4 | 5;
+    tied: boolean; // true if the only way to achieve bestRank is via a tie for that rank
+  }>;
 };
 
 type NoWhatIf = { kind: "none" };
@@ -138,30 +145,76 @@ export function useMnfOutcomes(week: number | null, rows: ResultsRow[], games: G
     const A1 = kinkValues(p1);
     const A2 = kinkValues(p2);
 
-    const grid = A2.map(a2 => A1.map(a1 => {
-      let best = Number.MAX_SAFE_INTEGER;
-      let winners: { pn: number; name: string }[] = [];
+    // Track best achievable rank (2..5) across all scenarios for each player
+    type BestRankAgg = { bestRank: number; foundSoloAtBest: boolean; foundTiedAtBest: boolean };
+    const bestRankMap = new Map<number, BestRankAgg>();
 
-      for (const r of rows) {
+    const grid = A2.map(a2 => A1.map(a1 => {
+      // Compute totals for all players in this scenario
+      const totals = rows.map(r => {
         const s1 = scoreForPickFull(r.picks[k1]?.signed ?? 0, a1);
         const s2 = scoreForPickFull(r.picks[k2]?.signed ?? 0, a2);
         const tot = (base.get(r.pigeon_number) ?? 0) + s1 + s2;
-        if (tot < best) {
-          best = tot;
-          winners = [{ pn: r.pigeon_number, name: r.pigeon_name }];
-        } else if (tot === best) {
-          winners.push({ pn: r.pigeon_number, name: r.pigeon_name });
+        return { pn: r.pigeon_number, name: r.pigeon_name, total: tot };
+      }).sort((a,b)=> a.total - b.total);
+
+      // Determine winners (rank 1) and best total
+      const best = totals[0].total;
+      const winners = totals.filter(t => t.total === best).map(t => ({ pn: t.pn, name: t.name }));
+
+      // Compute ranks with ties using competition ranking (1,2,2,4,...)
+      let i = 0;
+      let rank = 1;
+      while (i < totals.length) {
+        const nextIdx = totals.findIndex((x, idx) => idx > i && x.total !== totals[i].total);
+        const end = nextIdx === -1 ? totals.length : nextIdx; // first index after the tie group
+        const group = totals.slice(i, end);
+        const tied = group.length > 1;
+        // For each player in this group, update bestRankMap
+        for (const p of group) {
+          const agg = bestRankMap.get(p.pn);
+          if (!agg || rank < agg.bestRank) {
+            bestRankMap.set(p.pn, { bestRank: rank, foundSoloAtBest: !tied, foundTiedAtBest: tied });
+          } else if (agg && rank === agg.bestRank) {
+            // same best rank seen again, update tie flags
+            bestRankMap.set(p.pn, {
+              bestRank: agg.bestRank,
+              foundSoloAtBest: agg.foundSoloAtBest || !tied,
+              foundTiedAtBest: agg.foundTiedAtBest || tied,
+            });
+          }
         }
+        // advance
+        rank += group.length;
+        i = end;
       }
 
       return { winners, bestTotal: best };
     }));
+
+    // Build set of players who ever appear as a winner in any cell
+    const everWinners = new Set<number>();
+    for (const row of grid) for (const cell of row) for (const w of cell.winners) everWinners.add(w.pn);
+
+    // Convert bestRankMap to the "others" list: players who never win and whose bestRank is in 2..5
+    const othersBestFinishes = Array.from(bestRankMap.entries())
+      .filter(([pn, agg]) => !everWinners.has(pn) && agg.bestRank >= 2 && agg.bestRank <= 5)
+      .map(([pn, agg]) => {
+        const player = rows.find(r => r.pigeon_number === pn)!;
+        // If any scenario achieves the best rank without a tie, prefer that (no 'T');
+        // otherwise mark as tied.
+        const tied = agg.foundSoloAtBest ? false : agg.foundTiedAtBest;
+        const br = Math.max(2, Math.min(5, agg.bestRank)) as 2|3|4|5;
+        return { pn, name: player.pigeon_name, bestRank: br, tied };
+      })
+      .sort((a, b) => (a.bestRank - b.bestRank) || a.name.localeCompare(b.name));
 
     return {
       kind: "two",
       x: { game_id: g1.game_id, buckets: A1, home: g1.home_abbr, away: g1.away_abbr },
       y: { game_id: g2.game_id, buckets: A2, home: g2.home_abbr, away: g2.away_abbr },
       grid,
+      othersBestFinishes,
     };
   }, [week, rows, games]);
 }

@@ -159,6 +159,7 @@ export default function MnfOutcomesPage() {
           xBuckets={whatIf.x.buckets}
           yBuckets={whatIf.y.buckets}
           grid={whatIf.grid}
+          others={whatIf.othersBestFinishes}
         />
       )}
     </Box>
@@ -344,8 +345,9 @@ function TwoGameGrid(props: {
   xBuckets: number[];
   yBuckets: number[];
   grid: Array<Array<{ winners: { pn: number; name: string }[]; bestTotal: number }>>;
+  others: Array<{ pn: number; name: string; bestRank: 2|3|4|5; tied: boolean }>;
 }) {
-  const { xLabel, yLabel, xBuckets, yBuckets, grid } = props;
+  const { xLabel, yLabel, xBuckets, yBuckets, grid, others } = props;
 
   // Helper to format the outcome as '<Team> <points>'
   function formatOutcome(actual: number, home: string, away: string): string {
@@ -522,6 +524,18 @@ function TwoGameGrid(props: {
         </Table>
       </Box>
 
+      {others.length > 0 && (
+        <>
+          <Divider sx={{ my: 2 }} />
+          <Typography variant="subtitle1" gutterBottom>
+            Best possible finish for others
+          </Typography>
+          <Typography variant="body2">
+            {formatOthersList(others)}
+          </Typography>
+        </>
+      )}
+
       <Divider sx={{ my: 2 }} />
 
       <Typography variant="subtitle2" gutterBottom>Legend</Typography>
@@ -551,5 +565,14 @@ function initials(name: string): string {
     }
   const tag = (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
   return tag;
+}
+
+// Format the compact sentence like:
+// "Sam & Al (2nd), Craps (2nd), Jesters (2nd), JoskiHawk (2nd tie), ..."
+function formatOthersList(list: Array<{ name: string; bestRank: 2|3|4|5; tied: boolean }>): string {
+  const ord = (n: 2|3|4|5) => ({2: '2nd', 3: '3rd', 4: '4th', 5: '5th'}[n]);
+  return list
+    .map(p => `${p.name} (${ord(p.bestRank)}${p.tied ? ' T' : ''})`)
+    .join(', ');
 }
 
