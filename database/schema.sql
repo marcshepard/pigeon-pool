@@ -38,7 +38,8 @@ CREATE TABLE IF NOT EXISTS players (
   email         TEXT NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-  is_admin      BOOLEAN NOT NULL DEFAULT FALSE
+  is_admin      BOOLEAN NOT NULL DEFAULT FALSE,
+  secondary_emails JSONB DEFAULT '[]'
 );
 
 -- === PICKS ===

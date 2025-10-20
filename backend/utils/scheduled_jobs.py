@@ -17,6 +17,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .logger import info
+
 from .settings import get_settings
 from .score_sync import ScoreSync
 from .emailer import send_bulk_email_bcc  # top-level import per request
@@ -57,15 +58,11 @@ async def run_kickoff_sync(session: AsyncSession) -> dict[str, Any]:
     if current_week < 18:
         weeks_to_touch.append(int(current_week) + 1)
 
-    def _work() -> int:
-        total = 0
-        with psycopg.connect(**_SETTINGS.psycopg_kwargs()) as conn:
-            syncer = ScoreSync(conn)
-            for wk in weeks_to_touch:
-                total += syncer.refresh_kickoffs(wk)
-        return total
 
-    changed = await asyncio.to_thread(_work)
+    syncer = ScoreSync(session)
+    changed = 0
+    for wk in weeks_to_touch:
+        changed += await syncer.refresh_kickoffs(wk)
 
     # Always log once per day so you can see the heartbeat of this job.
     info(
