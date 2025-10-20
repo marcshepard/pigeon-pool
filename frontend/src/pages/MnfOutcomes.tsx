@@ -108,7 +108,7 @@ export default function MnfOutcomesPage() {
         style={{ fontSize: "1rem", padding: "0.25em 0.5em" }}
       >
         {lockedWeeks.map(w => (
-          <option key={w} value={w}>Week {w}</option>
+          <option key={w} value={w}>Week&nbsp;&nbsp;{w}</option>
         ))}
       </select>
     </Box>
@@ -129,7 +129,7 @@ export default function MnfOutcomesPage() {
   // Visible window (Sun final -> EOD Mon)
   if (whatIf.kind === "none") {
     return (
-      <Box sx={{ maxWidth: 1000, mx: "auto", p: 2 }}>
+      <Box sx={{ maxWidth: 1000, mx: "auto", p: 1 }}>
         {weekSelector}
         <Typography variant="h6" gutterBottom>MNF Outcomes</Typography>
         <Typography variant="body1">
@@ -140,7 +140,7 @@ export default function MnfOutcomesPage() {
   }
 
   return (
-    <Box sx={{ maxWidth: 1100, mx: "auto", p: 2 }}>
+    <Box sx={{ maxWidth: 1100, mx: "auto", p: 1 }}>
       {weekSelector}
 
       {whatIf.kind === "one" && (
@@ -246,23 +246,29 @@ function OneGameTable(props: {
 
 
   return (
-    <Box>
+    <Box sx={{ overflowX: "hidden" }}>
       <Typography variant="body1">
         Top five finishers by MNF outcome
       </Typography>
-      <Table size="small" sx={{ mb: 2 }}>
-        <TableHead>
-          <TableRow>
-            <TableCell sx={{ fontWeight: 600 }}>Outcome</TableCell>
-            <TableCell sx={{ fontWeight: 600 }} align="center">1st</TableCell>
-            <TableCell sx={{ fontWeight: 600 }} align="center">2nd</TableCell>
-            <TableCell sx={{ fontWeight: 600 }} align="center">3rd</TableCell>
-            <TableCell sx={{ fontWeight: 600 }} align="center">4th</TableCell>
-            <TableCell sx={{ fontWeight: 600 }} align="center">5th</TableCell>
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {displayRows.map((r, idx) => {
+      <Box sx={{ width: "100%", maxWidth: "100%", overflowX: "auto", border: "1px solid", borderColor: "divider", borderRadius: 1, WebkitOverflowScrolling: "touch", mb: 2 }}>
+        <Table size="small" sx={{
+          tableLayout: "fixed",
+          '& th, & td': { px: 1, py: 0.5 },
+          '& th + th, & td + td': { borderLeft: '1px solid', borderColor: 'divider' },
+          '& tbody tr + tr td': { borderTop: '1px solid', borderColor: 'divider' },
+        }}>
+          <TableHead>
+            <TableRow>
+              <TableCell sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}></TableCell>
+              <TableCell sx={{ fontWeight: 600 }} align="center">1st</TableCell>
+              <TableCell sx={{ fontWeight: 600 }} align="center">2nd</TableCell>
+              <TableCell sx={{ fontWeight: 600 }} align="center">3rd</TableCell>
+              <TableCell sx={{ fontWeight: 600 }} align="center">4th</TableCell>
+              <TableCell sx={{ fontWeight: 600 }} align="center">5th</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {displayRows.map((r, idx) => {
             // Build the outcome label; if only one row, use '<TEAM> any' without '+'
             let outcome = singleRowAnyLabel ?? formatOutcome(r.actual);
             if (!singleRowAnyLabel) {
@@ -296,19 +302,26 @@ function OneGameTable(props: {
             }
             return (
               <TableRow key={r.actual}>
-                <TableCell sx={{ fontWeight: 600 }}>{outcome}</TableCell>
+                <TableCell sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>{outcome}</TableCell>
                 {[0, 1, 2, 3, 4].map(rankIdx => (
                   <TableCell key={rankIdx} align="center">
-                    {rankCols[rankIdx].length
-                      ? rankCols[rankIdx].map(p => initials(p.name)).join(" · ")
-                      : "—"}
+                    {rankCols[rankIdx].length ? (
+                      <Stack direction="column" spacing={0.25} alignItems="center">
+                        {rankCols[rankIdx].map(p => (
+                          <span key={p.pn}>{initials(p.name)}</span>
+                        ))}
+                      </Stack>
+                    ) : (
+                      "—"
+                    )}
                   </TableCell>
                 ))}
               </TableRow>
             );
           })}
-        </TableBody>
-      </Table>
+          </TableBody>
+        </Table>
+      </Box>
       <Divider sx={{ my: 2 }} />
       <Typography variant="subtitle2" gutterBottom>Legend</Typography>
       <Stack direction="row" spacing={2} useFlexGap flexWrap="wrap">
@@ -432,15 +445,23 @@ function TwoGameGrid(props: {
 
 
   return (
-    <Box>
+    <Box sx={{ overflowX: "hidden" }}>
       <Typography variant="subtitle1" gutterBottom>
         First place by MNF outcome
       </Typography>
-      <Box sx={{ overflowX: "auto", border: "1px solid", borderColor: "divider", borderRadius: 1 }}>
-        <Table size="small">
+      <Box sx={{ width: "100%", maxWidth: "100%", overflowX: "auto", border: "1px solid", borderColor: "divider", borderRadius: 1, WebkitOverflowScrolling: "touch" }}>
+        <Table
+          size="small"
+          sx={{
+            tableLayout: "fixed",
+            '& th, & td': { px: 1, py: 0.5 },
+            '& th + th, & td + td': { borderLeft: '1px solid', borderColor: 'divider' },
+            '& tbody tr + tr td': { borderTop: '1px solid', borderColor: 'divider' },
+          }}
+        >
           <TableHead>
             <TableRow>
-              <TableCell sx={{ fontWeight: 600 }}>{/* corner cell */}</TableCell>
+              <TableCell sx={{ fontWeight: 600, whiteSpace: "nowrap" }}>{/* corner cell */}</TableCell>
               {displayXBuckets.map((x, xi) => {
                 const singleCol = displayXBuckets.length === 1;
                 let label = singleCol
@@ -452,8 +473,8 @@ function TwoGameGrid(props: {
                   if (xi === displayXBuckets.length - 1) label += '+';
                 }
                 return (
-                  <TableCell key={x} align="center" sx={{ fontWeight: 600 }}>
-                    {label}
+                  <TableCell key={x} align="center" sx={{ fontWeight: 600, whiteSpace: "nowrap" }}>
+                    <Box component="span" sx={{ pr: 0.25, display: 'inline-block' }}>{label}</Box>
                   </TableCell>
                 );
               })}
@@ -475,13 +496,22 @@ function TwoGameGrid(props: {
               }
               return (
                 <TableRow key={y}>
-                  <TableCell sx={{ fontWeight: 600 }}>{label}</TableCell>
+                  <TableCell sx={{ fontWeight: 600, whiteSpace: "nowrap" }}>
+                    <Box component="span" sx={{ pr: 0.25, display: 'inline-block' }}>{label}</Box>
+                  </TableCell>
                   {displayXBuckets.map((x, xi) => {
                     const cell = finalDisplayGrid[yi][xi];
-                    const tags = cell.winners.map(w => initials(w.name)).join(" ");
                     return (
                       <TableCell key={`${y}:${x}`} align="center">
-                        {tags || "—"}
+                        {cell.winners.length ? (
+                          <Stack direction="column" spacing={0.25} alignItems="center">
+                            {cell.winners.map(w => (
+                              <span key={w.pn}>{initials(w.name)}</span>
+                            ))}
+                          </Stack>
+                        ) : (
+                          "—"
+                        )}
                       </TableCell>
                     );
                   })}
