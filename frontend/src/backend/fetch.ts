@@ -204,6 +204,19 @@ export function setMyPicks(payload: PicksBulkIn): Promise<PickOut[]> {
   });
 }
 
+// Admin versions (temporary passthrough to non-admin endpoints)
+export function adminGetPigeonPicksForWeek(weekNumber: number, _pigeonNumber: number): Promise<PickOut[]> {
+  void _pigeonNumber;
+  // For now, ignore pigeonNumber and call the current user's picks
+  return getMyPicksForWeek(weekNumber);
+}
+
+export function adminSetPigeonPicks(payload: PicksBulkIn, _pigeonNumber: number): Promise<PickOut[]> {
+  void _pigeonNumber;
+  // For now, ignore pigeonNumber and call the current user's set picks
+  return setMyPicks(payload);
+}
+
 // =============================
 // Results / Leaderboard fetches
 // =============================
