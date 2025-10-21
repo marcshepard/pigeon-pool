@@ -6,6 +6,9 @@ import { useEffect, useMemo, useState, useRef } from "react";
 import { Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, FormControl, FormControlLabel, Radio, RadioGroup, Stack, TextField, Typography } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import { AppSnackbar, Loading, Banner, ConfirmDialog, LabeledSelect } from "../components/CommonComponents";
+import { getCurrentWeek, getGamesForWeek, getMyPicksForWeek, setMyPicks } from "../backend/fetch";
+import type { CurrentWeek, Game } from "../backend/types";
+
 // Utility: detect double tap on mobile
 function useDoubleTap(callback: () => void, ms = 300) {
   const lastTap = useRef<number>(0);
@@ -17,8 +20,12 @@ function useDoubleTap(callback: () => void, ms = 300) {
     lastTap.current = now;
   };
 }
-import { getScheduleCurrent, getGamesForWeek, getMyPicksForWeek, setMyPicks } from "../backend/fetch";
-import type { ScheduleCurrent, Game } from "../backend/types";
+
+// Utility: compute the next week for which they can make picks
+function nextPicksWeek(cw: CurrentWeek): number {
+  const next = cw.status == "scheduled" ? cw.week : cw.week + 1;
+  return next;
+}
 
 // UI-only type for in-progress edits per game (keyed by game_id elsewhere)
 type PickDraft = {
@@ -27,7 +34,7 @@ type PickDraft = {
 };
 
 export default function EnterPicksPage() {
-  const [current, setCurrent] = useState<ScheduleCurrent | null>(null);
+  const [currentWeek, setCurrentWeek] = useState<CurrentWeek | null>(null);
   const [week, setWeek] = useState<number | "">("");
   const [games, setGames] = useState<Game[] | null>(null);
   const [draft, setDraft] = useState<Record<number, PickDraft>>({});
@@ -37,7 +44,6 @@ export default function EnterPicksPage() {
   const [confirmState, setConfirmState] = useState<{ open: boolean; message: string; pending: null | (() => Promise<void>) }>({ open: false, message: "", pending: null });
   const [homeDialogOpen, setHomeDialogOpen] = useState(false);
   const [submitDialog, setSubmitDialog] = useState<{ open: boolean; error: string | null }>({ open: false, error: null });
-  // Track if user explicitly picked a side for a given game this session
   const [touchedPickSide, setTouchedPickSide] = useState<Record<number, boolean>>({});
   const handleHomeDoubleTap = useDoubleTap(() => setHomeDialogOpen(true));
 
@@ -64,11 +70,13 @@ export default function EnterPicksPage() {
     let cancelled = false;
     (async () => {
       try {
-        const sc = await getScheduleCurrent();
+        const cw = await getCurrentWeek();
+        console.log("EnterPicks: useEffect got current week:", cw);
         if (cancelled) return;
-        setCurrent(sc);
-        const defaultWeek = typeof sc.next_picks_week === "number" && sc.next_picks_week >= 1 ? sc.next_picks_week : 1;
-        setWeek(defaultWeek);
+        setCurrentWeek(cw);
+        const defaultWeek = nextPicksWeek(cw);
+        setWeek(defaultWeek ?? "");
+        console.log("EnterPicks: useEffect setting default picks week:", defaultWeek);
       } catch (e: unknown) {
         if (!cancelled) {
           setLoadingError(e instanceof Error ? e.message : "Failed to load schedule");
@@ -81,9 +89,14 @@ export default function EnterPicksPage() {
 
   // Future week options (next_picks_week..18), fallback start=1
   const futureWeeks = useMemo(() => {
-    const start = current?.next_picks_week && current.next_picks_week >= 1 ? current.next_picks_week : 1;
-    return Array.from({ length: 18 - start + 1 }, (_, i) => start + i);
-  }, [current?.next_picks_week]);
+    if (!currentWeek) return [];
+    const start = nextPicksWeek(currentWeek);
+    console.log("EnterPicks: useMemo using start week:", start);
+    if (start == null) return [];
+    const end = 18;
+    const count = Math.max(0, end - start + 1);
+    return Array.from({ length: count }, (_, i) => start + i);
+  }, [currentWeek]);
 
   // Fetch games and filled picks whenever `week` changes
   useEffect(() => {
@@ -96,7 +109,7 @@ export default function EnterPicksPage() {
         setLoadingError("");
         setGames(null);
         setDraft({});
-  setTouchedPickSide({});
+        setTouchedPickSide({});
 
         const [gs, picks] = await Promise.all([
           getGamesForWeek(week),
@@ -238,11 +251,6 @@ export default function EnterPicksPage() {
     }
   };
 
-  const titleWeek = typeof week === "number"
-    ? week
-    : current?.next_picks_week ?? (futureWeeks.length ? futureWeeks[0] : 1);
-
-
   return (
     <Box sx={{ maxWidth: 900, mx: "auto", height: '100vh', display: 'flex', flexDirection: 'column' }}>
       {/* Confirmation dialog for >29 spreads */}
@@ -335,7 +343,7 @@ export default function EnterPicksPage() {
 
         {!loading && games && games.length === 0 && (
           <Banner severity="info" sx={{ mb: 2 }}>
-            No games found for week {titleWeek}.
+            No games found
           </Banner>
         )}
 

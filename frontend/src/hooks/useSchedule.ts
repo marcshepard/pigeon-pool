@@ -6,15 +6,23 @@
  */
 
 import { useEffect, useState } from "react";
-import { getScheduleCurrent } from "../backend/fetch";
+import { getCurrentWeek } from "../backend/fetch";
 import { useAppCache } from "../hooks/useAppCache";
-import type { ScheduleCurrent } from "../backend/types";
+import type { CurrentWeek } from "../backend/types";
+
+// Compute the next week that folks can enter picks for
+// If the CurrentWeek.state "scheduled" (not locked), then they can enter picks
+// for the current week, else it's the week after.
+export function nextPicksWeek(cw: CurrentWeek): number | null {
+  const next = cw.status == "scheduled" ? cw.week : cw.week + 1;
+  return next;
+}
 
 export function useSchedule() {
-  const getSchedule = useAppCache((s) => s.getSchedule);
-  const setSchedule = useAppCache((s) => s.setSchedule);
+  const getCurrentWeekCache = useAppCache((s) => s.getCurrentWeek);
+  const setCurrentWeekCache = useAppCache((s) => s.setCurrentWeek);
 
-  const [schedule, setLocal] = useState<ScheduleCurrent | null>(null);
+  const [currentWeek, setCurrentWeek] = useState<CurrentWeek | null>(null);
   const [lockedWeeks, setLockedWeeks] = useState<number[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -27,11 +35,11 @@ export function useSchedule() {
         setLoading(true);
 
         // 1) Try cache first
-        const cached = getSchedule();
+        const cached = getCurrentWeekCache();
         if (cached) {
           if (!cancelled) {
-            setLocal(cached);
-            const weeks = computeLockedWeeks(cached.next_picks_week);
+            setCurrentWeek(cached);
+            const weeks = computeLockedWeeks(nextPicksWeek(cached));
             setLockedWeeks(weeks);
             setLoading(false);
           }
@@ -39,16 +47,12 @@ export function useSchedule() {
         }
 
         // 2) Fallback to network
-        const sc = await getScheduleCurrent();
-        const sig: ScheduleCurrent = {
-          next_picks_week: sc.next_picks_week ?? null,
-          live_week: sc.live_week ?? null,
-        };
-        setSchedule(sig);
+        const current = await getCurrentWeek();
+        setCurrentWeekCache(current);
 
         if (!cancelled) {
-          setLocal(sig);
-          const weeks = computeLockedWeeks(sig.next_picks_week);
+          setCurrentWeek(current);
+          const weeks = computeLockedWeeks(nextPicksWeek(current));
           setLockedWeeks(weeks);
         }
       } catch (e) {
@@ -61,9 +65,9 @@ export function useSchedule() {
     return () => {
       cancelled = true;
     };
-  }, [getSchedule, setSchedule]);
+  }, [getCurrentWeekCache, setCurrentWeekCache]);
 
-  return { schedule, lockedWeeks, loading, error };
+  return { currentWeek, lockedWeeks, loading, error };
 }
 
 function computeLockedWeeks(next_picks_week: number | null): number[] {

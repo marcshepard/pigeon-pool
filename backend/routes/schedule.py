@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends
@@ -13,6 +13,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.utils.db import get_db
+
+#pylint: disable=line-too-long
 
 router = APIRouter(prefix="/schedule", tags=["schedule"])
 
@@ -40,6 +42,11 @@ class PickLite(BaseModel):
     game_id: int
     picked_home: bool
     predicted_margin: int
+
+class CurrentWeek(BaseModel):
+    """ Current scheduling state """
+    week: int
+    status: str  # "scheduled" | "in_progress" | "final"
 
 # ---------- SQL ----------
 
@@ -72,17 +79,12 @@ MY_PICKS_FOR_WEEK_SQL = text("""
       AND g.week_number = :week_number
 """)
 
-# ---------- Helpers ----------
-
-def _is_locked(lock_at: datetime) -> bool:
-    """ Is the week locked (i.e. lock_at is in the past) """
-    return lock_at <= datetime.now(timezone.utc)
-
 
 # ---------- Endpoints ----------
 
-@router.get("/current_weeks", summary="Get current live and next-picks week numbers")
-async def get_current_weeks(db: AsyncSession = Depends(get_db)):
+
+@router.get("/current_week", response_model=CurrentWeek, summary="Get current live and next-picks week numbers")
+async def get_current_week(db: AsyncSession = Depends(get_db)):
     """ Next unlocked week (for entering picks) """
     next_row = (await db.execute(text("""
         SELECT week_number
@@ -93,30 +95,28 @@ async def get_current_weeks(db: AsyncSession = Depends(get_db)):
     """))).first()
     next_picks_week = next_row[0] if next_row else None
 
-    # "Live" week = latest locked week started but not completed
-    live_row = (await db.execute(text("""
-        SELECT g.week_number
-        FROM games g
-        JOIN weeks w ON w.week_number = g.week_number
-        WHERE w.lock_at <= now()
-            AND EXISTS ( -- At least one game started
-                    SELECT 1
-                    FROM games g2
-                    WHERE g2.week_number = g.week_number
-                        AND g2.status IN ('in_progress', 'final')
-            )
-            AND EXISTS ( -- But not all games completed
-                    SELECT 1
-                    FROM games g3
-                    WHERE g3.week_number = g.week_number
-                        AND g3.status != 'final'
-            )
-        ORDER BY g.week_number DESC
-        LIMIT 1
-    """))).first()
-    live_week = live_row[0] if live_row else None
+    # current_week = next_picks_week - 1
+    current_week = (next_picks_week - 1) if (next_picks_week is not None and next_picks_week > 1) else 1
 
-    return {"next_picks_week": next_picks_week, "live_week": live_week}
+    # Get all games for current_week
+    games_result = await db.execute(text("""
+        SELECT status FROM games WHERE week_number = :week_number
+    """), {"week_number": current_week})
+    game_statuses = [row[0] for row in games_result.fetchall()]
+
+    if not game_statuses:
+        status = "scheduled"
+    elif all(s == "final" for s in game_statuses):
+        status = "final"
+    elif all(s == "scheduled" for s in game_statuses):
+        status = "scheduled"
+    else:
+        status = "in_progress"
+
+    return CurrentWeek(
+        week=current_week,
+        status=status,
+    )
 
 
 @router.get("/{week_number}/games", response_model=List[GameOut], summary="List games for a week")

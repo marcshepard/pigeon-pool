@@ -5,7 +5,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { getResultsAllLeaderboards, getScheduleCurrent } from "../backend/fetch";
+import { getResultsAllLeaderboards, getCurrentWeek } from "../backend/fetch";
 import { LeaderboardRow } from "../backend/types";
 import { useAppCache } from "../hooks/useAppCache";
 
@@ -25,9 +25,9 @@ export type YtdRow = {
 
 export function useYtd() {
   // ✅ select each store value separately (no object selector)
-  const getYtd      = useAppCache((s) => s.getYtd);
-  const setYtd      = useAppCache((s) => s.setYtd);
-  const setSchedule = useAppCache((s) => s.setSchedule);
+  const getYtdCache      = useAppCache((s) => s.getYtd);
+  const setYtdCache      = useAppCache((s) => s.setYtd);
+  const setCurrentWeekCache = useAppCache((s) => s.setCurrentWeek);
 
   const [rows, setRows]   = useState<YtdRow[]>([]);
   const [weeks, setWeeks] = useState<number[]>([]);
@@ -41,7 +41,7 @@ export function useYtd() {
         setLoading(true);
 
         // 1) Cache first
-        const cached = getYtd();
+        const cached = getYtdCache();
         if (cached && !cancelled) {
           setRows(cached.rows as YtdRow[]);
           setWeeks(cached.weeks);
@@ -49,14 +49,13 @@ export function useYtd() {
           return;
         }
 
-        // 2) Schedule (to exclude live week + maintain signature)
-        const sc = await getScheduleCurrent();
-        const liveWeek = sc.live_week ?? null;
-        setSchedule({ live_week: liveWeek, next_picks_week: sc.next_picks_week ?? null });
+        // 2) Else get the current week
+        const current = await getCurrentWeek();
+        setCurrentWeekCache(current);
 
         // 3) Fetch all leaderboards and filter out live week
         const weekly: LeaderboardRow[] = await getResultsAllLeaderboards();
-        const filtered = liveWeek == null ? weekly : weekly.filter(w => w.week_number !== liveWeek);
+        const filtered = current.status === "final" ? weekly : weekly.filter(w => w.week_number !== current.week);
 
         // 4) Weeks list
         const weeksList = Array.from(new Set(filtered.map(w => w.week_number))).sort((a, b) => a - b);
@@ -143,7 +142,7 @@ export function useYtd() {
         if (!cancelled) {
           setRows(out.rows);
           setWeeks(out.weeks);
-          setYtd(out); // ✅ single cached YTD item
+          setYtdCache(out); // ✅ single cached YTD item
         }
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e ?? ""));
@@ -152,7 +151,7 @@ export function useYtd() {
       }
     })();
     return () => { cancelled = true; };
-  }, [getYtd, setYtd, setSchedule]);
+  }, [getYtdCache, setYtdCache, setCurrentWeekCache]);
 
   return { rows, weeks, loading, error };
 }

@@ -4,7 +4,7 @@
 
 
 import { create } from "zustand";
-import { LeaderboardRow, WeekPicksRow, ScheduleCurrent } from "../backend/types";
+import { LeaderboardRow, WeekPicksRow, CurrentWeek } from "../backend/types";
 
 export type GameMeta = {
   game_id: number;
@@ -38,15 +38,15 @@ type AppCacheState = {
   _lastSweepAt: number;
 
   // caches
-  schedule: TimeStamped<ScheduleCurrent> | null;
+  currentWeek: TimeStamped<CurrentWeek> | null;
   resultsByWeek: Record<number, TimeStamped<ResultsWeekCache> | undefined>;
   ytd: TimeStamped<YtdCache> | null;
 
   // actions
   setTTL: (ms: number) => void;
 
-  setSchedule: (s: ScheduleCurrent) => void;
-  getSchedule: () => ScheduleCurrent | null;
+  setCurrentWeek: (s: CurrentWeek) => void;
+  getCurrentWeek: () => CurrentWeek | null;
 
   setResultsWeek: (week: number, payload: ResultsWeekCache) => void;
   getResultsWeek: (week: number) => ResultsWeekCache | null;
@@ -64,33 +64,33 @@ export const useAppCache = create<AppCacheState>()(
       sweepEveryMs: 5 * 60 * 1000,  // sweep at most every 5 min
       _lastSweepAt: 0,
 
-      schedule: null,
+      currentWeek: null,
       resultsByWeek: {},
       ytd: null,
 
       setTTL: (ms) => set({ ttlMs: ms }),
 
-      setSchedule: (s) => {
+      setCurrentWeek: (s) => {
         const now = Date.now();
-        const prev = get().schedule?.data;
+        const prev = get().currentWeek?.data;
         const changed =
           !prev ||
-          prev.live_week !== s.live_week ||
-          prev.next_picks_week !== s.next_picks_week;
+          prev.week !== s.week ||
+          prev.status !== s.status;
 
         if (changed) {
           set({
-            schedule: { at: now, data: s },
+            currentWeek: { at: now, data: s },
             resultsByWeek: {},
             ytd: null,
           });
         } else {
-          set({ schedule: { at: now, data: s } });
+          set({ currentWeek: { at: now, data: s } });
         }
       },
 
-      getSchedule: () => {
-        const entry = get().schedule;
+      getCurrentWeek: () => {
+        const entry = get().currentWeek;
         if (!entry) return null;
         return Date.now() - entry.at > get().ttlMs ? null : entry.data;
       },

@@ -52,8 +52,8 @@ function allSundayGamesFinal(games: GameMeta[]): boolean {
 
 export default function MnfOutcomesPage() {
   // Week selector logic
-  const { schedule, lockedWeeks, loading: scheduleLoading } = useSchedule();
-  const liveWeek = schedule?.live_week ?? null;
+  const { currentWeek, lockedWeeks, loading: scheduleLoading } = useSchedule();
+  const liveWeek = currentWeek?.week ?? null;
 
   // Default week: liveWeek if available, else last locked week
   const [week, setWeek] = React.useState<number | "">("");
@@ -63,7 +63,7 @@ export default function MnfOutcomesPage() {
     }
   }, [lockedWeeks, liveWeek, week]);
 
-  const { rows, games, weekState, loading, error } = useResults(typeof week === "number" ? week : null);
+  const { rows, games, loading, error } = useResults(typeof week === "number" ? week : null);
   const whatIf = useMnfOutcomes(typeof week === "number" ? week : null, rows, games);
 
   // Only show the 'come back after Sunday' message for the current week (not completed weeks)
@@ -72,13 +72,13 @@ export default function MnfOutcomesPage() {
     const sundayDone = allSundayGamesFinal(games);
     const eom = endOfLocalMondayForWeek(games);
     // If the selected week is completed, always show outcomes (if available)
-    if (weekState === "completed") {
+    if (currentWeek?.status === "final") {
       return { shouldShow: true, endOfMonday: eom };
     }
     // Otherwise, use the original logic for the current week
     const withinWindow = sundayDone && (!!eom && now <= eom);
     return { shouldShow: withinWindow, endOfMonday: eom };
-  }, [games, weekState]);
+  }, [games, currentWeek]);
 
   // Loading states
   if (loading || scheduleLoading) {

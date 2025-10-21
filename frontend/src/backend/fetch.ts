@@ -9,7 +9,7 @@ import {
   LoginPayload,
   PasswordResetConfirm,
   PasswordResetRequest,
-  ScheduleCurrent,
+  CurrentWeek,
   Game,
   PickOut,
   PicksBulkIn,
@@ -151,10 +151,10 @@ export async function apiConfirmPasswordReset(p: PasswordResetConfirm): Promise<
 // =============================
 // Schedule fetch wrappers
 // =============================
-export function getScheduleCurrent(): Promise<ScheduleCurrent> {
-  return apiFetch("/schedule/current_weeks", {
+export function getCurrentWeek(): Promise<CurrentWeek> {
+  return apiFetch("/schedule/current_week", {
     method: "GET",
-    factory: (d) => new ScheduleCurrent(d),
+    factory: (d) => new CurrentWeek(d),
   });
 }
 

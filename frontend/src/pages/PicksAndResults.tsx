@@ -26,8 +26,8 @@ export default function PicksheetPage() {
   }, [autoScroll]);
   const { state } = useAuth();
   const { lockedWeeks } = useSchedule();
-  const [week, setWeek] = useState<number | null>(null);
-  const [snack, setSnack] = useState({ open: false, message: "", severity: "info" as Severity });
+  const [ week, setWeek ] = useState<number | null>(null);
+  const [ snack, setSnack ] = useState({ open: false, message: "", severity: "info" as Severity });
 
   // choose default week when lockedWeeks loaded
   useEffect(() => {
@@ -37,7 +37,7 @@ export default function PicksheetPage() {
   }, [lockedWeeks, week]);
 
   // Cache-backed data for the selected week
-  const { rows, games, weekState, consensusRow, loading, error } = useResults(week);
+  const { rows, games, currentWeek, consensusRow, loading, error } = useResults(week);
 
   useEffect(() => {
     if (error) setSnack({ open: true, message: error, severity: "error" });
@@ -66,7 +66,7 @@ export default function PicksheetPage() {
       },
     ];
 
-    if (weekState !== "not started") {
+    if (currentWeek?.status !== "scheduled") {
       cols.push({
         key: "points",
         header: "Score",
@@ -87,10 +87,10 @@ export default function PicksheetPage() {
 
     for (const g of games) {
       const key = `g_${g.game_id}`;
-  // Build a sub-label under the matchup: Not started | Live: TEAM M | Final score
+      // Build a sub-label under the matchup: Not started | Live: TEAM M | Final score
       // Only show when the week has started (i.e., not in "not started" state)
       let subLabel: string = "";
-      if (weekState !== "not started") {
+      if (currentWeek?.status !== "scheduled") {
         if (g.status === "scheduled") {
           subLabel = "Not started";
         } else if (g.status === "in_progress") {
@@ -135,7 +135,7 @@ export default function PicksheetPage() {
     }
 
     return cols;
-  }, [games, weekState]);
+  }, [games, currentWeek]);
 
   return (
     <>
@@ -165,9 +165,9 @@ export default function PicksheetPage() {
             <Typography variant="body1" fontWeight="bold">
               {week == null
                 ? "Loading results…"
-                : weekState === "completed"
+                : currentWeek?.status === "final"
                   ? "Final results"
-                  : weekState === "not started"
+                  : currentWeek?.status === "scheduled"
                     ? "Picks"
                     : "Partial results"}
             </Typography>
@@ -195,7 +195,7 @@ export default function PicksheetPage() {
             />
             <PrintArea className="print-grid-area">
               <DataGridLite<ResultsRow>
-                key={`grid-${weekState}`}
+                key={`grid-${currentWeek}`}
                 rows={rows}
                 columns={columns}
                 pinnedTopRows={[]}
@@ -203,7 +203,7 @@ export default function PicksheetPage() {
                   consensusRow ? [consensusRow] : []
                 }
                 defaultSort={
-                  weekState === "not started"
+                  currentWeek?.status === "scheduled"
                     ? { key: "pigeon_name", dir: "asc" }
                     : { key: "points", dir: "asc" }
                 }

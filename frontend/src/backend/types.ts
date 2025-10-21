@@ -145,16 +145,21 @@ export class PasswordResetConfirm {
 // =============================
 
 /** Which weeks are most interesting to the user */
-export class ScheduleCurrent {
-  next_picks_week: number | null; // Next unlocked week that users can still make picks for
-  live_week: number | null;       // In-progress week, or null between MNF and TNF kickoff
+export type WeekState =
+  "scheduled" |          // Between when the picks lock (EOD Tue) and TNF kickoff
+  "in_progress" |        // Between TNF kickoff and the MNF
+  "final";               // Between MNF and when the picks lock
+
+export class CurrentWeek {
+  week: number;                   // Current week number
+  status: WeekState;              // State of the current week
 
   constructor(data: unknown) {
     if (!isRecord(data)) {
-      throw new DataValidationError("Invalid ScheduleCurrent payload (not an object)");
+      throw new DataValidationError("Invalid CurrentWeek payload (not an object)");
     }
-    this.next_picks_week = data.next_picks_week === null ? null : Number(data.next_picks_week);
-    this.live_week = data.live_week === null ? null : Number(data.live_week);
+    this.week = Number(data.week);
+    this.status = data.status as WeekState;
   }
 }
 
