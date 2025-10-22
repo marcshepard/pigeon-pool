@@ -11,8 +11,6 @@ from __future__ import annotations
 
 import asyncio
 from typing import Any
-import json
-
 
 from sqlalchemy import bindparam, text
 from sqlalchemy.ext.asyncio import AsyncSession
