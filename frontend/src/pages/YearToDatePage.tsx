@@ -118,6 +118,7 @@ export default function YtdPage() {
             printTitle="Pigeon Pool — Year to Date"
             getRowId={(r) => r.pigeon_number}
             highlightRowId={state.status === "signedIn" ? state.user.pigeon_number : undefined}
+            highlightExtraRowIds={state.status === "signedIn" ? state.user.alternates.map(a => a.pigeon_number) : undefined}
           />
         </PrintArea>
       )}

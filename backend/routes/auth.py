@@ -7,7 +7,7 @@ Authentication-related endpoints and helpers, using name/password and bearer tok
 from datetime import datetime, timedelta, timezone
 import os
 import binascii
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 import jwt
 import psycopg
@@ -50,6 +50,11 @@ class LoginIn(BaseModel):
     email: EmailStr
     password: str
 
+class AltPigeon(BaseModel):
+    """ Alternative pigeons a given user can manage (beyong primary) """
+    pigeon_number: int
+    pigeon_name: str
+
 class MeOut(BaseModel):
     """ Current user output """
     pigeon_number: int
@@ -57,6 +62,7 @@ class MeOut(BaseModel):
     email: EmailStr
     is_admin: bool
     session: dict
+    alt_pigeons: List[AltPigeon] = []
 
 class LoginOut(BaseModel):
     """ Login output """
@@ -104,7 +110,6 @@ def parse_session_token(token: str) -> dict:
         raise HTTPException(status_code=401, detail="Wrong token type")
     return data
 
-# --- Queries ---
 # --- Queries ---
 def find_user(cur, email: str) -> Optional[Tuple]:
     """
@@ -316,7 +321,33 @@ def login(payload: LoginIn):
 def me(user: MeOut = Depends(current_user)):
     """ Get current user info """
     debug("In me")
-    return user
+
+    # Look up other pigeons this user can manage (owner/manager), excluding active
+    with db() as conn, conn.cursor() as cur:
+        cur.execute("""
+            SELECT p.pigeon_number, p.pigeon_name
+              FROM user_players up
+              JOIN users u   ON u.user_id = up.user_id
+              JOIN players p ON p.pigeon_number = up.pigeon_number
+             WHERE lower(u.email) = lower(%s)
+               AND up.pigeon_number <> %s
+               AND up.role IN ('owner','manager')
+             ORDER BY p.pigeon_number
+        """, (user.email, user.pigeon_number))
+        alt_rows = cur.fetchall()
+
+    alt_pigeons = [
+        AltPigeon(pigeon_number=r[0], pigeon_name=r[1])
+        for r in alt_rows
+    ]
+
+    debug(f"User alternates for {user.email} {user.pigeon_number}: alt_pigeons={alt_pigeons}")
+
+    # Avoid duplicate kwarg by excluding the existing field, then overriding
+    return MeOut(
+        **user.model_dump(exclude={"alt_pigeons"}),
+        alt_pigeons=alt_pigeons,
+    )
 
 @router.post("/logout")
 def logout():

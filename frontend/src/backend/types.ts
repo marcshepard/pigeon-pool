@@ -64,6 +64,13 @@ export class SessionInfo {
   }
 }
 
+
+// ---- Me (result of /auth/me or /auth/login) ----
+export interface AltPigeon {
+  pigeon_number: number;
+  pigeon_name: string;
+}
+
 // ---- Me (result of /auth/me or /auth/login) ----
 export class Me {
   pigeon_number: number;
@@ -72,21 +79,47 @@ export class Me {
   is_admin: boolean;
   session: SessionInfo;
 
+  /** Additional pigeons this user can manage (excludes the active one). */
+  alternates: AltPigeon[];
+
   constructor(data: unknown) {
     if (!isRecord(data)) throw new DataValidationError("Invalid Me payload (not an object)");
 
-    const { pigeon_number, pigeon_name, email, is_admin, session } = data;
+    const { pigeon_number, pigeon_name, email, is_admin, session, alt_pigeons } = data;
 
     if (!isNumber(pigeon_number)) throw new DataValidationError("pigeon_number must be number");
     if (!isString(pigeon_name)) throw new DataValidationError("pigeon_name must be string");
     if (!isString(email)) throw new DataValidationError("email must be string");
     if (!isBoolean(is_admin)) throw new DataValidationError("is_admin must be boolean");
+    if (!isRecord(session)) throw new DataValidationError("session must be object");
 
     this.pigeon_number = pigeon_number;
     this.pigeon_name = pigeon_name;
     this.email = email;
     this.is_admin = is_admin;
     this.session = new SessionInfo(session);
+
+    // alternates is optional (e.g., /auth/login may not include it)
+    this.alternates = [];
+    if (alt_pigeons !== undefined) {
+      if (!Array.isArray(alt_pigeons)) {
+        throw new DataValidationError("alternates must be an array");
+      }
+      const parsed: AltPigeon[] = [];
+      for (const a of alt_pigeons) {
+        if (!isRecord(a)) throw new DataValidationError("alternate must be an object");
+        const { pigeon_number: apn, pigeon_name: apname } = a;
+        if (!isNumber(apn)) throw new DataValidationError("alternate.pigeon_number must be number");
+        if (!isString(apname)) throw new DataValidationError("alternate.pigeon_name must be string");
+        parsed.push({ pigeon_number: apn, pigeon_name: apname });
+      }
+      this.alternates = parsed;
+    }
+  }
+
+  /** Convenience: true if the user can switch to another pigeon. */
+  get canSwitchPigeon(): boolean {
+    return this.alternates.length > 0;
   }
 }
 

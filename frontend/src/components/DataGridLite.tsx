@@ -42,6 +42,8 @@ export type DataGridLiteProps<T> = {
   getRowId?: (row: T, index: number) => string | number;
   /** If provided, the row with this id will be highlighted */
   highlightRowId?: string | number;
+  /** Additionally highlight these rows (e.g., alternates); does not auto-scroll */
+  highlightExtraRowIds?: Array<string | number>;
   /** When true, automatically scroll the highlighted row into view after sort changes */
   autoScrollHighlightOnSort?: boolean;
 };
@@ -69,8 +71,10 @@ export function DataGridLite<T>({
   printTitle,
   getRowId,
   highlightRowId,
+  highlightExtraRowIds,
   autoScrollHighlightOnSort = false,
 }: DataGridLiteProps<T>) {
+  const extraIdsSet = useMemo(() => new Set(highlightExtraRowIds ?? []), [highlightExtraRowIds]);
   const [sortKey, setSortKey] = useState<string | null>(defaultSort?.key ?? null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">(defaultSort?.dir ?? "asc");
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -219,9 +223,12 @@ export function DataGridLite<T>({
 
     // Determine row background (highlight takes precedence over zebra)
     const isHighlighted = highlightRowId !== undefined && highlightRowId !== null && key === highlightRowId;
+    const isExtraHighlighted = !isHighlighted && extraIdsSet.has(key);
     const isAlt = zebra && !isHighlighted && (idx % 2 === 1);
     const rowBg = (theme: Theme) => {
-      if (isHighlighted) return "#fff9c4"; // light yellow
+      // Use yellow shades for better visibility
+      if (isHighlighted) return "#fff59d"; // primary: brighter yellow (Yellow 200)
+      if (isExtraHighlighted) return "#fff9c4"; // alternate: softer yellow (Yellow 100)
       if (isAlt) return theme.palette.mode === "light" ? theme.palette.grey[200] : theme.palette.grey[900];
       // Explicit solid background for non-striped, non-highlighted rows
       return theme.palette.background.paper;
@@ -229,9 +236,11 @@ export function DataGridLite<T>({
 
     const rowClass = isHighlighted
       ? "user-row"
-      : isAlt
-        ? "striped-row"
-        : undefined;
+      : isExtraHighlighted
+        ? "alt-user-row"
+        : isAlt
+          ? "striped-row"
+          : undefined;
     return (
       <TableRow
         key={key}
