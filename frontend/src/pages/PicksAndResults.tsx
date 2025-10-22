@@ -54,6 +54,19 @@ export default function PicksheetPage() {
     }
   }, [rows, state.status, week, autoScroll]);
 
+  // Determine whether to show result columns based on selected vs current week
+  const showResultsCols = useMemo(() => {
+    if (week == null) return false;
+    const isCurrentSelected = currentWeek != null && week === currentWeek.week;
+    // Show for earlier weeks always; for current week, only when not scheduled
+    return !isCurrentSelected || (currentWeek?.status !== "scheduled");
+  }, [week, currentWeek]);
+
+  // Whether the selected week's games have started (any non-scheduled game)
+  const selectedWeekHasStarted = useMemo(() => {
+    return games.some(g => g.status !== "scheduled");
+  }, [games]);
+
   // Columns ----------------------------------------------------------
   const columns: ColumnDef<ResultsRow>[] = useMemo(() => {
     const cols: ColumnDef<ResultsRow>[] = [
@@ -66,7 +79,7 @@ export default function PicksheetPage() {
       },
     ];
 
-    if (currentWeek?.status !== "scheduled") {
+    if (showResultsCols) {
       cols.push({
         key: "points",
         header: "Score",
@@ -88,9 +101,9 @@ export default function PicksheetPage() {
     for (const g of games) {
       const key = `g_${g.game_id}`;
       // Build a sub-label under the matchup: Not started | Live: TEAM M | Final score
-      // Only show when the week has started (i.e., not in "not started" state)
+      // Only show when the selected week has started
       let subLabel: string = "";
-      if (currentWeek?.status !== "scheduled") {
+      if (selectedWeekHasStarted) {
         if (g.status === "scheduled") {
           subLabel = "Not started";
         } else if (g.status === "in_progress") {
@@ -135,7 +148,7 @@ export default function PicksheetPage() {
     }
 
     return cols;
-  }, [games, currentWeek]);
+  }, [games, selectedWeekHasStarted, showResultsCols]);
 
   return (
     <>
@@ -205,11 +218,7 @@ export default function PicksheetPage() {
                 pinnedBottomRows={
                   consensusRow ? [consensusRow] : []
                 }
-                defaultSort={
-                  currentWeek?.status === "scheduled"
-                    ? { key: "pigeon_name", dir: "asc" }
-                    : { key: "points", dir: "asc" }
-                }
+                defaultSort={showResultsCols ? { key: "points", dir: "asc" } : { key: "pigeon_name", dir: "asc" }}
                 printTitle={`Results — Week ${week ?? ""}`}
                 getRowId={(r) => r.pigeon_number}
                 highlightRowId={state.status === "signedIn" ? state.user.pigeon_number : undefined}
