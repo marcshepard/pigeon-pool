@@ -68,6 +68,7 @@ export default function MnfOutcomesPage() {
 
   // Only show the 'come back after Sunday' message for the current week (not completed weeks)
   const { shouldShow } = useMemo(() => {
+    console.log("MNF Outcomes: recomputing shouldShow with currentWeek=", currentWeek, " games=", games);
     const now = new Date();
     const sundayDone = allSundayGamesFinal(games);
     const eom = endOfLocalMondayForWeek(games);
@@ -114,7 +115,7 @@ export default function MnfOutcomesPage() {
     </Box>
   );
 
-  if (!shouldShow) {
+  if (!shouldShow && currentWeek?.week === week) {
     return (
       <Box sx={{ maxWidth: 1000, mx: "auto", p: 2 }}>
         {weekSelector}

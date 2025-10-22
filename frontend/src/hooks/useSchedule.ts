@@ -10,14 +10,6 @@ import { getCurrentWeek } from "../backend/fetch";
 import { useAppCache } from "../hooks/useAppCache";
 import type { CurrentWeek } from "../backend/types";
 
-// Compute the next week that folks can enter picks for
-// If the CurrentWeek.state "scheduled" (not locked), then they can enter picks
-// for the current week, else it's the week after.
-export function nextPicksWeek(cw: CurrentWeek): number | null {
-  const next = cw.status == "scheduled" ? cw.week : cw.week + 1;
-  return next;
-}
-
 export function useSchedule() {
   const getCurrentWeekCache = useAppCache((s) => s.getCurrentWeek);
   const setCurrentWeekCache = useAppCache((s) => s.setCurrentWeek);
@@ -39,7 +31,7 @@ export function useSchedule() {
         if (cached) {
           if (!cancelled) {
             setCurrentWeek(cached);
-            const weeks = computeLockedWeeks(nextPicksWeek(cached));
+            const weeks = computeLockedWeeks(cached.week + 1);
             setLockedWeeks(weeks);
             setLoading(false);
           }
@@ -52,7 +44,7 @@ export function useSchedule() {
 
         if (!cancelled) {
           setCurrentWeek(current);
-          const weeks = computeLockedWeeks(nextPicksWeek(current));
+          const weeks = computeLockedWeeks(current.week + 1);
           setLockedWeeks(weeks);
         }
       } catch (e) {

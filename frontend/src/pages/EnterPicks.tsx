@@ -21,12 +21,6 @@ function useDoubleTap(callback: () => void, ms = 300) {
   };
 }
 
-// Utility: compute the next week for which they can make picks
-function nextPicksWeek(cw: CurrentWeek): number {
-  const next = cw.status == "scheduled" ? cw.week : cw.week + 1;
-  return next;
-}
-
 // UI-only type for in-progress edits per game (keyed by game_id elsewhere)
 type PickDraft = {
   picked_home: boolean;      // true = home, false = away
@@ -74,7 +68,7 @@ export default function EnterPicksPage() {
         console.log("EnterPicks: useEffect got current week:", cw);
         if (cancelled) return;
         setCurrentWeek(cw);
-        const defaultWeek = nextPicksWeek(cw);
+        const defaultWeek = cw.week + 1;
         setWeek(defaultWeek ?? "");
         console.log("EnterPicks: useEffect setting default picks week:", defaultWeek);
       } catch (e: unknown) {
@@ -90,7 +84,7 @@ export default function EnterPicksPage() {
   // Future week options (next_picks_week..18), fallback start=1
   const futureWeeks = useMemo(() => {
     if (!currentWeek) return [];
-    const start = nextPicksWeek(currentWeek);
+    const start = currentWeek.week + 1;
     console.log("EnterPicks: useMemo using start week:", start);
     if (start == null) return [];
     const end = 18;

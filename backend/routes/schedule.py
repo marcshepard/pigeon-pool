@@ -89,14 +89,12 @@ async def get_current_week(db: AsyncSession = Depends(get_db)):
     next_row = (await db.execute(text("""
         SELECT week_number
         FROM weeks
-        WHERE lock_at > now()
-        ORDER BY lock_at ASC
+        WHERE lock_at < now()
+        ORDER BY lock_at DESC
         LIMIT 1
     """))).first()
-    next_picks_week = next_row[0] if next_row else None
 
-    # current_week = next_picks_week - 1
-    current_week = (next_picks_week - 1) if (next_picks_week is not None and next_picks_week > 1) else 1
+    current_week = next_row[0] if (next_row and next_row[0] > 1) else 1
 
     # Get all games for current_week
     games_result = await db.execute(text("""
