@@ -330,8 +330,8 @@ export default function EnterPicksPage() {
       </Box>
 
 
-      {/* Pigeon selector below header if alternates exist */}
-      {me && me.alternates && me.alternates.length > 0 && (
+    {/* Pigeon selector below header if user is admin OR has alternates */}
+    {me && (me.is_admin || (me.alternates && me.alternates.length > 0)) && (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 1 }}>
           {(() => {
             // Known pigeons: primary + alternates
