@@ -1,38 +1,52 @@
 -- Script to upgrade the current SQL schema or data
 
--- The weeks table was previously set to lock at the end of day on the Wednesday before the first kickoff
--- Changing it to lock EOD Tuesday to align with Andy
+-- Moving from a single players table to a users + players split with N-to-N mapping
+-- requires first migrating data from existing players table to users and users_players
+-- Then dropping the obsolete columns from players
 
-WITH first_kick AS (
-  SELECT g.week_number,
-         MIN(g.kickoff_at) AT TIME ZONE 'America/Los_Angeles' AS first_kick_pacific
-  FROM games g
-  GROUP BY g.week_number
-),
-tuesday_lock AS (
-  SELECT
-    fk.week_number,
-    (fk.first_kick_pacific)::date
-    - ((EXTRACT(ISODOW FROM (fk.first_kick_pacific)::date)::int - 2 + 7) % 7) AS lock_date_pacific
-  FROM first_kick fk
-),
-desired_lock AS (
-  SELECT
-    tl.week_number,
-    ((tl.lock_date_pacific + time '23:59:59') AT TIME ZONE 'America/Los_Angeles') AS lock_at_utc
-  FROM tuesday_lock tl
-)
-UPDATE weeks w
-SET lock_at = d.lock_at_utc
-FROM desired_lock d
-WHERE d.week_number = w.week_number;
+BEGIN;
 
--- Sanity check: show the new lock times and first kickoff times in PST
-SELECT
-  w.week_number,
-  (w.lock_at AT TIME ZONE 'America/Los_Angeles')        AS lock_at_pst,
-  (MIN(g.kickoff_at) AT TIME ZONE 'America/Los_Angeles') AS first_kickoff_pst
-    FROM weeks w
-    JOIN games g USING (week_number)
-    GROUP BY w.week_number
-    ORDER BY w.week_number;
+-- 1) Create USERS for selected players (hash length > 10)
+INSERT INTO users (email, password_hash, is_admin)
+SELECT p.email, p.password_hash, COALESCE(p.is_admin, FALSE)
+FROM players p
+WHERE p.email IS NOT NULL
+  AND p.password_hash IS NOT NULL
+  AND length(p.password_hash) > 10
+  AND NOT EXISTS (
+    SELECT 1 FROM users u
+    WHERE lower(u.email) = lower(p.email)
+  );
+
+-- 2) Create USER↔PIGEON mapping as owner + primary
+INSERT INTO user_players (user_id, pigeon_number, role, is_primary)
+SELECT u.user_id, p.pigeon_number, 'owner', TRUE
+FROM players p
+JOIN users u ON lower(u.email) = lower(p.email)
+WHERE p.email IS NOT NULL
+  AND p.password_hash IS NOT NULL
+  AND length(p.password_hash) > 10
+ON CONFLICT (user_id, pigeon_number) DO NOTHING;
+
+COMMIT;
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'players'
+      AND column_name = 'email'
+  ) THEN
+    EXECUTE '
+      ALTER TABLE public.players
+        DROP COLUMN IF EXISTS email,
+        DROP COLUMN IF EXISTS password_hash,
+        DROP COLUMN IF EXISTS created_at,
+        DROP COLUMN IF EXISTS is_admin,
+        DROP COLUMN IF EXISTS secondary_emails
+    ';
+  END IF;
+END
+$$;

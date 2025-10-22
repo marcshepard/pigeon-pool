@@ -31,16 +31,37 @@ CREATE TABLE IF NOT EXISTS games (
 CREATE INDEX IF NOT EXISTS ix_games_week_status ON games (week_number, status);
 CREATE INDEX IF NOT EXISTS ix_games_kickoff ON games (kickoff_at);
 
--- === PLAYERS ===
+-- === PLAYERS - the pigeons in the pool === 
 CREATE TABLE IF NOT EXISTS players (
   pigeon_number INT PRIMARY KEY CHECK (pigeon_number BETWEEN 1 AND 68),
-  pigeon_name   TEXT NOT NULL UNIQUE,
-  email         TEXT NOT NULL UNIQUE,
-  password_hash TEXT NOT NULL,
-  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-  is_admin      BOOLEAN NOT NULL DEFAULT FALSE,
-  secondary_emails JSONB DEFAULT '[]'
+  pigeon_name   TEXT NOT NULL UNIQUE
 );
+
+-- === USERS - the people who make pigeon picks ===
+CREATE TABLE IF NOT EXISTS users (
+  user_id       BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  email         TEXT NOT NULL CHECK (email ~* '^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$'),
+  password_hash TEXT NOT NULL,
+  is_admin      BOOLEAN NOT NULL DEFAULT FALSE
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_users_email_lower ON users ((lower(email)));
+
+-- === The mapping use users to players is many-to-many ===
+CREATE TABLE IF NOT EXISTS user_players (
+  user_id       BIGINT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+  pigeon_number INT    NOT NULL REFERENCES players(pigeon_number) ON DELETE CASCADE,
+  role          TEXT   NOT NULL DEFAULT 'owner' CHECK (role IN ('owner','manager','viewer')),
+  is_primary    BOOLEAN NOT NULL DEFAULT TRUE,
+  PRIMARY KEY (user_id, pigeon_number)
+);
+-- Exactly one 'owner' per pigeon
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_pigeon_single_owner
+  ON user_players(pigeon_number)
+  WHERE role = 'owner';
+-- Exactly one primary pigeon (default login) per user
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_pigeon_single_primary
+  ON user_players(pigeon_number)
+  WHERE is_primary;
 
 -- === PICKS ===
 CREATE TABLE IF NOT EXISTS picks (

@@ -176,14 +176,13 @@ def _find_game_id(cur, week: int, t1: str, t2: str) -> Optional[Tuple[int, str, 
 
 
 def _upsert_player(cur, pigeon_number: int, pigeon_name: str) -> None:
-    dummy_email = f"p{pigeon_number}@example.invalid"
     cur.execute(
         """
-        INSERT INTO players (pigeon_number, pigeon_name, email, password_hash)
-        VALUES (%s, %s, %s, '!')
+        INSERT INTO players (pigeon_number, pigeon_name)
+        VALUES (%s, %s)
         ON CONFLICT (pigeon_number) DO UPDATE SET pigeon_name = EXCLUDED.pigeon_name
         """,
-        (pigeon_number, pigeon_name, dummy_email),
+        (pigeon_number, pigeon_name),
     )
 
 

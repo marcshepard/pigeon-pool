@@ -14,7 +14,7 @@ from typing import Any
 import json
 
 
-from sqlalchemy import text
+from sqlalchemy import bindparam, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .logger import info
@@ -27,30 +27,44 @@ from .emailer import send_bulk_email_bcc
 # ---------------------------------------------------------------------
 # Helper to get all emails (primary + secondary)
 # ---------------------------------------------------------------------
+async def get_all_player_emails(
+    session: AsyncSession,
+    pigeon_numbers: list[int] | None = None,
+    include_viewers: bool = True,   # optional filter
+) -> list[str]:
+    """
+    Return distinct emails for users mapped to pigeons.
+    - If pigeon_numbers is None: all mapped users.
+    - If provided: only users mapped to those pigeons.
+    - include_viewers=False will exclude viewer-only accounts.
+    """
+    base_sql = """
+        SELECT DISTINCT lower(u.email) AS email
+          FROM user_players up
+          JOIN users u ON u.user_id = up.user_id
+    """
 
-async def get_all_player_emails(session: AsyncSession, pigeon_numbers: list[int] | None = None) -> list[str]:
-    """
-    Returns a list of all emails (primary and secondary) for all players,
-    or for a subset of pigeon_numbers if provided.
-    """
-    if pigeon_numbers is None:
-        q = text("SELECT email, secondary_emails FROM players ORDER BY pigeon_number")
-        rows = await session.execute(q)
-    else:
-        q = text("SELECT email, secondary_emails FROM players WHERE pigeon_number = ANY(:nums) ORDER BY pigeon_number")
-        rows = await session.execute(q, {"nums": pigeon_numbers})
-    emails = []
-    for r in rows:
-        primary = r[0]
-        secondary = r[1] or []
-        # If secondary_emails is a string, parse JSON
-        if isinstance(secondary, str):
-            try:
-                secondary = json.loads(secondary)
-            except Exception: #pylint: disable=broad-except
-                secondary = []
-        emails.append(primary)
-        emails.extend(secondary)
+    params = {}
+    filters = []
+
+    if pigeon_numbers:
+        # Use expanding bind param for portability
+        filters.append("up.pigeon_number IN :nums")
+        params["nums"] = tuple(set(int(n) for n in pigeon_numbers))
+    if not include_viewers:
+        filters.append("up.role IN ('owner','manager')")
+
+    if filters:
+        base_sql += " WHERE " + " AND ".join(filters)
+    base_sql += " ORDER BY 1"
+
+    q = text(base_sql)
+    if "nums" in params:
+        q = q.bindparams(bindparam("nums", expanding=True))
+
+    rows = await session.execute(q, params)
+    # Dedup + non-null guard (DISTINCT already helps)
+    emails = [r[0] for r in rows if r[0]]
     return emails
 
 async def run_kickoff_sync(session: AsyncSession) -> dict[str, Any]:
@@ -101,7 +115,6 @@ async def run_kickoff_sync(session: AsyncSession) -> dict[str, Any]:
 # ---------------------------------------------------------------------
 # Score polling (interval while games are live)
 # ---------------------------------------------------------------------
-
 async def run_poll_scores(session: AsyncSession) -> dict[str, Any]:
     """
     Poll live scores and status for the current week.
@@ -134,7 +147,6 @@ async def run_poll_scores(session: AsyncSession) -> dict[str, Any]:
 # ---------------------------------------------------------------------
 # Sunday wrap-up email (content-only; recipients fetched here)
 # ---------------------------------------------------------------------
-
 async def run_email_sun(session: AsyncSession) -> dict[str, Any]:
     """
     Send the Sunday-night summary email to all players (BCC in email.py).
@@ -176,7 +188,6 @@ async def run_email_sun(session: AsyncSession) -> dict[str, Any]:
 # ---------------------------------------------------------------------
 # Monday wrap-up email
 # ---------------------------------------------------------------------
-
 async def run_email_mon(session: AsyncSession) -> dict[str, Any]:
     """
     Send the Monday-night wrap-up email to all players (BCC in email.py).
@@ -239,7 +250,6 @@ async def run_email_mon(session: AsyncSession) -> dict[str, Any]:
 # ---------------------------------------------------------------------
 # Tuesday reminder email (only to users missing picks)
 # ---------------------------------------------------------------------
-
 async def run_email_tue_warn(session: AsyncSession) -> dict[str, Any]:
     """
     Send a Tuesday warning email to players who haven't submitted all picks

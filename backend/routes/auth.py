@@ -21,6 +21,8 @@ from backend.utils.settings import get_settings
 from backend.utils.logger import debug, info, warn, error
 from backend.utils.emailer import send_email
 
+#pylint: disable=line-too-long
+
 # --- Config ---
 S = get_settings()
 DB_CFG = S.psycopg_kwargs()
@@ -74,14 +76,16 @@ class PasswordResetConfirmIn(BaseModel):
     new_password: str
 
 # --- JWT helpers ---
-def make_session_token(pigeon_number: int, email: str) -> tuple[str, int]:
+def make_session_token(pigeon_number: int, email: str, uid: int, is_admin: bool) -> tuple[str, int]:
     """Create a session JWT and return (token, exp_epoch_seconds)."""
     now = datetime.now(timezone.utc)
     exp = now + timedelta(minutes=SESSION_MINUTES)
     exp_epoch = int(exp.timestamp())
     payload = {
-        "sub": str(pigeon_number),
+        "sub": str(pigeon_number),        # keep for minimal FE/BE change
+        "uid": uid,                       # NEW: user_id for joins/verification
         "email": email,
+        "adm": bool(is_admin),            # optional convenience
         "typ": "session",
         "iat": int(now.timestamp()),
         "exp": exp_epoch,
@@ -101,39 +105,66 @@ def parse_session_token(token: str) -> dict:
     return data
 
 # --- Queries ---
-def find_player(cur, email: str) -> Optional[Tuple]:
-    """ Find a player by email, return row or None """
+# --- Queries ---
+def find_user(cur, email: str) -> Optional[Tuple]:
+    """
+    Find a user by email (case-insensitive).
+    Returns (user_id, email, password_hash, is_admin) or None.
+    """
     cur.execute(
-        "SELECT pigeon_number, pigeon_name, email, password_hash, is_admin "
-        "FROM players WHERE email = %s",
-        (email.lower(),)
+        "SELECT user_id, email, password_hash, is_admin FROM users WHERE lower(email) = lower(%s)",
+        (email.strip(),)
     )
     return cur.fetchone()
 
+def select_primary_pigeon(cur, user_id: int) -> Optional[Tuple[int, str]]:
+    """
+    Pick the active pigeon for a user.
+    Preference: is_primary = TRUE; otherwise lowest pigeon_number.
+    Returns (pigeon_number, pigeon_name) or None if no mapping.
+    """
+    # Try explicit primary
+    cur.execute("""
+        SELECT p.pigeon_number, p.pigeon_name
+          FROM user_players up
+          JOIN players p ON p.pigeon_number = up.pigeon_number
+         WHERE up.user_id = %s AND up.is_primary = TRUE
+         ORDER BY p.pigeon_number
+         LIMIT 1
+    """, (user_id,))
+    row = cur.fetchone()
+    if row:
+        return row
+
+    # Fallback: any mapping (lowest pigeon_number)
+    cur.execute("""
+        SELECT p.pigeon_number, p.pigeon_name
+          FROM user_players up
+          JOIN players p ON p.pigeon_number = up.pigeon_number
+         WHERE up.user_id = %s
+         ORDER BY p.pigeon_number
+         LIMIT 1
+    """, (user_id,))
+    return cur.fetchone()
+
 # --- Password reset helpers ---
-def make_reset_token(pigeon_number: int) -> str:
-    """
-    Create a short-lived password reset JWT with a unique jti.
-    """
+def make_reset_token(user_id: int) -> str:
+    """Create a short-lived password reset JWT with a unique jti (sub = user_id)."""
     now = datetime.now(timezone.utc)
     exp = now + timedelta(minutes=RESET_TTL_MINUTES)
-    jti = binascii.hexlify(os.urandom(16)).decode()   # 32-char random hex string
+    jti = binascii.hexlify(os.urandom(16)).decode()
 
     payload = {
-        "sub": str(pigeon_number),
+        "sub": str(user_id),
         "typ": "reset",
         "jti": jti,
         "iat": int(now.timestamp()),
         "exp": int(exp.timestamp()),
     }
-    token = jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALG)
-    return token
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALG)
 
 def parse_reset_token(token: str) -> dict:
-    """
-    Decode and validate a password reset JWT.
-    Raises HTTP 401 on invalid/expired or wrong type.
-    """
+    """ Parse and validate a JWT reset token, return the payload """
     try:
         data = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALG])
     except jwt.PyJWTError as exc:
@@ -145,29 +176,27 @@ def parse_reset_token(token: str) -> dict:
     return data
 
 def ensure_reset_table(conn: psycopg.Connection) -> None:
-    """
-    Ensure the single-use ledger table exists.
-    """
+    """Ensure the single-use ledger table exists (now keyed by user_id)."""
     with conn.cursor() as cur:
         cur.execute("""
             CREATE TABLE IF NOT EXISTS password_reset_uses (
               jti TEXT PRIMARY KEY,
-              pigeon_number INT NOT NULL REFERENCES players(pigeon_number) ON DELETE CASCADE,
+              user_id BIGINT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
               used_at TIMESTAMPTZ NOT NULL DEFAULT now()
             );
         """)
         conn.commit()
 
 def jti_already_used(cur: psycopg.Cursor, jti: str) -> bool:
-    """ Check if a reset token jti has already been marked used. """
+    """Check if a reset token jti has already been used."""
     cur.execute("SELECT 1 FROM password_reset_uses WHERE jti = %s", (jti,))
     return cur.fetchone() is not None
 
-def mark_jti_used(cur: psycopg.Cursor, jti: str, pigeon_number: int) -> None:
-    """ Mark a reset token jti as used (single-use enforcement). """
+def mark_jti_used(cur: psycopg.Cursor, jti: str, user_id: int) -> None:
+    """Mark a reset token jti as used."""
     cur.execute(
-        "INSERT INTO password_reset_uses (jti, pigeon_number) VALUES (%s, %s) ON CONFLICT DO NOTHING",
-        (jti, pigeon_number),
+        "INSERT INTO password_reset_uses (jti, user_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+        (jti, user_id),
     )
 
 def sent_password_reset_email(to_email: str, token: str) -> None:
@@ -193,28 +222,35 @@ def sent_password_reset_email(to_email: str, token: str) -> None:
 def current_user(creds: HTTPAuthorizationCredentials = Depends(bearer)) -> MeOut:
     """
     Validate Authorization: Bearer <token> and return MeOut.
-
-    Note: This implementation is header-only (no cookies). Frontend must send:
-      Authorization: Bearer <JWT>
+    Token now encodes: uid (user_id) + sub (active pigeon_number).
     """
     if not creds:
         raise HTTPException(status_code=401, detail="Missing Authorization header")
-
     if (creds.scheme or "").lower() != "bearer":
         raise HTTPException(status_code=401, detail="Authorization must be Bearer <token>")
 
     data = parse_session_token(creds.credentials)
-    pn = int(data["sub"])
-    exp_ts = int(data["exp"])
+    try:
+        pn = int(data["sub"])
+        uid = int(data["uid"])
+        exp_ts = int(data["exp"])
+    except (KeyError, ValueError, TypeError) as exc:
+        warn("Malformed session token payload", exc=exc)
+        raise HTTPException(status_code=401, detail="Malformed session token") from None
 
     with db() as conn, conn.cursor() as cur:
-        cur.execute(
-            "SELECT pigeon_number, pigeon_name, email, is_admin FROM players WHERE pigeon_number = %s",
-            (pn,),
-        )
+        # Verify that this user is actually mapped to this pigeon (defense-in-depth)
+        cur.execute("""
+            SELECT p.pigeon_number, p.pigeon_name, u.email, u.is_admin
+              FROM user_players up
+              JOIN users u ON u.user_id = up.user_id
+              JOIN players p ON p.pigeon_number = up.pigeon_number
+             WHERE up.user_id = %s AND up.pigeon_number = %s
+             LIMIT 1
+        """, (uid, pn))
         row = cur.fetchone()
         if not row:
-            raise HTTPException(status_code=401, detail="User not found")
+            raise HTTPException(status_code=401, detail="User/pigeon mapping not found")
 
         return MeOut(
             pigeon_number=row[0],
@@ -233,27 +269,35 @@ def login(payload: LoginIn):
     debug("In login")
 
     with db() as conn, conn.cursor() as cur:
-        row = find_player(cur, payload.email)
-        if not row:
+        user_row = find_user(cur, payload.email)
+        if not user_row:
             raise HTTPException(status_code=401, detail="Invalid credentials")
 
-        pn, name, email, stored_hash, is_admin = row
+        uid, email, stored_hash, is_admin = user_row
 
-        # Verify password: bcrypt (or temporary plain-text fallback)
+        # Verify password (bcrypt digest vs temporary plain)
         ok = False
         try:
-            if stored_hash and stored_hash.startswith("$2"):  # bcrypt hash prefix
+            if stored_hash and stored_hash.startswith("$2"):
                 ok = bcrypt.verify(payload.password, stored_hash)
             else:
-                ok = payload.password == stored_hash  # TEMP: allow plain until migrated
+                ok = payload.password == stored_hash  # TEMP: allow plain until fully migrated
         except (ValueError, TypeError):
             ok = False
 
         if not ok:
             raise HTTPException(status_code=401, detail="Invalid credentials")
 
-        token, exp_ts = make_session_token(pn, email)
-        pigeon = MeOut(
+        # Choose active pigeon for this user
+        sel = select_primary_pigeon(cur, uid)
+        if not sel:
+            # You can soften this to 200 + a special flag if you want to support "no-pigeon yet".
+            raise HTTPException(status_code=403, detail="No pigeon assigned to this user")
+
+        pn, name = sel
+
+        token, exp_ts = make_session_token(pn, email, uid=uid, is_admin=is_admin)
+        me_out = MeOut(
             pigeon_number=pn,
             pigeon_name=name,
             email=email,
@@ -264,8 +308,8 @@ def login(payload: LoginIn):
             "ok": True,
             "access_token": token,
             "token_type": "bearer",
-            "expires_at": pigeon.session["expires_at"],
-            "user": pigeon,
+            "expires_at": me_out.session["expires_at"],
+            "user": me_out,
         }
 
 @router.get("/me", response_model=MeOut)
@@ -284,87 +328,85 @@ def logout():
 def request_password_reset(payload: PasswordResetRequestIn):
     """
     Start the password reset flow.
-
-    - Always returns 200 for well-formed requests to avoid email enumeration.
+    Always 200 for well-formed requests to avoid email enumeration.
     """
     email = payload.email.lower().strip()
     debug("password-reset: request received", email=email)
 
     try:
         with db() as conn, conn.cursor() as cur:
-            debug("password-reset: connected to DB")
-
-            cur.execute(
-                "SELECT pigeon_number, email FROM players WHERE email = %s",
-                (email,),
-            )
+            cur.execute("SELECT user_id FROM users WHERE lower(email) = %s", (email,))
             row = cur.fetchone()
-
             if not row:
                 info("password-reset: email not found", email=email)
                 return {"ok": True}
 
-            pn, _ = row
-            token = make_reset_token(pn)
-
+            uid = int(row[0])
+            token = make_reset_token(uid)
             sent_password_reset_email(email, token)
-            info("password-reset: email sent", pn=pn, email=email)
-
+            info("password-reset: email sent", uid=uid, email=email)
             return {"ok": True}
 
     except psycopg.Error as db_exc:
         error("password-reset: DB error", exc=db_exc, email=email)
         raise HTTPException(status_code=500, detail="Failed to process request") from db_exc
 
+
 @router.post("/password-reset/confirm", status_code=status.HTTP_200_OK)
 def confirm_password_reset(payload: PasswordResetConfirmIn):
     """
     Finalize the reset using the token and set a new password.
-    Returns a fresh session bearer token so the client can sign in immediately.
+    Returns a fresh session bearer token (for the user's primary pigeon).
     """
     debug("In confirm_password_reset")
 
-    # 1) Parse & validate token
     data = parse_reset_token(payload.token)
-    pn = int(data["sub"])
+    try:
+        uid = int(data["sub"])
+    except (KeyError, ValueError, TypeError) as exc:
+        warn("Malformed reset token payload", exc=exc)
+        raise HTTPException(status_code=401, detail="Invalid reset token") from None
     jti = data["jti"]
 
-    # 2) Update password atomically; enforce single-use
+    # Update password atomically; enforce single-use
     try:
         with db() as conn:
             ensure_reset_table(conn)
             with conn.cursor() as cur:
-                # single-use check
                 if jti_already_used(cur, jti):
-                    warn("password-reset: token jti already used", pn=pn, jti=jti)
+                    warn("password-reset: token jti already used", uid=uid, jti=jti)
                     raise HTTPException(status_code=401, detail="Reset link already used")
 
-                # set new bcrypt hash
-                # First, fetch email for token creation afterwards
-                cur.execute("SELECT email FROM players WHERE pigeon_number = %s", (pn,))
+                # fetch email (for token + email reply) and update password
+                cur.execute("SELECT email, is_admin FROM users WHERE user_id = %s", (uid,))
                 row = cur.fetchone()
                 if not row:
                     raise HTTPException(status_code=401, detail="Invalid reset token")
-                email = row[0]
+                email, is_admin = row
 
                 new_hash = bcrypt.hash(payload.new_password)
-                cur.execute(
-                    "UPDATE players SET password_hash = %s WHERE pigeon_number = %s",
-                    (new_hash, pn)
-                )
+                cur.execute("UPDATE users SET password_hash = %s WHERE user_id = %s", (new_hash, uid))
                 if cur.rowcount != 1:
-                    warn("password-reset: couldn't update user", pn=pn, jti=jti)
+                    warn("password-reset: couldn't update user", uid=uid, jti=jti)
                     raise HTTPException(status_code=401, detail="Invalid reset token")
 
                 # mark jti as used
-                mark_jti_used(cur, jti, pn)
+                mark_jti_used(cur, jti, uid)
+
+                # choose active pigeon for fresh session
+                sel = select_primary_pigeon(cur, uid)
+                if not sel:
+                    # If you prefer, return 200 without session token here.
+                    raise HTTPException(status_code=403, detail="No pigeon assigned to this user")
+                pn, _ = sel
+
             conn.commit()
+
     except psycopg.Error as db_exc:
-        warn("password-reset: DB error", exc=db_exc, pn=pn, jti=jti)
+        warn("password-reset: DB error", exc=db_exc, uid=uid, jti=jti)
         raise HTTPException(status_code=500, detail="Failed to reset password") from db_exc
 
-    # 3) Return a fresh token so the client can sign in immediately
-    token, exp_ts = make_session_token(pn, email)
+    token, exp_ts = make_session_token(pn, email, uid=uid, is_admin=is_admin)
     return {
         "ok": True,
         "access_token": token,

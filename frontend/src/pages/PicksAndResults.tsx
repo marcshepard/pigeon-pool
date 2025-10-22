@@ -165,11 +165,14 @@ export default function PicksheetPage() {
             <Typography variant="body1" fontWeight="bold">
               {week == null
                 ? "Loading results…"
-                : currentWeek?.status === "final"
-                  ? "Final results"
-                  : currentWeek?.status === "scheduled"
-                    ? "Picks"
-                    : "Partial results"}
+                : week == currentWeek?.week ? 
+                  (currentWeek?.status === "final"
+                    ? "Final results"
+                    : currentWeek?.status === "scheduled"
+                      ? "Picks"
+                      : "Partial results")
+                    : "Final results"
+              }
             </Typography>
           </Box>
 
