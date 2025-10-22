@@ -213,6 +213,7 @@ export default function PicksheetPage() {
                 printTitle={`Results — Week ${week ?? ""}`}
                 getRowId={(r) => r.pigeon_number}
                 highlightRowId={state.status === "signedIn" ? state.user.pigeon_number : undefined}
+                highlightExtraRowIds={state.status === "signedIn" ? state.user.alternates.map(a => a.pigeon_number) : undefined}
                 autoScrollHighlightOnSort={autoScroll}
               />
             </PrintArea>
