@@ -85,7 +85,7 @@ export class Me {
   constructor(data: unknown) {
     if (!isRecord(data)) throw new DataValidationError("Invalid Me payload (not an object)");
 
-    const { pigeon_number, pigeon_name, email, is_admin, session, alternates } = data;
+    const { pigeon_number, pigeon_name, email, is_admin, session, alt_pigeons } = data;
 
     if (!isNumber(pigeon_number)) throw new DataValidationError("pigeon_number must be number");
     if (!isString(pigeon_name)) throw new DataValidationError("pigeon_name must be string");
@@ -101,12 +101,12 @@ export class Me {
 
     // alternates is optional (e.g., /auth/login may not include it)
     this.alternates = [];
-    if (alternates !== undefined) {
-      if (!Array.isArray(alternates)) {
+    if (alt_pigeons !== undefined) {
+      if (!Array.isArray(alt_pigeons)) {
         throw new DataValidationError("alternates must be an array");
       }
       const parsed: AltPigeon[] = [];
-      for (const a of alternates) {
+      for (const a of alt_pigeons) {
         if (!isRecord(a)) throw new DataValidationError("alternate must be an object");
         const { pigeon_number: apn, pigeon_name: apname } = a;
         if (!isNumber(apn)) throw new DataValidationError("alternate.pigeon_number must be number");

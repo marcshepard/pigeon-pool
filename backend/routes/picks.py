@@ -97,6 +97,15 @@ GET_PICKS_FOR_WEEK_SQL = text("""
     ORDER BY p.game_id
 """)
 
+AUTHZ_SQL = text("""
+    SELECT 1
+      FROM user_players up
+      JOIN users u ON u.user_id = up.user_id
+     WHERE lower(u.email) = lower(:email)
+       AND up.pigeon_number = :pn
+       AND up.role IN ('owner','manager')
+     LIMIT 1
+""")
 
 # =========================
 # Utilities
@@ -124,6 +133,29 @@ async def _ensure_all_games_in_week(
             detail=f"These game_id(s) are not in week {week_number}: {sorted(missing)}"
         )
 
+async def _resolve_acting_pigeon(
+    db: AsyncSession,
+    me,                          # MeOut (has email, is_admin, pigeon_number)
+    requested_pn: int | None,
+) -> int:
+    """
+    Decide which pigeon_number this request should act as.
+    - Admins: may act for ANY existing pigeon (if requested); else use current.
+    - Non-admins: may act for their current pigeon, or another mapped pigeon where role in (owner, manager).
+    """
+    current_pn = me.pigeon_number
+    if requested_pn is None or requested_pn == current_pn:
+        return current_pn
+
+    # Admins can act for any existing pigeon
+    if me.is_admin:
+        return requested_pn
+
+    # Non-admins must be owner/manager for that pigeon
+    row = (await db.execute(AUTHZ_SQL, {"email": me.email, "pn": requested_pn})).first()
+    if not row:
+        raise HTTPException(status_code=403, detail=f"Not allowed for pigeon {requested_pn}")
+    return requested_pn
 
 # =========================
 # Endpoints
@@ -135,13 +167,16 @@ async def _ensure_all_games_in_week(
 )
 async def get_my_picks_for_week(
     week_number: int,
+    pigeon_number: int | None = None,               # NEW: optional query param
     db: AsyncSession = Depends(get_db),
     me=Depends(require_user),
 ):
     """ Return existing picks regardless of lock status (read-only after lock) """
+    acting_pn = await _resolve_acting_pigeon(db, me, pigeon_number)
+
     result = await db.execute(
         GET_PICKS_FOR_WEEK_SQL,
-        {"pigeon_number": me.pigeon_number, "week_number": week_number},
+        {"pigeon_number": acting_pn, "week_number": week_number},
     )
     rows = result.fetchall()
     return [
@@ -164,20 +199,22 @@ async def get_my_picks_for_week(
 )
 async def upsert_picks_bulk(
     payload: PicksBulkIn,
+    pigeon_number: int | None = None,               # NEW: optional query param
     db: AsyncSession = Depends(get_db),
     me=Depends(require_user),
 ):
     """ App-layer guard (DB trigger will also enforce) """
+    acting_pn = await _resolve_acting_pigeon(db, me, pigeon_number)
+
     await _ensure_week_unlocked(db, payload.week_number)
     await _ensure_all_games_in_week(db, payload.week_number, (p.game_id for p in payload.picks))
 
     out: List[PickOut] = []
-    # Perform upserts; rely on ON CONFLICT to update existing rows
     for p in payload.picks:
         res = await db.execute(
             UPSERT_PICK_SQL,
             {
-                "pigeon_number": me.pigeon_number,
+                "pigeon_number": acting_pn,
                 "game_id": p.game_id,
                 "picked_home": p.picked_home,
                 "predicted_margin": p.predicted_margin,
@@ -195,14 +232,14 @@ async def upsert_picks_bulk(
         )
     await db.commit()
 
-    # Also submit to Andy's system
+    # Also submit to Andy's system using the acting pigeon
     try:
         body = await build_submit_body_from_db(
-            session=db, week=payload.week_number, pigeon_number=me.pigeon_number, pin=9182
+            session=db, week=payload.week_number, pigeon_number=acting_pn, pin=9182
         )
         await submit_to_andy(body, deadline_sec=20)
-    except Exception as exc:  #pylint: disable=broad-except
-        error (f"Failed to submit picks to Andy for pigeon {me.pigeon_number}, week {payload.week_number}: {exc}")
+    except Exception as exc:  # pylint: disable=broad-except
+        error(f"Failed to submit picks to Andy for pigeon {acting_pn}, week {payload.week_number}: {exc}")
         raise HTTPException(
             status_code=500,
             detail="Failed to submit to Andy's form (so you'll have to do that yourself)"

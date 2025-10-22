@@ -176,11 +176,27 @@ export function getGamesForWeek(weekNumber: number): Promise<Game[]> {
 // =============================
 // Picks fetch wrappers
 // =============================
-export function getMyPicksForWeek(weekNumber: number): Promise<PickOut[]> {
+/** Helpers to construct optional query-string for submitting a pick for an alternative pigeon */
+function withPigeon(qs: string, pigeonNumber?: number | null): string {
+  if (pigeonNumber == null) return qs;
+  if (!Number.isInteger(pigeonNumber) || pigeonNumber < 1 || pigeonNumber > 68) {
+    throw new Error(`Invalid pigeonNumber: ${pigeonNumber}`);
+  }
+  return `${qs}${qs.includes("?") ? "&" : "?"}pigeon_number=${pigeonNumber}`;
+}
+
+/** Get picks for a week; optionally act as another managed pigeon */
+export function getMyPicksForWeek(
+  weekNumber: number,
+  pigeonNumber?: number
+): Promise<PickOut[]> {
   if (!Number.isInteger(weekNumber) || weekNumber < 1 || weekNumber > 18) {
     return Promise.reject(new Error(`Invalid weekNumber: ${weekNumber}`));
   }
-  return apiFetch(`/picks/${weekNumber}`, {
+
+  const path = withPigeon(`/picks/${weekNumber}`, pigeonNumber);
+
+  return apiFetch(path, {
     method: "GET",
     factory: (d) => {
       if (!Array.isArray(d)) throw new Error("Expected array");
@@ -189,12 +205,14 @@ export function getMyPicksForWeek(weekNumber: number): Promise<PickOut[]> {
   });
 }
 
-/**
- * POST /picks/bulk → PickOut[]
- * @param payload PicksBulkIn
- */
-export function setMyPicks(payload: PicksBulkIn): Promise<PickOut[]> {
-  return apiFetch(`/picks`, {
+/** Create/update picks for a week; optionally act as another managed pigeon */
+export function setMyPicks(
+  payload: PicksBulkIn,
+  pigeonNumber?: number
+): Promise<PickOut[]> {
+  const path = withPigeon(`/picks`, pigeonNumber);
+
+  return apiFetch(path, {
     method: "POST",
     body: JSON.stringify(payload),
     factory: (d) => {

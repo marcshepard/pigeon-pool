@@ -3,6 +3,7 @@
  */
 
 import { useEffect, useMemo, useState, useRef } from "react";
+import { useAuth } from "../auth/useAuth";
 import { Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, FormControl, FormControlLabel, Radio, RadioGroup, Stack, TextField, Typography } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import { AppSnackbar, Loading, Banner, ConfirmDialog, LabeledSelect } from "../components/CommonComponents";
@@ -28,6 +29,14 @@ type PickDraft = {
 };
 
 export default function EnterPicksPage() {
+  const { me } = useAuth();
+  console.log("EnterPicks: rendering, me =", me);
+  // Track selected pigeon number (default to primary)
+  const [selectedPigeon, setSelectedPigeon] = useState<number | null>(null);
+  // Set default pigeon on mount or when me changes
+  useEffect(() => {
+    if (me) setSelectedPigeon(me.pigeon_number);
+  }, [me]);
   const [currentWeek, setCurrentWeek] = useState<CurrentWeek | null>(null);
   const [week, setWeek] = useState<number | "">("");
   const [games, setGames] = useState<Game[] | null>(null);
@@ -107,7 +116,8 @@ export default function EnterPicksPage() {
 
         const [gs, picks] = await Promise.all([
           getGamesForWeek(week),
-          getMyPicksForWeek(week), // now returns v_picks_filled rows
+          // Always pass selected pigeon (falls back to primary)
+          getMyPicksForWeek(week, selectedPigeon ?? me?.pigeon_number),
         ]);
         if (cancelled) return;
 
@@ -138,7 +148,7 @@ export default function EnterPicksPage() {
     })();
 
     return () => { cancelled = true; };
-  }, [week]);
+  }, [week, selectedPigeon, me?.pigeon_number]);
 
   // — handlers —
   const handlePick = (gameId: number, value: "home" | "away") => {
@@ -218,7 +228,8 @@ export default function EnterPicksPage() {
     try {
       // Show submitting dialog
       setSubmitDialog({ open: true, error: null });
-      await setMyPicks({ week_number: week, picks });
+  // Always pass selected pigeon (falls back to primary)
+  await setMyPicks({ week_number: week, picks }, selectedPigeon ?? me?.pigeon_number);
       // Close dialog immediately once submission succeeds
       setSubmitDialog({ open: false, error: null });
       setSnackbar({ open: true, message: "Picks submitted!", severity: "success" });
@@ -231,7 +242,7 @@ export default function EnterPicksPage() {
 
     // Re-fetch picks to reflect server-side normalization, if any (best-effort)
     try {
-      const newPicks = await getMyPicksForWeek(week);
+  const newPicks = await getMyPicksForWeek(week, selectedPigeon ?? me?.pigeon_number);
       const byGame: Record<number, PickDraft> = {};
       for (const p of newPicks) byGame[p.game_id] = { picked_home: p.picked_home, predicted_margin: p.predicted_margin };
       setDraft((prev) => {
@@ -282,21 +293,22 @@ export default function EnterPicksPage() {
             options={futureWeeks.map((w) => ({ value: String(w), label: `Week ${w}` }))}
           />
 
-          {/* Title (center) */}
-          <Typography
-            variant="body1"
-            fontWeight="bold"
-            sx={{ flex: 1, textAlign: "center", userSelect: "none", cursor: "default" }}
-            onDoubleClick={handleHomeDialog}
-            onTouchEnd={(e) => {
-              // Prevent generating a subsequent dblclick event on mobile
-              e.preventDefault();
-              e.stopPropagation();
-              handleHomeDoubleTap();
-            }}
-          >
-            Enter picks
-          </Typography>
+          {/* Center: title w/ easter egg for fast "home team by 3" selection */}
+          <Box sx={{ flex: 1, textAlign: "center" }}>
+            <Typography
+              variant="body1"
+              fontWeight="bold"
+              sx={{ userSelect: "none", cursor: "default" }}
+              onDoubleClick={handleHomeDialog}
+              onTouchEnd={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleHomeDoubleTap();
+              }}
+            >
+              Enter picks
+            </Typography>
+          </Box>
       {/* Hidden dialog for home-by-3 */}
       <ConfirmDialog
         open={homeDialogOpen}
@@ -317,7 +329,40 @@ export default function EnterPicksPage() {
         </Stack>
       </Box>
 
-      {/* Scrollable picks area below header */}
+
+      {/* Pigeon selector below header if alternates exist */}
+      {me && me.alternates && me.alternates.length > 0 && (
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 1 }}>
+          {(() => {
+            // Known pigeons: primary + alternates
+            const knownNumbers = [me.pigeon_number, ...me.alternates.map(a => a.pigeon_number)];
+            const knownOptions = [
+              { value: String(me.pigeon_number), label: `${me.pigeon_number} ${me.pigeon_name}` },
+              ...me.alternates.map(a => ({ value: String(a.pigeon_number), label: `${a.pigeon_number} ${a.pigeon_name}` }))
+            ];
+            const allOptions = [...knownOptions];
+            if (me.is_admin) {
+              // Add all numbers 1-68 not in knownNumbers
+              for (let i = 1; i <= 68; ++i) {
+                if (!knownNumbers.includes(i)) {
+                  allOptions.push({ value: String(i), label: String(i) });
+                }
+              }
+            }
+            return (
+              <LabeledSelect
+                label="Pigeon"
+                value={selectedPigeon ? String(selectedPigeon) : String(me.pigeon_number)}
+                onChange={(e) => setSelectedPigeon(Number(e.target.value))}
+                options={allOptions}
+                sx={{ minWidth: 160 }}
+              />
+            );
+          })()}
+        </Box>
+      )}
+
+      {/* Scrollable picks area below header and selector */}
       <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto', px: 0.5, pt: 2 }}>
 
         <AppSnackbar
