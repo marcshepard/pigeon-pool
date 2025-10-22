@@ -30,23 +30,9 @@ ON CONFLICT (user_id, pigeon_number) DO NOTHING;
 
 COMMIT;
 
-DO $$
-BEGIN
-  IF EXISTS (
-    SELECT 1
-    FROM information_schema.columns
-    WHERE table_schema = 'public'
-      AND table_name = 'players'
-      AND column_name = 'email'
-  ) THEN
-    EXECUTE '
-      ALTER TABLE public.players
-        DROP COLUMN IF EXISTS email,
-        DROP COLUMN IF EXISTS password_hash,
-        DROP COLUMN IF EXISTS created_at,
-        DROP COLUMN IF EXISTS is_admin,
-        DROP COLUMN IF EXISTS secondary_emails
-    ';
-  END IF;
-END
-$$;
+ALTER TABLE public.players
+  DROP COLUMN IF EXISTS email,
+  DROP COLUMN IF EXISTS password_hash,
+  DROP COLUMN IF EXISTS created_at,
+  DROP COLUMN IF EXISTS is_admin,
+  DROP COLUMN IF EXISTS secondary_emails
