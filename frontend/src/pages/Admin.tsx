@@ -3,23 +3,66 @@
  */
 
 import { useState, useEffect, useMemo } from "react";
-import { Typography, Box, Alert } from "@mui/material";
+import {
+  Alert,
+  Box,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  Typography,
+} from "@mui/material";
 import { useSchedule } from "../hooks/useSchedule";
 import { adminGetWeekPicks, getGamesForWeek } from "../backend/fetch";
-import { WeekPicksRow, Game } from "../backend/types";
+import { WeekPicksRow, Game, AdminWeekLock } from "../backend/types";
 import { DataGridLite } from "../components/DataGridLite";
 import type { ColumnDef } from "../components/DataGridLite";
 import { PickCell, LabeledSelect } from "../components/CommonComponents";
 
+function formatDateTimeNoYear(dt: Date) {
+  // Format as MM/DD h:mm AM/PM (no year)
+  const dateStr = dt.toLocaleString("en-US", {
+    month: "2-digit",
+    day: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+    timeZone: "America/Los_Angeles"
+  });
+  // Remove year if present (e.g., "10/23/2025, 09:00 AM" -> "10/23, 09:00 AM")
+  return dateStr.replace(/^(\d{2})\/(\d{2})\/\d{4},\s*/, "$1/$2, ");
+}
+
 export default function AdminPage() {
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogValue, setDialogValue] = useState<Date | null>(null);
   const { currentWeek } = useSchedule();
   const [selectedWeek, setSelectedWeek] = useState<number | null>(null);
-  // Initialize selected week when schedule is available
+  const [weekLocks, setWeekLocks] = useState<AdminWeekLock[]>([]);
+  const [games, setGames] = useState<Game[]>([]);
+  const [lockError, setLockError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
   useEffect(() => {
     if (currentWeek?.week) {
       setSelectedWeek(currentWeek.status === "scheduled" ? currentWeek.week : currentWeek.week + 1);
     }
   }, [currentWeek]);
+
+  useEffect(() => {
+    if (selectedWeek) {
+      Promise.all([
+        import("../backend/fetch").then(m => m.adminGetWeeksLocks()),
+        import("../backend/fetch").then(m => m.getGamesForWeek(selectedWeek)),
+      ]).then(([locks, games]) => {
+        setWeekLocks(locks);
+        setGames(games);
+      });
+    }
+  }, [selectedWeek]);
 
   if (currentWeek == null) {
     return (
@@ -35,6 +78,11 @@ export default function AdminPage() {
   }
 
   const nextUnstartedWeek = currentWeek.status === "scheduled" ? currentWeek.week : currentWeek.week + 1;
+  const isFutureWeek = selectedWeek != null && selectedWeek > currentWeek.week;
+  const isCurrentScheduled = selectedWeek === currentWeek.week && currentWeek.status === "scheduled";
+  const eligible = isFutureWeek || isCurrentScheduled;
+  const lockRow = weekLocks.find(l => l.week_number === selectedWeek);
+  const firstKickoff = games.length > 0 ? new Date(games[0].kickoff_at) : null;
 
   return (
     <Box maxWidth={1200} mx="auto">
@@ -43,7 +91,7 @@ export default function AdminPage() {
       </Typography>
       {/* Text + Week selector on one line */}
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 2, my: 2 }}>
-        <Typography variant="body1">View pigeon picks for</Typography>
+        <Typography variant="body1">Picks for</Typography>
         <LabeledSelect
           label="Week"
           value={selectedWeek ? String(selectedWeek) : ""}
@@ -56,6 +104,82 @@ export default function AdminPage() {
           sx={{ minWidth: 200 }}
         />
       </Box>
+      {/* Admin lock control */}
+      {eligible && lockRow && (
+        <Box sx={{ alignContent: 'center', mx: 'auto' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2, my: 2 }}>
+            <Typography variant="body1">Picks lock at {formatDateTimeNoYear(new Date(lockRow.lock_at))}</Typography>
+            <Button variant="outlined" size="small" onClick={() => {
+              setDialogValue(new Date(lockRow.lock_at));
+              setDialogOpen(true);
+            }}>Change</Button>
+          </Box>
+          {lockError && <Alert severity="error">{lockError}</Alert>}
+            <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)}>
+              <DialogTitle sx={{ textAlign: 'center' }}>Set New Lock Time</DialogTitle>
+              <DialogContent>
+                <Box sx={{ mt: 2 }}>
+                  <TextField
+                    label="Lock Time"
+                    type="datetime-local"
+                    value={dialogValue ? (() => {
+                      // Format as yyyy-MM-ddTHH:mm for input
+                      const dt = new Date(dialogValue.getTime() - (dialogValue.getTimezoneOffset() * 60000));
+                      return dt.toISOString().slice(0,16);
+                    })() : ""}
+                    onChange={e => {
+                      const val = e.target.value;
+                      setDialogValue(val ? new Date(val) : null);
+                    }}
+                    slotProps={{
+                      input: {
+                        inputProps: {
+                          min: (() => {
+                            const base = new Date("2025-09-02T00:00:00-07:00");
+                            base.setDate(base.getDate() + 7 * (selectedWeek! - 1));
+                            return base.toISOString().slice(0,16);
+                          })(),
+                          max: firstKickoff ? (() => {
+                            const dt = new Date(firstKickoff.getTime() - (firstKickoff.getTimezoneOffset() * 60000));
+                            return dt.toISOString().slice(0,16);
+                          })() : undefined
+                        }
+                      }
+                    }}
+                    fullWidth
+                  />
+                </Box>
+              </DialogContent>
+              <DialogActions>
+                <Button onClick={() => setDialogOpen(false)} disabled={submitting}>Cancel</Button>
+                <Button
+                  onClick={async () => {
+                    if (!dialogValue) return;
+                    setLockError(null);
+                    setSubmitting(true);
+                    try {
+                      await import("../backend/fetch").then(m => m.adminAdjustWeekLock(selectedWeek!, dialogValue));
+                      setDialogOpen(false);
+                      setLockError(null);
+                      // Refetch locks
+                      const locks = await import("../backend/fetch").then(m => m.adminGetWeeksLocks());
+                      setWeekLocks(locks);
+                    } catch (e) {
+                      setLockError(e instanceof Error ? e.message : String(e));
+                    } finally {
+                      setSubmitting(false);
+                    }
+                  }}
+                  disabled={submitting || !dialogValue || (dialogValue && new Date(lockRow.lock_at).getTime() === dialogValue.getTime())}
+                  variant="contained"
+                  color="primary"
+                >
+                  Confirm
+                </Button>
+              </DialogActions>
+            </Dialog>
+        </Box>
+      )}
       <ViewPicks week={selectedWeek ?? nextUnstartedWeek} />
     </Box>
   );

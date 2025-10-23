@@ -3,6 +3,7 @@
  */
 
 import {
+  AdminWeekLock,
   Me,
   Ok,
   LeaderboardRow,
@@ -86,6 +87,9 @@ export async function apiFetch<T>(path: string, init: FetchInit<T>): Promise<T> 
     throw new Error(`API error ${res.status}: ${message}`);
   }
 
+  if (res.status === 204) {
+    return init.factory(undefined);
+  }
   const json = await res.json();
   return init.factory(json);
 }
@@ -222,37 +226,6 @@ export function setMyPicks(
   });
 }
 
-// Admin versions (real endpoints)
-export function adminGetPigeonPicksForWeek(weekNumber: number, pigeonNumber: number): Promise<PickOut[]> {
-  if (!Number.isInteger(weekNumber) || weekNumber < 1 || weekNumber > 18) {
-    return Promise.reject(new Error(`Invalid weekNumber: ${weekNumber}`));
-  }
-  if (!Number.isInteger(pigeonNumber) || pigeonNumber < 1) {
-    return Promise.reject(new Error(`Invalid pigeonNumber: ${pigeonNumber}`));
-  }
-  return apiFetch(`/admin/pigeons/${pigeonNumber}/weeks/${weekNumber}/picks`, {
-    method: "GET",
-    factory: (d) => {
-      if (!Array.isArray(d)) throw new Error("Expected array");
-      return d.map((item) => new PickOut(item));
-    },
-  });
-}
-
-export function adminSetPigeonPicks(payload: PicksBulkIn, pigeonNumber: number): Promise<PickOut[]> {
-  if (!Number.isInteger(pigeonNumber) || pigeonNumber < 1) {
-    return Promise.reject(new Error(`Invalid pigeonNumber: ${pigeonNumber}`));
-  }
-  return apiFetch(`/admin/pigeons/${pigeonNumber}/picks`, {
-    method: "POST",
-    body: JSON.stringify(payload),
-    factory: (d) => {
-      if (!Array.isArray(d)) throw new Error("Expected array");
-      return d.map((item) => new PickOut(item));
-    },
-  });
-}
-
 // =============================
 // Results / Leaderboard fetches
 // =============================
@@ -316,3 +289,28 @@ export function adminGetWeekPicks(week: number): Promise<WeekPicksRow[]> {
     },
   });
 }
+
+/**
+ * Fetch all weeks' lock times (admin only)
+ */
+export async function adminGetWeeksLocks(): Promise<AdminWeekLock[]> {
+  return apiFetch("/admin/weeks/locks", {
+    method: "GET",
+    factory: (data: unknown) => {
+      if (!Array.isArray(data)) throw new Error("Expected array");
+      return data.map((row) => new AdminWeekLock(row));
+    },
+  });
+}
+
+/**
+ * Adjust the lock time for a week (admin only)
+ */
+export async function adminAdjustWeekLock(week: number, lock_at: Date): Promise<void> {
+  await apiFetch(`/admin/weeks/${week}/lock`, {
+    method: "PATCH",
+    body: JSON.stringify({ lock_at: lock_at.toISOString() }),
+    factory: () => undefined,
+  });
+}
+

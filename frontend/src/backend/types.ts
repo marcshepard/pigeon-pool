@@ -392,3 +392,28 @@ export class LeaderboardRow {
   }
 }
 
+// =============================
+// Admin API types
+// =============================
+
+/** Lock info for a week as returned by /admin/weeks/locks */
+export class AdminWeekLock {
+  week_number: number;
+  lock_at: Date;
+
+  constructor(data: unknown) {
+    if (!isRecord(data)) throw new DataValidationError("Invalid AdminWeekLock payload (not an object)");
+    if (!isNumber(data.week_number)) throw new DataValidationError("week_number must be number");
+    this.week_number = data.week_number;
+    if (data.lock_at === null || data.lock_at === undefined) {
+      throw new DataValidationError("lock_at must not be null or undefined");
+    } else if (isString(data.lock_at)) {
+      this.lock_at = new Date(data.lock_at);
+    } else if (data.lock_at instanceof Date) {
+      this.lock_at = data.lock_at;
+    } else {
+      throw new DataValidationError("lock_at must be string or Date");
+    }
+  }
+}
+
