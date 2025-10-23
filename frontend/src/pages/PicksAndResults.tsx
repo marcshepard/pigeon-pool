@@ -98,7 +98,16 @@ export default function PicksheetPage() {
       });
     }
 
-    for (const g of games) {
+    // Sort games: scheduled/in_progress first, final last; kickoff order within each group
+    const sortedGames = [...games].sort((a, b) => {
+      const statusOrder = (s: string) => s === "final" ? 1 : 0;
+      const statusDiff = statusOrder(a.status ?? "scheduled") - statusOrder(b.status ?? "scheduled");
+          if (statusDiff !== 0) return statusDiff;
+          const at = new Date(a.kickoff_at).getTime();
+          const bt = new Date(b.kickoff_at).getTime();
+          return at - bt;
+    });
+    for (const g of sortedGames) {
       const key = `g_${g.game_id}`;
       // Build a sub-label under the matchup: Not started | Live: TEAM M | Final score
       // Only show when the selected week has started
