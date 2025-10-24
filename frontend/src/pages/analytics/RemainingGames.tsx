@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
-import { Box, Button, Dialog, DialogContent, DialogTitle, Typography } from "@mui/material";
+import { Box, Button, Dialog, DialogContent, DialogTitle, Typography, IconButton } from "@mui/material";
 import { DataGridLite, type ColumnDef } from "../../components/DataGridLite";
 import { PointsText } from "../../components/CommonComponents";
 import { useResults } from "../../hooks/useResults";
+import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 
 type Game = {
   game_id: number;
@@ -195,6 +196,10 @@ export default function RemainingGames({ week, pigeon }: { week: number; pigeon:
   }, [rows, games, pigeon, userRow]);
 
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(false);
+  const [actualInfoOpen, setActualInfoOpen] = useState(false);
+  const infoText = "Avg points gained on other pigeons if your pick is exactly right";
+  const actualInfoText = "Actual avg points gained (or lost if negative) vs other pigeons based on game outcome";
 
   const columns: ColumnDef<Row>[] = [
     {
@@ -212,17 +217,31 @@ export default function RemainingGames({ week, pigeon }: { week: number; pigeon:
     },
     { key: "consensus", header: "Consensus", renderCell: (r) => r.consensus, align: "center" },
     { key: "userPick", header: "Your Pick", renderCell: (r) => r.userPick, align: "center" },
-    { key: "outcome", header: "Outcome", renderCell: (r) => r.outcome, align: "center" },
     {
       key: "possiblePoints",
-      header: "Possible Gain",
+      header: (
+        <Box display="flex" alignItems="center" gap={0.5}>
+          Possible Gain
+          <IconButton size="small" onClick={() => setInfoOpen(true)} aria-label="Possible Gain Info">
+            <InfoOutlinedIcon fontSize="inherit" />
+          </IconButton>
+        </Box>
+      ),
       renderCell: (r) => (r.possiblePoints != null ? <PointsText>{r.possiblePoints.toFixed(1)}</PointsText> : "—"),
       valueGetter: (r) => r.possiblePoints,
       align: "center",
     },
+    { key: "outcome", header: "Outcome", renderCell: (r) => r.outcome, align: "center" },
     {
       key: "actualPoints",
-      header: "Actual Gain",
+      header: (
+        <Box display="flex" alignItems="center" gap={0.5}>
+          Actual Gain
+          <IconButton size="small" onClick={() => setActualInfoOpen(true)} aria-label="Actual Gain Info">
+            <InfoOutlinedIcon fontSize="inherit" />
+          </IconButton>
+        </Box>
+      ),
       renderCell: (r) =>
         r.actualPoints != null ? (
           <PointsText>
@@ -248,7 +267,7 @@ export default function RemainingGames({ week, pigeon }: { week: number; pigeon:
           Current rank: <strong>{currentRankStr}</strong>
         </Typography>
         <Typography variant="body1">
-          Best possible: <strong>{bestRankStr}</strong>
+          Best possible rank: <strong>{bestRankStr}</strong>
         </Typography>
         <Button variant="outlined" size="small" onClick={() => setDetailsOpen(true)} className="print-hide">
           show me details
@@ -267,6 +286,18 @@ export default function RemainingGames({ week, pigeon }: { week: number; pigeon:
         <DialogTitle>Details</DialogTitle>
         <DialogContent>
           <Typography>Coming soon</Typography>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={infoOpen} onClose={() => setInfoOpen(false)}>
+        <DialogTitle>Possible Gain</DialogTitle>
+        <DialogContent>
+          <Typography>{infoText}</Typography>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={actualInfoOpen} onClose={() => setActualInfoOpen(false)}>
+        <DialogTitle>Actual Gain</DialogTitle>
+        <DialogContent>
+          <Typography>{actualInfoText}</Typography>
         </DialogContent>
       </Dialog>
     </Box>

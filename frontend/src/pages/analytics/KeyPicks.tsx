@@ -121,7 +121,6 @@ export default function KeyPicks({ week, pigeon }: { week: number; pigeon: numbe
     },
     { key: "consensus", header: "Consensus", renderCell: r => r.consensus, align: "center" },
     { key: "userPick", header: "Your Pick", renderCell: r => r.userPick, align: "center" },
-    { key: "outcome", header: "Outcome", renderCell: r => r.outcome, align: "center" },
     {
       key: "possiblePoints",
       header: (
@@ -136,6 +135,7 @@ export default function KeyPicks({ week, pigeon }: { week: number; pigeon: numbe
       valueGetter: r => r.possiblePoints,
       align: "center",
     },
+    { key: "outcome", header: "Outcome", renderCell: r => r.outcome, align: "center" },
     {
       key: "actualPoints",
       header: (
