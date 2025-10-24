@@ -294,7 +294,7 @@ export default function PicksheetPage() {
               slotProps={{ paper: { sx: { p: 1, maxWidth: 240 } } }}
             >
               <Box sx={{ minWidth: 120, fontSize: '0.95em' }}>
-                Results, scores, and rank are auto-updated within 30 minutes of the live game events
+                While games are in-progress, results, scores, and rank are auto-updated within 30 minutes of the live game events
               </Box>
             </Popover>
             <FormControlLabel
