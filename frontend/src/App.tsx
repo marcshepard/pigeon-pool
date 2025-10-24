@@ -13,7 +13,7 @@ import EmojiEventsIcon from "@mui/icons-material/EmojiEvents";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import EditNoteIcon from "@mui/icons-material/EditNote";
 import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
-import SportsFootballIcon from "@mui/icons-material/SportsFootball";
+import BarChartIcon from "@mui/icons-material/BarChart";
 
 // auth
 import { AuthProvider } from "./auth/AuthContext";
@@ -30,10 +30,10 @@ import ResponsiveNav from "./components/ResponsiveNav";
 import HomePage from "./pages/Home";
 import EnterPicksPage from "./pages/EnterPicks";
 import PicksheetPage from "./pages/PicksAndResults";
-import MnfOutcomesPage from "./pages/MnfOutcomes";
 import YearToDatePage from "./pages/YearToDatePage";
 import AboutPage from "./pages/AboutPage";
 import AdminPage from "./pages/Admin";
+import AnalyticsPage from "./pages/Analytics";
 
 // ---- optional theme ----
 const theme = createTheme({
@@ -59,7 +59,7 @@ function getNavItems(isAdmin: boolean): NavItem[] {
     { path: "/", label: "Home", icon: <HomeIcon fontSize="small" /> },
     { path: "/enter-picks", label: "Enter Picks", icon: <EditNoteIcon fontSize="small" /> },
     { path: "/picks-and-results", label: "Picks and Results", icon: <ListAltIcon fontSize="small" /> },
-    { path: "/mnf-outcomes", label: "MNF Outcomes", icon: <SportsFootballIcon fontSize="small" /> },
+    { path: "/analytics", label: "Analytics", icon: <BarChartIcon fontSize="small" /> },
     { path: "/year-to-date", label: "Year-to-Date", icon: <EmojiEventsIcon fontSize="small" /> },
     { path: "/about", label: "About", icon: <InfoOutlinedIcon fontSize="small" /> },
   ];
@@ -108,7 +108,7 @@ function PrivateShell() {
         <Route path="/" element={<HomePage />} />
         <Route path="/enter-picks" element={<EnterPicksPage />} />
         <Route path="/picks-and-results" element={<PicksheetPage />} />
-        <Route path="/mnf-outcomes" element={<MnfOutcomesPage />} />
+        <Route path="/analytics" element={<AnalyticsPage />} />
         <Route path="/year-to-date" element={<YearToDatePage />} />
         <Route path="/about" element={<AboutPage />} />
         <Route path="/admin" element={me?.is_admin ? <AdminPage /> : <Box p={3}>Not authorized</Box>} />
