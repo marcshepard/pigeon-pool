@@ -20,16 +20,33 @@ from __future__ import annotations
 
 import argparse
 import os
-from typing import Any, Dict
-
+from typing import Any, Dict, Callable, Awaitable
 import asyncio
-import psycopg
-from backend.utils.db import AsyncSessionLocal
 
+import psycopg
+from sqlalchemy import text
+
+from backend.utils.db import AsyncSessionLocal
 from backend.utils.score_sync import ScoreSync
 from backend.utils.settings import get_settings
+from backend.utils.scheduled_jobs import (
+    run_kickoff_sync,
+    run_poll_scores,
+    run_email_sun,
+    run_email_mon,
+    run_email_tue_warn,
+    get_all_player_emails,
+)
 from .import_picks_xlsx import import_picks_pivot_xlsx
 
+# Mapping of scheduled job names to their runner functions
+_JOBS: dict[str, Callable[[Any], Awaitable[dict[str, Any]]]] = {
+    "kickoff_sync": run_kickoff_sync,
+    "score_sync": run_poll_scores,
+    "email_sun": run_email_sun,
+    "email_mon": run_email_mon,
+    "email_tue_warn": run_email_tue_warn,
+}
 
 class _HelpOnErrorParser(argparse.ArgumentParser):
     """ArgumentParser that prints the full help text on errors for a friendlier UX."""
@@ -138,6 +155,72 @@ def cmd_import_picks_xlsx(args: argparse.Namespace) -> int:
 
     return 0
 
+async def cmd_run_job(args: argparse.Namespace) -> int:
+    """
+    Run a scheduler job immediately (bypasses time gates/predicates).
+    Example:
+      python -m backend.cli run-job email_sun
+      python -m backend.cli run-job email_mon --dry-run
+      python -m backend.cli run-job email_tue_warn --mark
+    """
+    job = args.job
+    if job not in _JOBS:
+        print(f"error: unknown job '{job}'. Choices: {', '.join(sorted(_JOBS.keys()))}")
+        return 2
+
+    # Optional email dry-run so you can exercise the whole path without sending
+    if getattr(args, "dry_run", False):
+        os.environ["EMAIL_DRY_RUN"] = "true"
+
+    async with AsyncSessionLocal() as session:
+        result = await _JOBS[job](session)
+        print(f"[cli] run-job {job}: {result}")
+
+        if getattr(args, "mark", False):
+            await session.execute(text("""
+                INSERT INTO scheduler_runs(job_name, last_at)
+                VALUES (:j, now())
+                ON CONFLICT (job_name) DO UPDATE SET last_at = EXCLUDED.last_at
+            """), {"j": job})
+            await session.commit()
+            print(f"[cli] run-job {job}: marked last run in scheduler_runs.")
+
+    return 0
+
+async def cmd_show_email_recipients(args: argparse.Namespace) -> int:
+    """
+    Show who would receive emails for a given email job path.
+    For Tue warn we show the targeted subset; for Sun/Mon we show all mapped users.
+    """
+    which = args.which
+    async with AsyncSessionLocal() as session:
+        emails: list[str] = []
+        if which in ("sun", "mon"):
+            emails = await get_all_player_emails(session)
+        elif which == "tue":
+            # Reuse the same selection logic as the job itself
+            q = text("""
+            WITH next_week AS (SELECT MIN(week_number) AS w FROM weeks WHERE lock_at > now())
+            SELECT DISTINCT pl.pigeon_number
+            FROM v_picks_filled f
+            JOIN players pl ON pl.pigeon_number = f.pigeon_number
+            JOIN games g ON g.game_id = f.game_id
+            WHERE f.is_made = FALSE
+              AND g.week_number = (SELECT w FROM next_week)
+            ORDER BY pl.pigeon_number
+            """)
+            rows = await session.execute(q)
+            pigeon_numbers = [r[0] for r in rows]
+            emails = await get_all_player_emails(session, pigeon_numbers)
+        else:
+            print("error: --which must be one of: sun | mon | tue")
+            return 2
+
+        print(f"[cli] {which} recipients: {len(emails)}")
+        for e in emails:
+            print(f"  - {e}")
+    return 0
+
 # -----------------------------------------------------------------------------
 # Parser / Main
 # -----------------------------------------------------------------------------
@@ -195,6 +278,32 @@ def build_parser() -> argparse.ArgumentParser:
     group.add_argument("--week", type=int, help="Import only a single week (1–18)")
     group.add_argument("--max-week", type=int, help="Highest week to import")
     p_imp_pivot.set_defaults(func=cmd_import_picks_xlsx)
+
+    # run-job
+    p_run_job = sub.add_parser(
+        "run-job",
+        help="Run a scheduler job immediately (bypasses time gates/predicates).",
+        description="Execute one of: kickoff_sync | score_sync | email_sun | email_mon | email_tue_warn.",
+    )
+    p_run_job.add_argument(
+        "job",
+        choices=["kickoff_sync","score_sync","email_sun","email_mon","email_tue_warn"],
+        help="Job name to run now",
+    )
+    p_run_job.add_argument("--mark", action="store_true", help="Update scheduler_runs.last_at after success")
+    p_run_job.add_argument("--dry-run", action="store_true",
+                           help="Set EMAIL_DRY_RUN=true for this invocation (logs recipients, no send)")
+    p_run_job.set_defaults(func=cmd_run_job)
+
+    # show-email-recipients
+    p_recip = sub.add_parser(
+        "show-email-recipients",
+        help="List who would receive an email for Sun/Mon/Tue flows.",
+        description="Inspect recipient selection without sending mail.",
+    )
+    p_recip.add_argument("--which", required=True, choices=["sun","mon","tue"],
+                         help="Email flow: Sunday interim (sun), Monday wrap (mon), Tuesday warn (tue)")
+    p_recip.set_defaults(func=cmd_show_email_recipients)
 
     return parser
 

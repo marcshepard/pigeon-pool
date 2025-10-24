@@ -1,22 +1,35 @@
 """
-Send email function
+Send email function (with simple dry-run support).
+Set EMAIL_DRY_RUN=true to log and skip sending.
 """
+
+from __future__ import annotations
+import os
 
 from azure.communication.email import EmailClient
 from .settings import get_settings
-from .logger import debug, error
+from .logger import debug, info, error
 
-#pylint: disable=line-too-long, broad-except
+# pylint: disable=line-too-long, broad-except
 
 _settings = get_settings()
+
+def _is_dry_run() -> bool:
+    # Read at call time so CLI/exported env takes effect immediately
+    v = os.getenv("EMAIL_DRY_RUN", "")
+    return v.strip().lower() in ("1", "true", "yes", "on")
 
 def send_email(
     to: str,
     subject: str,
     plain_text: str,
     html: str
-) -> None:
-    """ Send an email using Azure Communication Services EmailClient """
+) -> bool:
+    """Send an email using Azure Communication Services EmailClient."""
+    if _is_dry_run():
+        info("component=email", mode="DRY_RUN", to=to, subject=subject)
+        return True
+
     debug(f"Sending email to {to}")
     try:
         connection_string = f"endpoint={_settings.email_endpoint};accesskey={_settings.email_access_key}"
@@ -24,39 +37,44 @@ def send_email(
 
         message = {
             "senderAddress": "DoNotReply@pigeonpool.com",
-            "recipients": {
-                "to": [{"address": to}]
-            },
-            "content": {
-                "subject": subject,
-                "plainText": plain_text,
-                "html": html
-            },
+            "recipients": {"to": [{"address": to}]},
+            "content": {"subject": subject, "plainText": plain_text, "html": html},
         }
 
         poller = client.begin_send(message)
         result = poller.result()
-        debug(f"Email succesfully sent. Result: {result}")
-
+        debug(f"Email successfully sent. Result: {result}")
+        return True
     except Exception:
         error("Error sending email", exc_info=True)
+        return False
 
 def filter_valid_recipients(addresses: list[str]) -> list[str]:
     """Remove placeholder/test addresses such as *@example.com."""
-    return [a for a in addresses if not a.lower().endswith("@example.com")]
+    return [a for a in addresses if a and not a.lower().endswith("@example.com")]
 
 def send_bulk_email_bcc(bcc: list[str], subject: str, plain_text: str, html: str) -> bool:
     """Send an email to multiple recipients via BCC."""
     valid_bcc = filter_valid_recipients(bcc)
+
+    if _is_dry_run():
+        # Log even if empty, but return True so jobs don't look like failures
+        info("component=email", mode="DRY_RUN", recipients=valid_bcc, subject=subject)
+        return True
+
     if not valid_bcc:
+        # Keep current behavior in live mode: nothing to send → False
         return False
+
     try:
         connection_string = f"endpoint={_settings.email_endpoint};accesskey={_settings.email_access_key}"
         client = EmailClient.from_connection_string(connection_string)
         message = {
             "senderAddress": "DoNotReply@pigeonpool.com",
-            "recipients": {"to": [{"address": "DoNotReply@pigeonpool.com"}],
-                           "bcc": [{"address": addr} for addr in valid_bcc]},
+            "recipients": {
+                "to": [{"address": "DoNotReply@pigeonpool.com"}],
+                "bcc": [{"address": addr} for addr in valid_bcc],
+            },
             "content": {"subject": subject, "plainText": plain_text, "html": html},
         }
         poller = client.begin_send(message)

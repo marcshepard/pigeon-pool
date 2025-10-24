@@ -115,33 +115,29 @@ async def _any_live_games(session: AsyncSession) -> bool:
 
 
 async def _all_sun_games_final_and_week_not_done(session: AsyncSession) -> bool:
-    # current week = latest locked week
-    q = text(
-        """
-        WITH current_week AS (
-          SELECT MAX(week_number) AS w
-          FROM weeks
-          WHERE lock_at <= now()
-        )
-        SELECT
-          (NOT EXISTS (
-            SELECT 1
-            FROM games
-            WHERE week_number = (SELECT w FROM current_week)
-              AND EXTRACT(ISODOW FROM kickoff_at) = 7  -- Sunday
-              AND status <> 'final'
-          ))
-          AND EXISTS (
-            SELECT 1
-            FROM games
-            WHERE week_number = (SELECT w FROM current_week)
-              AND status <> 'final'
-          )
-        """
+    q = text("""
+    WITH current_week AS (
+      SELECT MAX(week_number) AS w
+      FROM weeks
+      WHERE lock_at <= now()
     )
+    SELECT
+      (NOT EXISTS (
+        SELECT 1
+        FROM games
+        WHERE week_number = (SELECT w FROM current_week)
+          AND EXTRACT(ISODOW FROM (kickoff_at AT TIME ZONE 'America/Los_Angeles')) = 7  -- Sunday (ISO: Mon=1..Sun=7)
+          AND status <> 'final'
+      ))
+      AND EXISTS (
+        SELECT 1
+        FROM games
+        WHERE week_number = (SELECT w FROM current_week)
+          AND status <> 'final'
+      )
+    """)
     res = await session.execute(q)
     return bool(res.scalar())
-
 
 async def _all_games_final(session: AsyncSession) -> bool:
     # current week = latest locked week
