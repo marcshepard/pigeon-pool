@@ -159,7 +159,7 @@ export default function KeyPicks({ week, pigeon }: { week: number; pigeon: numbe
   return (
     <Box>
       <Typography variant="body1" align="center" sx={{ mb: 2 }}>
-        The importance of each pick this week's rankings (
+        The importance of each pick to the rankings (
         <Button variant="text" size="small" sx={{ p: 0, minWidth: 0, textTransform: 'none', fontWeight: 500 }} onClick={() => setInfoOpen(true)}>
           possible gain
         </Button>
