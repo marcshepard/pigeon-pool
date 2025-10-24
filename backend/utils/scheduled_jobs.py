@@ -158,16 +158,14 @@ async def run_email_sun(session: AsyncSession) -> dict[str, Any]:
     subject = f"Interim Results for week {week}"
     plain = (
         "To ALL Pigeons --\n\n"
-        "The Week 6 Interim Results through Sunday are available at https://www.pigeonpool.com/picksheet.\n"
-        "Outcomes for various MNF scores are available at https://www.pigeonpool.com/mnf-outcomes.\n\n"
+        "The Week 6 Interim Results through Sunday are available at https://www.pigeonpool.com/picks-and-results.\n"
+        "Outcomes for various MNF scores are available at https://www.pigeonpool.com/analytics.\n\n"
         "--Andy (not really, as this email is automated from the pigeonpool app)"
     )
     html = (
         "<p>To <b>ALL Pigeons</b> --</p>"
-        "<p>The Week 6 Interim Results through Sunday are available at "
-        "<a href='https://www.pigeonpool.com/picksheet'>https://www.pigeonpool.com/picksheet</a>.</p>"
-        "<p>Outcomes for various MNF scores are available at "
-        "<a href='https://www.pigeonpool.com/mnf-outcomes'>https://www.pigeonpool.com/mnf-outcomes</a>.</p>"
+        "<p>The Week 6 Interim Results through Sunday are available at https://www.pigeonpool.com/picks-and-results.</p>"
+        "<p>Outcomes for various MNF scores are available at https://www.pigeonpool.com/analytics.</p>"
         "<p>--Andy (not really, as this email is automated from the pigeonpool app)</p>"
     )
 
@@ -216,20 +214,17 @@ async def run_email_mon(session: AsyncSession) -> dict[str, Any]:
     plain = (
         "To ALL Pigeons --\n\n"
         f"Congratulations to {' and '.join(winners)} for the first place finish in Week {week}!\n"
-        "The final results are available at https://www.pigeonpool.com/picksheet.\n"
-        "The year-to-date summulative scores are available at  https://www.pigeonpool.com/mnf-outcomes.\n\n"
-        "Don't forget to enter your picks for next week before the Tuesday midnight deadline at https://www.pigeonpool.com/picks!\n\n"
+        "The final results are available at https://www.pigeonpool.com/picks-and-results.\n"
+        "The year-to-date summulative scores are available at  https://www.pigeonpool.com/year-to-date.\n\n"
+        "Don't forget to enter your picks for next week before the Tuesday midnight deadline at https://www.pigeonpool.com/enter-picks!\n\n"
         "--Andy (not really, as this email is automated from the pigeonpool app)"
     )
     html = (
         "<p>To <b>ALL Pigeons</b> --</p>"
         f"<p>Congratulations to <b>{' and '.join(winners)}</b> for the first place finish in Week {week}!</p>"
-        "<p>The final results are available at "
-        "<a href='https://www.pigeonpool.com/picksheet'>https://www.pigeonpool.com/picksheet</a>.</p>"
-        "<p>The year-to-date summulative scores are available at "
-        "<a href='https://www.pigeonpool.com/mnf-outcomes'>https://www.pigeonpool.com/mnf-outcomes</a>.</p>"
-        "<p>Don't forget to enter your picks for next week before the Tuesday midnight deadline at "
-        "<a href='https://www.pigeonpool.com/picks'>https://www.pigeonpool.com/picks</a>!</p>"
+        "<p>The final results are available at <a href='https://www.pigeonpool.com/picks-and-results'>https://www.pigeonpool.com/picks-and-results</a>.</p>"
+        "<p>The year-to-date summulative scores are available at https://www.pigeonpool.com/year-to-date.</p>"
+        "<p>Don't forget to enter your picks for next week before the Tuesday midnight deadline at https://www.pigeonpool.com/enter-picks.</p>"
         "<p>--Andy (not really, as this email is automated from the pigeonpool app)</p>"
     )
 
@@ -281,13 +276,13 @@ ORDER BY pl.pigeon_number
     subject = "Pigeon Pool Reminder: Enter Your Picks"
     plain = (
         "Hi! It looks like you haven’t submitted all your picks for this week.\n"
-        "Please log in and enter them before tonight’s deadline.\n\n"
+        "Please log in and enter them before tonight’s deadline at https://www.pigeonpool.com/enter-picks.\n\n"
         "Good luck!"
     )
     html = (
         "<h2>Friendly Reminder</h2>"
         "<p>It looks like you haven’t submitted all your picks for this week.</p>"
-        "<p>Please log in and enter them before tonight’s deadline.</p>"
+        "<p>Please enter them before tonight’s deadline at https://www.pigeonpool.com/enter-picks.</p>"
         "<p>Good luck!</p>"
     )
 
