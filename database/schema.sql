@@ -64,6 +64,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uniq_pigeon_single_primary
   WHERE is_primary;
 
 -- === PICKS ===
+-- Now includes the user who made the pick (nullable for legacy picks)
 CREATE TABLE IF NOT EXISTS picks (
   pigeon_number    INT    NOT NULL REFERENCES players(pigeon_number) ON DELETE CASCADE,
   game_id          BIGINT NOT NULL REFERENCES games(game_id) ON DELETE CASCADE,

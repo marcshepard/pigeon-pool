@@ -28,7 +28,22 @@ type PickDraft = {
   predicted_margin: number;  // 0–99
 };
 
+// Helper to format last submission time as m/d h:m(am/pm)
+function formatSubmissionTime(dt: string): string {
+  const d = new Date(dt);
+  const month = d.getMonth() + 1;
+  const day = d.getDate();
+  let hour = d.getHours();
+  const min = d.getMinutes();
+  const ampm = hour >= 12 ? "pm" : "am";
+  hour = hour % 12;
+  if (hour === 0) hour = 12;
+  const minStr = min < 10 ? `0${min}` : String(min);
+  return `${month}/${day} ${hour}:${minStr}${ampm}`;
+}
+
 export default function EnterPicksPage() {
+  const [lastSubmission, setLastSubmission] = useState<string | null>(null);
   const { me } = useAuth();
   console.log("EnterPicks: rendering, me =", me);
   // Track selected pigeon number (default to primary)
@@ -116,9 +131,15 @@ export default function EnterPicksPage() {
 
         const [gs, picks] = await Promise.all([
           getGamesForWeek(week),
-          // Always pass selected pigeon (falls back to primary)
           getMyPicksForWeek(week, selectedPigeon ?? me?.pigeon_number),
         ]);
+        // Find latest created_at
+        const maxCreated = picks
+          .map(p => p.created_at)
+          .filter((dt): dt is string => !!dt)
+          .sort()
+          .reverse()[0] ?? null;
+        setLastSubmission(maxCreated);
         if (cancelled) return;
 
         // sort games by kickoff then game_id
@@ -364,6 +385,12 @@ export default function EnterPicksPage() {
 
       {/* Scrollable picks area below header and selector */}
       <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto', px: 0.5, pt: 2 }}>
+        {/* Last submission time */}
+        {lastSubmission && (
+          <Banner severity="info" sx={{ mb: 2 }}>
+            Last submission: {formatSubmissionTime(lastSubmission)}
+          </Banner>
+        )}
 
         <AppSnackbar
           open={snackbar.open}
