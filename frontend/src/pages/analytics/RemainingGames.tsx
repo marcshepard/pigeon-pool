@@ -199,7 +199,7 @@ export default function RemainingGames({ week, pigeon }: { week: number; pigeon:
   const [infoOpen, setInfoOpen] = useState(false);
   const [actualInfoOpen, setActualInfoOpen] = useState(false);
   const infoText = "Avg points gained on other pigeons if your pick is exactly right";
-  const actualInfoText = "Actual avg points gained (or lost if negative) vs other pigeons based on game outcome";
+  const actualInfoText = "Average points gained (or lost if negative) vs other pigeons if the live score holds";
 
   const columns: ColumnDef<Row>[] = [
     {
@@ -231,7 +231,7 @@ export default function RemainingGames({ week, pigeon }: { week: number; pigeon:
       valueGetter: (r) => r.possiblePoints,
       align: "center",
     },
-    { key: "outcome", header: "Outcome", renderCell: (r) => r.outcome, align: "center" },
+    { key: "outcome", header: "Live Score", renderCell: (r) => r.outcome, align: "center" },
     {
       key: "actualPoints",
       header: (

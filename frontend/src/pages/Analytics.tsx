@@ -1,20 +1,22 @@
-import { useState, useEffect } from "react";
-import { Box, Stack, Typography, Tabs, Tab, FormControl, InputLabel, Select, MenuItem } from "@mui/material";
+import { useState, useEffect, useMemo } from "react";
+import { Box, Stack, Typography, Tabs, Tab, FormControl, InputLabel, Select, MenuItem, ListSubheader, Divider } from "@mui/material";
 
 import { useAuth } from "../auth/useAuth";
 import { useSchedule } from "../hooks/useSchedule";
 import KeyPicks from "./analytics/KeyPicks";
 import RemainingGames from "./analytics/RemainingGames";
 import MnfOutcomes from "./analytics/MnfOutcomes";
-import type { Me } from "../backend/types";
+ 
+import { useResults } from "../hooks/useResults";
 
-function getPigeonOptions(me: Me | undefined): { pigeon_number: number; pigeon_name: string }[] {
-	if (!me) return [];
-	// User's own pigeon first, then alternates
-	return [
-		{ pigeon_number: me.pigeon_number, pigeon_name: me.pigeon_name },
-		...(me.alternates || [])
-	];
+function uniqBy<T, K>(arr: T[], keyFn: (t: T) => K): T[] {
+	const seen = new Set<K>();
+	const out: T[] = [];
+	for (const it of arr) {
+		const k = keyFn(it);
+		if (!seen.has(k)) { seen.add(k); out.push(it); }
+	}
+	return out;
 }
 
 export default function AnalyticsPage() {
@@ -37,8 +39,36 @@ export default function AnalyticsPage() {
 	// Tab state
 	const [tab, setTab] = useState(0);
 
-	// Pigeon options for selector
-	const pigeonOptions = getPigeonOptions(me);
+	// Results for the selected week (to discover all pigeons + names)
+	const { rows } = useResults(week === "" ? null : Number(week));
+
+	// Build selector sections: Me, Managed, Others
+	const { meOpt, managedOpts, otherOpts } = useMemo(() => {
+		const empty = { meOpt: null as null | { pigeon_number: number; pigeon_name?: string }, managedOpts: [] as { pigeon_number: number; pigeon_name?: string }[], otherOpts: [] as { pigeon_number: number; pigeon_name?: string }[] };
+		if (!me) return empty;
+		const meId = me.pigeon_number;
+		const managed = (me.alternates || []).map(a => ({ pigeon_number: a.pigeon_number, pigeon_name: a.pigeon_name }));
+
+		// All pigeons from results rows (names available here)
+		const all = uniqBy(
+			rows.map(r => ({ pigeon_number: r.pigeon_number, pigeon_name: r.pigeon_name })),
+			x => x.pigeon_number
+		);
+
+		const managedIds = new Set(managed.map(m => m.pigeon_number));
+
+		const othersRaw = all.filter(p => p.pigeon_number !== meId && !managedIds.has(p.pigeon_number));
+		// If rows is empty (week not loaded), we may have no others; fall back to empty
+
+		// Sort others by name if present, then by number
+		const otherOpts = [...othersRaw].sort((a, b) => a.pigeon_number - b.pigeon_number);
+
+		return {
+			meOpt: { pigeon_number: meId, pigeon_name: me.pigeon_name },
+			managedOpts: managed,
+			otherOpts,
+		};
+	}, [me, rows]);
 
 	return (
 		<Box sx={{ maxWidth: 900, mx: "auto", mt: 3 }}>
@@ -68,9 +98,30 @@ export default function AnalyticsPage() {
 						label="Pigeon"
 						onChange={e => setPigeon(Number(e.target.value))}
 					>
-						{pigeonOptions.map(p => (
+						{meOpt && (
+							<ListSubheader>Me</ListSubheader>
+						)}
+						{meOpt && (
+							<MenuItem key={meOpt.pigeon_number} value={meOpt.pigeon_number}>
+								{`${meOpt.pigeon_number} ${meOpt.pigeon_name ?? ""}`.trim()}
+							</MenuItem>
+						)}
+
+						{managedOpts.length > 0 && (
+							<ListSubheader>Managed</ListSubheader>
+						)}
+						{managedOpts.map(p => (
 							<MenuItem key={p.pigeon_number} value={p.pigeon_number}>
-								{`${p.pigeon_number} ${p.pigeon_name}`}
+								{`${p.pigeon_number} ${p.pigeon_name ?? ""}`.trim()}
+							</MenuItem>
+						))}
+
+						{otherOpts.length > 0 && (
+							<Divider sx={{ my: 0.5 }} />
+						)}
+						{otherOpts.map(p => (
+							<MenuItem key={p.pigeon_number} value={p.pigeon_number}>
+								{p.pigeon_name ? `${p.pigeon_number} ${p.pigeon_name}` : String(p.pigeon_number)}
 							</MenuItem>
 						))}
 					</Select>
