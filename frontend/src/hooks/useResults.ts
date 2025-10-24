@@ -3,7 +3,7 @@
  * Fetches all weekly results and caches them in the app cache.
  */
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { getResultsWeekLeaderboard, getResultsWeekPicks, getCurrentWeek } from "../backend/fetch";
 import { LeaderboardRow, WeekPicksRow, CurrentWeek } from "../backend/types";
 import { useAppCache, type GameMeta } from "../hooks/useAppCache";
@@ -94,41 +94,52 @@ export function useResults(week: number | null) {
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState<string | null>(null);
 
+  // Function to force refresh results from backend, bypassing cache
+  const refreshResults = useCallback(async () => {
+    if (week == null) return;
+    setLoading(true);
+    try {
+      const [picks, lb] = await Promise.all([
+        getResultsWeekPicks(week),
+        getResultsWeekLeaderboard(week),
+      ]);
+      const shaped = shapeRowsAndGames(picks, lb);
+      setRows([...shaped.rows]);
+      setGames(shaped.games);
+      setResultsWeekCache(week, { picks, lb, games: shaped.games, rows: shaped.rows as unknown[] });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e ?? ""));
+    } finally {
+      setLoading(false);
+    }
+  }, [week, setLoading, setRows, setGames, setResultsWeekCache]);
+
   // EFFECT 1: fetch/cache data for the selected week
   useEffect(() => {
     if (week == null) return;
     let cancelled = false;
     (async () => {
-        try {
+      try {
         setLoading(true);
         const cached = getResultsWeekCache(week);
         if (cached) {
-            const shapedRows = (cached.rows as ResultsRow[] | undefined)
+          const shapedRows = (cached.rows as ResultsRow[] | undefined)
             ?? shapeRowsAndGames(cached.picks, cached.lb).rows;
-            if (!cancelled) {
+          if (!cancelled) {
             setRows([...shapedRows]);   // make mutable copy
             setGames(cached.games);
-            }
+          }
         } else {
-            const [picks, lb] = await Promise.all([
-            getResultsWeekPicks(week),
-            getResultsWeekLeaderboard(week),
-            ]);
-            const shaped = shapeRowsAndGames(picks, lb);
-            if (!cancelled) {
-            setRows([...shaped.rows]);
-            setGames(shaped.games);
-            }
-            setResultsWeekCache(week, { picks, lb, games: shaped.games, rows: shaped.rows as unknown[] });
+          await refreshResults();
         }
-        } catch (e) {
+      } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e ?? ""));
-        } finally {
+      } finally {
         if (!cancelled) setLoading(false);
-        }
+      }
     })();
     return () => { cancelled = true; };
-  }, [week, getResultsWeekCache, setResultsWeekCache]);
+  }, [week, getResultsWeekCache, setResultsWeekCache, refreshResults]);
 
   // EFFECT 2: fetch/cache the current week
   useEffect(() => {
@@ -184,5 +195,5 @@ export function useResults(week: number | null) {
     return out;
     }, [rows, games]);
 
-    return { rows, games, currentWeek, consensusRow, loading, error };
+  return { rows, games, currentWeek, consensusRow, loading, error, refreshResults };
 }

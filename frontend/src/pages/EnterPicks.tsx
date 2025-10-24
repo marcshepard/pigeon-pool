@@ -3,6 +3,36 @@
  */
 
 import { useEffect, useMemo, useState, useRef } from "react";
+// Auto-refresh hook
+function useAutoRefresh(
+  shouldRefresh: boolean,
+  refreshFn: () => void,
+  intervalMinutes: number
+) {
+  const timerRef = useRef<number | null>(null);
+  useEffect(() => {
+    function startTimer() {
+      if (shouldRefresh && document.visibilityState === "visible") {
+        timerRef.current = window.setInterval(refreshFn, intervalMinutes * 60 * 1000);
+      }
+    }
+    function stopTimer() {
+      if (timerRef.current) clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible") startTimer();
+      else stopTimer();
+    }
+    stopTimer();
+    startTimer();
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      stopTimer();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [shouldRefresh, refreshFn, intervalMinutes]);
+}
 import { useAuth } from "../auth/useAuth";
 import { Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, FormControl, FormControlLabel, Radio, RadioGroup, Stack, TextField, Typography } from "@mui/material";
 import { alpha } from "@mui/material/styles";
@@ -43,15 +73,10 @@ function formatSubmissionTime(dt: string): string {
 }
 
 export default function EnterPicksPage() {
+  // State declarations
   const [lastSubmission, setLastSubmission] = useState<string | null>(null);
   const { me } = useAuth();
-  console.log("EnterPicks: rendering, me =", me);
-  // Track selected pigeon number (default to primary)
   const [selectedPigeon, setSelectedPigeon] = useState<number | null>(null);
-  // Set default pigeon on mount or when me changes
-  useEffect(() => {
-    if (me) setSelectedPigeon(me.pigeon_number);
-  }, [me]);
   const [currentWeek, setCurrentWeek] = useState<CurrentWeek | null>(null);
   const [week, setWeek] = useState<number | "">("");
   const [games, setGames] = useState<Game[] | null>(null);
@@ -64,6 +89,106 @@ export default function EnterPicksPage() {
   const [submitDialog, setSubmitDialog] = useState<{ open: boolean; error: string | null }>({ open: false, error: null });
   const [touchedPickSide, setTouchedPickSide] = useState<Record<number, boolean>>({});
   const handleHomeDoubleTap = useDoubleTap(() => setHomeDialogOpen(true));
+
+  // Determine if any game is in progress (kickoff passed, not final)
+  const now = Date.now();
+  const gamesInProgress = useMemo(() =>
+    (games ?? []).some(g => {
+      const kickoff = new Date(g.kickoff_at).getTime();
+      return kickoff <= now && g.status !== "final";
+    }),
+    [games, now]
+  );
+
+  // Dialog for auto-update info
+  const [autoUpdateDialogOpen, setAutoUpdateDialogOpen] = useState(false);
+  // Auto-refresh interval from .env (required)
+  const interval = Number(import.meta.env.VITE_AUTO_REFRESH_INTERVAL_MINUTES);
+  // Auto-refresh games if in progress
+  useAutoRefresh(gamesInProgress, () => {
+    if (typeof week !== "number" || week < 1) return;
+    (async () => {
+      try {
+        setLoading(true);
+        setLoadingError("");
+        setGames(null);
+        setDraft({});
+        setTouchedPickSide({});
+        const [gs, picks] = await Promise.all([
+          getGamesForWeek(week),
+          getMyPicksForWeek(week, selectedPigeon ?? me?.pigeon_number),
+        ]);
+        const maxCreated = picks
+          .map(p => p.created_at)
+          .filter((dt): dt is string => !!dt)
+          .sort()
+          .reverse()[0] ?? null;
+        setLastSubmission(maxCreated);
+        const sorted = [...gs].sort((a, b) => {
+          const at = new Date(a.kickoff_at).getTime();
+          const bt = new Date(b.kickoff_at).getTime();
+          return at !== bt ? at - bt : a.game_id - b.game_id;
+        });
+        const initial: Record<number, PickDraft> = {};
+        for (const p of picks) {
+          initial[p.game_id] = { picked_home: p.picked_home, predicted_margin: p.predicted_margin };
+        }
+        setGames(sorted);
+        setDraft(initial);
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : "Failed to load games or picks";
+        setLoadingError(msg);
+        setSnackbar({ open: true, message: msg, severity: "error" });
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, interval);
+
+  // ...removed duplicate declarations...
+
+  // Auto-refresh games if in progress
+  useAutoRefresh(gamesInProgress, () => {
+    // Re-fetch games for the current week and pigeon
+    if (typeof week !== "number" || week < 1) return;
+    (async () => {
+      try {
+        setLoading(true);
+        setLoadingError("");
+        setGames(null);
+        setDraft({});
+        setTouchedPickSide({});
+        const [gs, picks] = await Promise.all([
+          getGamesForWeek(week),
+          getMyPicksForWeek(week, selectedPigeon ?? me?.pigeon_number),
+        ]);
+        const maxCreated = picks
+          .map(p => p.created_at)
+          .filter((dt): dt is string => !!dt)
+          .sort()
+          .reverse()[0] ?? null;
+        setLastSubmission(maxCreated);
+        const sorted = [...gs].sort((a, b) => {
+          const at = new Date(a.kickoff_at).getTime();
+          const bt = new Date(b.kickoff_at).getTime();
+          return at !== bt ? at - bt : a.game_id - b.game_id;
+        });
+        const initial: Record<number, PickDraft> = {};
+        for (const p of picks) {
+          initial[p.game_id] = { picked_home: p.picked_home, predicted_margin: p.predicted_margin };
+        }
+        setGames(sorted);
+        setDraft(initial);
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : "Failed to load games or picks";
+        setLoadingError(msg);
+        setSnackbar({ open: true, message: msg, severity: "error" });
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, interval);
+  // ...existing code...
 
   const handleHomeDialog = () => {
     setHomeDialogOpen(true);
@@ -383,6 +508,26 @@ export default function EnterPicksPage() {
         </Box>
       )}
 
+      {/* Auto-update info */}
+      {gamesInProgress && (
+        <Box sx={{ mb: 1 }}>
+          <Typography variant="body1">
+            Scores are <span style={{ textDecoration: 'underline', cursor: 'pointer', color: '#1976d2' }} onClick={() => setAutoUpdateDialogOpen(true)}>auto-updated</span>
+          </Typography>
+        </Box>
+      )}
+      {/* Auto-update dialog */}
+      {autoUpdateDialogOpen && (
+        <Box sx={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', bgcolor: 'rgba(0,0,0,0.3)', zIndex: 1300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Box sx={{ bgcolor: 'background.paper', p: 3, borderRadius: 2, boxShadow: 3, minWidth: 300 }}>
+            <Typography variant="h6" gutterBottom>Auto-updated Scores</Typography>
+            <Typography variant="body1" gutterBottom>
+              There is currently a lag of up to 30 minutes from live scores – we'll be optimizing this in the future.
+            </Typography>
+            <Button variant="contained" onClick={() => setAutoUpdateDialogOpen(false)}>Close</Button>
+          </Box>
+        </Box>
+      )}
       {/* Scrollable picks area below header and selector */}
       <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto', px: 0.5, pt: 2 }}>
         {/* Last submission time */}
