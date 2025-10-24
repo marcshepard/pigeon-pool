@@ -99,9 +99,6 @@ export default function AnalyticsPage() {
 						onChange={e => setPigeon(Number(e.target.value))}
 					>
 						{meOpt && (
-							<ListSubheader>Me</ListSubheader>
-						)}
-						{meOpt && (
 							<MenuItem key={meOpt.pigeon_number} value={meOpt.pigeon_number}>
 								{`${meOpt.pigeon_number} ${meOpt.pigeon_name ?? ""}`.trim()}
 							</MenuItem>
