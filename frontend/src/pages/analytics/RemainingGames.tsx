@@ -199,7 +199,7 @@ export default function RemainingGames({ week, pigeon }: { week: number; pigeon:
   const [infoOpen, setInfoOpen] = useState(false);
   const [actualInfoOpen, setActualInfoOpen] = useState(false);
   const infoText = "Avg points gained on other pigeons if your pick is exactly right";
-  const actualInfoText = "Average points gained (or lost if negative) vs other pigeons if the live score holds";
+  const actualInfoText = "Average points gained (or lost if negative) vs other pigeons if the current live score holds";
 
   const columns: ColumnDef<Row>[] = [
     {
@@ -236,7 +236,7 @@ export default function RemainingGames({ week, pigeon }: { week: number; pigeon:
       key: "actualPoints",
       header: (
         <Box display="flex" alignItems="center" gap={0.5}>
-          Actual Gain
+          Current Gain
           <IconButton size="small" onClick={() => setActualInfoOpen(true)} aria-label="Actual Gain Info">
             <InfoOutlinedIcon fontSize="inherit" />
           </IconButton>
@@ -295,7 +295,7 @@ export default function RemainingGames({ week, pigeon }: { week: number; pigeon:
         </DialogContent>
       </Dialog>
       <Dialog open={actualInfoOpen} onClose={() => setActualInfoOpen(false)}>
-        <DialogTitle>Actual Gain</DialogTitle>
+        <DialogTitle>Current Gain</DialogTitle>
         <DialogContent>
           <Typography>{actualInfoText}</Typography>
         </DialogContent>
