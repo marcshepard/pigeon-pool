@@ -1,10 +1,12 @@
 import { useMemo, useState } from "react";
-import { Box, Button, Typography, IconButton } from "@mui/material";
-import { InfoPopover } from "../../components/CommonComponents";
-import { DataGridLite, type ColumnDef } from "../../components/DataGridLite";
-import { PointsText } from "../../components/CommonComponents";
-import { useResults } from "../../hooks/useResults";
+
+import { Box, Typography, IconButton } from "@mui/material";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
+
+import { InfoPopover, PointsText } from "../../components/CommonComponents";
+import { DataGridLite, type ColumnDef } from "../../components/DataGridLite";
+import { useResults } from "../../hooks/useResults";
+import Top5Explainer from "./Top5Explainer";
 
 type Game = {
   game_id: number;
@@ -278,15 +280,13 @@ export default function RemainingGames({ week, pigeon }: { week: number; pigeon:
         <Typography variant="body1">
           Best possible rank: <strong>{bestRankStr}</strong>
         </Typography>
-        <Button
-          variant="outlined"
-          size="small"
-          onClick={e => setDetailsAnchor(e.currentTarget as HTMLElement)}
-          className="print-hide"
-        >
-          show me details
-        </Button>
       </Box>
+
+      <Top5Explainer
+        pigeon={pigeon}
+        rows={rows}   // rows from useResults
+        games={games} // games from useResults
+      />
 
       <DataGridLite
         rows={tableRows}
