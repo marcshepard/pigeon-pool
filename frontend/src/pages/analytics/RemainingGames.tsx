@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { Box, Button, Dialog, DialogContent, DialogTitle, Typography, IconButton } from "@mui/material";
+import { Box, Button, Typography, IconButton } from "@mui/material";
+import { InfoPopover } from "../../components/CommonComponents";
 import { DataGridLite, type ColumnDef } from "../../components/DataGridLite";
 import { PointsText } from "../../components/CommonComponents";
 import { useResults } from "../../hooks/useResults";
@@ -195,9 +196,9 @@ export default function RemainingGames({ week, pigeon }: { week: number; pigeon:
     return { currentRankStr, bestRankStr };
   }, [rows, games, pigeon, userRow]);
 
-  const [detailsOpen, setDetailsOpen] = useState(false);
-  const [infoOpen, setInfoOpen] = useState(false);
-  const [actualInfoOpen, setActualInfoOpen] = useState(false);
+  const [detailsAnchor, setDetailsAnchor] = useState<null | HTMLElement>(null);
+  const [infoAnchor, setInfoAnchor] = useState<null | HTMLElement>(null);
+  const [actualInfoAnchor, setActualInfoAnchor] = useState<null | HTMLElement>(null);
   const infoText = "Avg points gained on other pigeons if your pick is exactly right";
   const actualInfoText = "Average points gained (or lost if negative) vs other pigeons if the current live score holds";
 
@@ -222,7 +223,11 @@ export default function RemainingGames({ week, pigeon }: { week: number; pigeon:
       header: (
         <Box display="flex" alignItems="center" gap={0.5}>
           Possible Gain
-          <IconButton size="small" onClick={() => setInfoOpen(true)} aria-label="Possible Gain Info">
+          <IconButton
+            size="small"
+            onClick={e => setInfoAnchor(e.currentTarget as HTMLElement)}
+            aria-label="Possible Gain Info"
+          >
             <InfoOutlinedIcon fontSize="inherit" />
           </IconButton>
         </Box>
@@ -237,7 +242,11 @@ export default function RemainingGames({ week, pigeon }: { week: number; pigeon:
       header: (
         <Box display="flex" alignItems="center" gap={0.5}>
           Current Gain
-          <IconButton size="small" onClick={() => setActualInfoOpen(true)} aria-label="Actual Gain Info">
+          <IconButton
+            size="small"
+            onClick={e => setActualInfoAnchor(e.currentTarget as HTMLElement)}
+            aria-label="Actual Gain Info"
+          >
             <InfoOutlinedIcon fontSize="inherit" />
           </IconButton>
         </Box>
@@ -269,7 +278,12 @@ export default function RemainingGames({ week, pigeon }: { week: number; pigeon:
         <Typography variant="body1">
           Best possible rank: <strong>{bestRankStr}</strong>
         </Typography>
-        <Button variant="outlined" size="small" onClick={() => setDetailsOpen(true)} className="print-hide">
+        <Button
+          variant="outlined"
+          size="small"
+          onClick={e => setDetailsAnchor(e.currentTarget as HTMLElement)}
+          className="print-hide"
+        >
           show me details
         </Button>
       </Box>
@@ -282,24 +296,24 @@ export default function RemainingGames({ week, pigeon }: { week: number; pigeon:
         defaultSort={{ key: "possiblePoints", dir: "desc" }}
       />
 
-      <Dialog open={detailsOpen} onClose={() => setDetailsOpen(false)}>
-        <DialogTitle>Details</DialogTitle>
-        <DialogContent>
-          <Typography>Coming soon</Typography>
-        </DialogContent>
-      </Dialog>
-      <Dialog open={infoOpen} onClose={() => setInfoOpen(false)}>
-        <DialogTitle>Possible Gain</DialogTitle>
-        <DialogContent>
-          <Typography>{infoText}</Typography>
-        </DialogContent>
-      </Dialog>
-      <Dialog open={actualInfoOpen} onClose={() => setActualInfoOpen(false)}>
-        <DialogTitle>Current Gain</DialogTitle>
-        <DialogContent>
-          <Typography>{actualInfoText}</Typography>
-        </DialogContent>
-      </Dialog>
+      <InfoPopover
+        anchorEl={detailsAnchor}
+        onClose={() => setDetailsAnchor(null)}
+      >
+        <Typography>Coming soon</Typography>
+      </InfoPopover>
+      <InfoPopover
+        anchorEl={infoAnchor}
+        onClose={() => setInfoAnchor(null)}
+      >
+        {infoText}
+      </InfoPopover>
+      <InfoPopover
+        anchorEl={actualInfoAnchor}
+        onClose={() => setActualInfoAnchor(null)}
+      >
+        {actualInfoText}
+      </InfoPopover>
     </Box>
   );
 }

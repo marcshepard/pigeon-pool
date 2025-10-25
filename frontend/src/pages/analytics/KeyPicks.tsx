@@ -2,7 +2,8 @@
 import { useState } from "react";
 import { useResults } from "../../hooks/useResults";
 import { DataGridLite, type ColumnDef } from "../../components/DataGridLite";
-import { Box, Typography, IconButton, Dialog, DialogTitle, DialogContent, Button } from "@mui/material";
+import { Box, Typography, IconButton, Button } from "@mui/material";
+import { InfoPopover } from "../../components/CommonComponents";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import { PointsText } from "../../components/CommonComponents";
 
@@ -103,10 +104,10 @@ export default function KeyPicks({ week, pigeon }: { week: number; pigeon: numbe
     };
   });
 
-  const [infoOpen, setInfoOpen] = useState(false);
-  const infoText = "Avg points gained on other pigeons if your pick is exactly right";
-  const actualInfoText = "Actual avg points gained (or lost if negative) vs other pigeons based on game outcome";
-  const [actualInfoOpen, setActualInfoOpen] = useState(false);
+  const [infoAnchor, setInfoAnchor] = useState<null | HTMLElement>(null);
+  const infoText = "Average points gained on other pigeons if your pick is exactly right";
+  const actualInfoText = "Actual average points gained (or lost if negative) on other pigeons based on game outcome";
+  const [actualInfoAnchor, setActualInfoAnchor] = useState<null | HTMLElement>(null);
   const columns: ColumnDef<KeyPickRow>[] = [
     {
       key: "gameName",
@@ -126,7 +127,11 @@ export default function KeyPicks({ week, pigeon }: { week: number; pigeon: numbe
       header: (
         <Box display="flex" alignItems="center" gap={0.5}>
           Possible Gain
-          <IconButton size="small" onClick={() => setInfoOpen(true)} aria-label="Possible Gain Info">
+          <IconButton
+            size="small"
+            onClick={e => setInfoAnchor(e.currentTarget as HTMLElement)}
+            aria-label="Possible Gain Info"
+          >
             <InfoOutlinedIcon fontSize="inherit" />
           </IconButton>
         </Box>
@@ -141,7 +146,11 @@ export default function KeyPicks({ week, pigeon }: { week: number; pigeon: numbe
       header: (
         <Box display="flex" alignItems="center" gap={0.5}>
           Actual Gain
-          <IconButton size="small" onClick={() => setActualInfoOpen(true)} aria-label="Actual Gain Info">
+          <IconButton
+            size="small"
+            onClick={e => setActualInfoAnchor(e.currentTarget as HTMLElement)}
+            aria-label="Actual Gain Info"
+          >
             <InfoOutlinedIcon fontSize="inherit" />
           </IconButton>
         </Box>
@@ -160,7 +169,12 @@ export default function KeyPicks({ week, pigeon }: { week: number; pigeon: numbe
     <Box>
       <Typography variant="body1" align="center" sx={{ mb: 2 }}>
         The importance of each pick to the rankings (
-        <Button variant="text" size="small" sx={{ p: 0, minWidth: 0, textTransform: 'none', fontWeight: 500 }} onClick={() => setInfoOpen(true)}>
+        <Button
+          variant="text"
+          size="small"
+          sx={{ p: 0, minWidth: 0, textTransform: 'none', fontWeight: 500 }}
+          onClick={e => setInfoAnchor(e.currentTarget as HTMLElement)}
+        >
           possible gain
         </Button>
         )
@@ -172,18 +186,18 @@ export default function KeyPicks({ week, pigeon }: { week: number; pigeon: numbe
         emptyMessage="No games found."
         defaultSort={{ key: "possiblePoints", dir: "desc" }}
       />
-      <Dialog open={infoOpen} onClose={() => setInfoOpen(false)}>
-        <DialogTitle>Possible Gain</DialogTitle>
-        <DialogContent>
-          <Typography>{infoText}</Typography>
-        </DialogContent>
-      </Dialog>
-      <Dialog open={actualInfoOpen} onClose={() => setActualInfoOpen(false)}>
-        <DialogTitle>Actual Gain</DialogTitle>
-        <DialogContent>
-          <Typography>{actualInfoText}</Typography>
-        </DialogContent>
-      </Dialog>
+      <InfoPopover
+        anchorEl={infoAnchor}
+        onClose={() => setInfoAnchor(null)}
+      >
+        {infoText}
+      </InfoPopover>
+      <InfoPopover
+        anchorEl={actualInfoAnchor}
+        onClose={() => setActualInfoAnchor(null)}
+      >
+        {actualInfoText}
+      </InfoPopover>
     </Box>
   );
 }

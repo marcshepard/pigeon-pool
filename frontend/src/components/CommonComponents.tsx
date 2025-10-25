@@ -22,6 +22,7 @@ import {
   InputLabel,
   MenuItem,
   Paper,
+  Popover,
   Select,
   type SelectChangeEvent,
   Snackbar,
@@ -34,6 +35,46 @@ import { alpha, type SxProps, type Theme } from "@mui/material/styles";
 import Visibility from "@mui/icons-material/Visibility";
 import VisibilityOff from "@mui/icons-material/VisibilityOff";
 
+export interface InfoPopoverProps {
+  anchorEl: HTMLElement | null;
+  onClose: () => void;
+  children: ReactNode;
+  maxWidth?: number;
+  minWidth?: number;
+  anchorOrigin?: {
+    vertical: "top" | "bottom" | "center";
+    horizontal: "left" | "center" | "right";
+  };
+  transformOrigin?: {
+    vertical: "top" | "bottom" | "center";
+    horizontal: "left" | "center" | "right";
+  };
+}
+
+export function InfoPopover({
+  anchorEl,
+  onClose,
+  children,
+  maxWidth = 240,
+  minWidth = 120,
+  anchorOrigin = { vertical: "bottom", horizontal: "center" },
+  transformOrigin = { vertical: "top", horizontal: "center" },
+}: InfoPopoverProps) {
+  return (
+    <Popover
+      open={Boolean(anchorEl)}
+      anchorEl={anchorEl}
+      onClose={onClose}
+      anchorOrigin={anchorOrigin}
+      transformOrigin={transformOrigin}
+      slotProps={{ paper: { sx: { p: 1, maxWidth, minWidth } } }}
+    >
+      <Box sx={{ fontSize: "0.95em" }}>
+        {children}
+      </Box>
+    </Popover>
+  );
+}
 
 export type LabeledSelectOption = {
   value: string; // normalize to string for MUI Select typing

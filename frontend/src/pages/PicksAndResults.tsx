@@ -12,16 +12,22 @@ import {
   FormControlLabel,
   InputLabel,
   MenuItem,
-  Popover,
   Select,
   Stack,
   Typography,
 } from "@mui/material";
 
-import { AppSnackbar, PickCell, PrintOnlyStyles, PrintArea, PrintGridStyles, PointsText } from "../components/CommonComponents";
-import type { Severity } from "../components/CommonComponents";
-import { DataGridLite } from "../components/DataGridLite";
-import type { ColumnDef } from "../components/DataGridLite";
+import {
+  AppSnackbar,
+  InfoPopover,
+  PickCell,
+  PointsText,
+  PrintOnlyStyles,
+  PrintArea,
+  PrintGridStyles,
+  type Severity,  
+} from "../components/CommonComponents";
+import { type ColumnDef, DataGridLite } from "../components/DataGridLite";
 import { useAuth } from "../auth/useAuth";
 import { useResults, type ResultsRow } from "../hooks/useResults";
 import { useSchedule } from "../hooks/useSchedule";
@@ -285,18 +291,12 @@ export default function PicksheetPage() {
               </Typography>
             </Box>
             {/* Popover for auto-update info */}
-            <Popover
-              open={Boolean(autoUpdateAnchor)}
+            <InfoPopover
               anchorEl={autoUpdateAnchor}
               onClose={() => setAutoUpdateAnchor(null)}
-              anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-              transformOrigin={{ vertical: 'top', horizontal: 'center' }}
-              slotProps={{ paper: { sx: { p: 1, maxWidth: 240 } } }}
             >
-              <Box sx={{ minWidth: 120, fontSize: '0.95em' }}>
-                While games are in-progress, results, scores, and rank are auto-updated within 30 minutes of the live game events
-              </Box>
-            </Popover>
+              While games are in-progress, results, scores, and rank are auto-updated within 30 minutes of the live game events
+            </InfoPopover>
             <FormControlLabel
               control={
                 <Checkbox

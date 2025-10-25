@@ -10,7 +10,7 @@ import type { Theme } from "@mui/material/styles";
 
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import IconButton from "@mui/material/IconButton";
-import Popover from "@mui/material/Popover";
+import { InfoPopover } from "./CommonComponents";
 
 export type ColumnDef<T> = {
   key: string;
@@ -330,16 +330,12 @@ export function DataGridLite<T>({
         </TableBody>
       </Table>
 
-      <Popover
-        open={Boolean(infoAnchor)}
+      <InfoPopover
         anchorEl={infoAnchor}
         onClose={() => setInfoAnchor(null)}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-        transformOrigin={{ vertical: 'top', horizontal: 'center' }}
-        PaperProps={{ sx: { p: 1, maxWidth: 240 } }}
       >
-        <Box sx={{ minWidth: 120, fontSize: '0.95em' }}>{infoContent}</Box>
-      </Popover>
+        {infoContent}
+      </InfoPopover>
     </Box>
   );
 //
