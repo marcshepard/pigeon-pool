@@ -8,6 +8,7 @@ import EditNoteIcon from "@mui/icons-material/EditNote";
 import ListAltIcon from "@mui/icons-material/ListAlt";
 import EmojiEventsIcon from "@mui/icons-material/EmojiEvents";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
+import BarChartIcon from "@mui/icons-material/BarChart";
 
 const tiles = [
     {
@@ -21,6 +22,12 @@ const tiles = [
         icon: <ListAltIcon color="primary" sx={{ fontSize: 40 }} />,
         label: "Picks and Results",
         desc: "View the picksheet and results for this or a previous week",
+    },
+    {
+        path: "/analytics",
+        icon: <BarChartIcon color="primary" sx={{ fontSize: 40 }} />,
+        label: "Analytics",
+        desc: "Analyze your picks and outcome possibilities",
     },
     {
         path: "/year-to-date",

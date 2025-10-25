@@ -205,6 +205,30 @@ export default function ResponsiveNav({
             </Typography>
             {userMenu}
           </Toolbar>
+          {/* Mobile: nav icon banner under title */}
+          {!isDesktop && (
+            <Box sx={{
+              display: "grid",
+              gridTemplateColumns: `repeat(${items.length}, 1fr)`,
+              alignItems: "center",
+              py: 0.5,
+              borderBottom: `1px solid ${theme.palette.divider}`,
+              background: theme.palette.background.paper,
+            }}>
+              {items.map(item => (
+                <IconButton
+                  key={item.path}
+                  component={Link}
+                  to={item.path}
+                  size="small"
+                  sx={{ color: location.pathname === item.path ? 'primary.main' : 'text.secondary', justifySelf: 'center' }}
+                  aria-label={item.label}
+                >
+                  {item.icon}
+                </IconButton>
+              ))}
+            </Box>
+          )}
         </AppBar>
 
         {/* Page content */}
