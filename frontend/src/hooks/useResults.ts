@@ -181,8 +181,9 @@ export function useResults(week: number | null) {
         const key = `g_${g.game_id}`;
         let sum = 0, n = 0;
         for (const r of rows) {
-        const v = r.picks[key]?.signed;   // signed = +margin if home, -margin if away
-        if (typeof v === "number") { sum += v; n += 1; }
+          const v = r.picks[key]?.signed;
+          // Exclude picks with value 0
+          if (typeof v === "number" && v !== 0) { sum += v; n += 1; }
         }
         const mean = n ? sum / n : 0;
         const team = mean >= 0 ? g.home_abbr : g.away_abbr;
