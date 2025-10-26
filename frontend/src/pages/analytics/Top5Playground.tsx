@@ -8,7 +8,17 @@ import { useResults } from '../../hooks/useResults';
 
 
 
+
 type EnteredScore = { team: string; margin: number };
+import type { PickCell } from '../../hooks/useResults';
+type Player = {
+  points: number;
+  pigeon_number: number;
+  pigeon_name: string;
+  picks: Record<string, PickCell>;
+  rank: number;
+  tie?: boolean;
+};
 
 export default function Top5Playground({ pigeon }: { pigeon: number }) {
   const [enteredScores, setEnteredScores] = useState<Record<number, EnteredScore>>({});
@@ -71,7 +81,7 @@ export default function Top5Playground({ pigeon }: { pigeon: number }) {
     }
     // Use all games with scores (final or entered)
     const relevantGames = games.filter(g => (g.status === 'final' && g.home_score != null && g.away_score != null) || enteredScores[g.game_id]);
-    const recalculated = top5Players.map(player => {
+    const recalculated: Player[] = top5Players.map(player => {
       let totalScore = 0;
       for (const game of relevantGames) {
         const key = `g_${game.game_id}`;
@@ -89,11 +99,31 @@ export default function Top5Playground({ pigeon }: { pigeon: number }) {
           totalScore += scoreForPick(predSigned, actualSigned);
         }
       }
-      return { ...player, points: totalScore };
+      return {
+        ...player,
+        points: totalScore,
+        rank: 0,
+        tie: false,
+      };
     });
     // Sort by score ascending (lower is better), then rank
     const sorted = [...recalculated].sort((a, b) => (a.points ?? 9999) - (b.points ?? 9999) || (a.rank ?? 99) - (b.rank ?? 99));
-    sorted.forEach((p, idx) => { p.rank = idx + 1; });
+    // Assign ranks with ties
+    let lastScore: number | undefined = undefined;
+    let lastRank: number | undefined = undefined;
+    sorted.forEach((p, idx) => {
+      if (lastScore === p.points) {
+        p.rank = lastRank ?? idx + 1;
+      } else {
+        p.rank = idx + 1;
+        lastScore = p.points;
+        lastRank = p.rank;
+      }
+    });
+    // Mark ties
+    sorted.forEach((p) => {
+      p.tie = sorted.filter(x => x.points === p.points).length > 1;
+    });
     return sorted;
   }, [enteredScores, top5Players, games]);
 
@@ -123,7 +153,7 @@ export default function Top5Playground({ pigeon }: { pigeon: number }) {
                 <tr key={player.pigeon_number}>
                   <td style={{ padding: '8px', borderTop: '1px solid #eee' }}>{player.pigeon_name}</td>
                   <td style={{ padding: '8px', borderTop: '1px solid #eee' }}>{player.points}</td>
-                  <td style={{ padding: '8px', borderTop: '1px solid #eee' }}>{player.rank}</td>
+                  <td style={{ padding: '8px', borderTop: '1px solid #eee' }}>{player.tie ? `T${player.rank}` : player.rank}</td>
                 </tr>
               ))}
             </tbody>

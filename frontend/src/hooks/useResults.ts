@@ -8,7 +8,7 @@ import { getResultsWeekLeaderboard, getResultsWeekPicks, getCurrentWeek } from "
 import { LeaderboardRow, WeekPicksRow, CurrentWeek } from "../backend/types";
 import { useAppCache, type GameMeta } from "../hooks/useAppCache";
 
-type PickCell = { signed: number; label: string; home_abbr: string; away_abbr: string };
+export type PickCell = { signed: number; label: string; home_abbr: string; away_abbr: string };
 export type ResultsRow = {
   pigeon_number: number;
   pigeon_name: string;
