@@ -290,9 +290,9 @@ function solveN3(
     }
   }
 
-  // --- 4) future set = scheduled + rewound finals/live ---
+  // --- 4) future set = all not-final games (scheduled or in progress) + rewound ---
   const futureGames = allGames.filter(g =>
-    (g.status !== "final" && g.status !== "in_progress") || rewindIds.has(g.game_id)
+    (g.status !== "final") || rewindIds.has(g.game_id)
   );
   if (futureGames.length === 0) {
     const { rank, tie } = computeRankOf(baseTotals, uIdx);
