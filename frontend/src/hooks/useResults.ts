@@ -18,7 +18,7 @@ export type ResultsRow = {
 };
 
 // Compute player score for a finished game given their signed prediction and the actual margin.
-function scoreForPick(predSigned: number, actualSigned: number): number {
+export function scoreForPick(predSigned: number, actualSigned: number): number {
   const pickedHome = predSigned >= 0; // >=0 means home side
   const winnerHome = actualSigned > 0; // >0 home won, 0 tie, <0 away won
   // Diff is the absolute difference of the signed margins so opposite winners add, e.g., +3 vs -3 => 6

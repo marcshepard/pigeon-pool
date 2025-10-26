@@ -6,7 +6,7 @@ import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import { InfoPopover, PointsText } from "../../components/CommonComponents";
 import { DataGridLite, type ColumnDef } from "../../components/DataGridLite";
 import { useResults } from "../../hooks/useResults";
-import Top5Explainer from "./Top5Explainer";
+import Top5Explainer from "./YourTop5Explainer";
 
 type Game = {
   game_id: number;
@@ -54,11 +54,8 @@ export default function RemainingGames({ week, pigeon }: { week: number; pigeon:
   const { rows, games, consensusRow, loading, error } = useResults(week);
   const userRow = rows.find((r) => r.pigeon_number === pigeon) || null;
 
-  // Only in-progress or scheduled games
-  const remGames: Game[] = useMemo(
-    () => games.filter((g) => g.status !== "final"),
-    [games]
-  );
+  // Show all games (no filter)
+  const remGames: Game[] = useMemo(() => games, [games]);
 
   // Build table rows, patterned after KeyPicks
   const tableRows: Row[] = useMemo(() => {
@@ -238,12 +235,12 @@ export default function RemainingGames({ week, pigeon }: { week: number; pigeon:
       valueGetter: (r) => r.possiblePoints,
       align: "center",
     },
-    { key: "outcome", header: "Live Score", renderCell: (r) => r.outcome, align: "center" },
+    { key: "outcome", header: "Actual Result", renderCell: (r) => r.outcome, align: "center" },
     {
       key: "actualPoints",
       header: (
         <Box display="flex" alignItems="center" gap={0.5}>
-          Current Gain
+          Actual Gain
           <IconButton
             size="small"
             onClick={e => setActualInfoAnchor(e.currentTarget as HTMLElement)}
@@ -287,6 +284,22 @@ export default function RemainingGames({ week, pigeon }: { week: number; pigeon:
         rows={rows}   // rows from useResults
         games={games} // games from useResults
       />
+
+      <Typography variant="body1" sx={{ mb: 1 }}>
+        Your most important picks are the ones with the highest{' '}
+        <Box component="span" sx={{ display: 'inline' }}>
+          <a
+            href="#"
+            style={{ color: '#1976d2', textDecoration: 'underline', cursor: 'pointer' }}
+            onClick={e => {
+              e.preventDefault();
+              setInfoAnchor(e.currentTarget as HTMLElement);
+            }}
+          >
+            possible gain
+          </a>
+        </Box>
+      </Typography>
 
       <DataGridLite
         rows={tableRows}

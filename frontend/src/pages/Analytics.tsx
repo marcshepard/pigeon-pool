@@ -3,9 +3,10 @@ import { Box, Stack, Typography, Tabs, Tab, FormControl, InputLabel, Select, Men
 
 import { useAuth } from "../auth/useAuth";
 import { useSchedule } from "../hooks/useSchedule";
-import KeyPicks from "./analytics/KeyPicks";
-import RemainingGames from "./analytics/RemainingGames";
+import RemainingGames from "./analytics/YourPicks";
 import MnfOutcomes from "./analytics/MnfOutcomes";
+import type { GameMeta } from "../hooks/useAppCache";
+import Top5Playground from "./analytics/Top5Playground";
  
 import { useResults } from "../hooks/useResults";
 
@@ -36,8 +37,8 @@ export default function AnalyticsPage() {
 		if (me && pigeon === "") setPigeon(me.pigeon_number);
 	}, [me, pigeon]);
 
-	// Tab state
-	const [tab, setTab] = useState(0);
+		// Tab state
+		const [tab, setTab] = useState(0);
 
 	// Results for the selected week (to discover all pigeons + names)
 	const { rows } = useResults(week === "" ? null : Number(week));
@@ -69,6 +70,27 @@ export default function AnalyticsPage() {
 			otherOpts,
 		};
 	}, [me, rows]);
+
+	// Helper: check if all Sunday games are completed (status === 'final')
+	const { games } = useMemo(() => {
+		// Use cached results for the selected week
+		// Only call getResultsWeek if week is a number
+		let cache: { games?: GameMeta[] } = {};
+		if (typeof week === 'number') {
+			cache = ((window as unknown as { appCache?: { getResultsWeek?: (w: number) => { games?: GameMeta[] } } }).appCache?.getResultsWeek?.(week)) || {};
+		}
+		return { games: cache.games || [] };
+	}, [week]);
+
+	const allSundayFinal = useMemo(() => {
+		if (!games.length) return false;
+		// Sunday = 0
+		return games.filter((g: GameMeta) => {
+			if (!g.kickoff_at) return false;
+			const d = new Date(g.kickoff_at);
+			return d.getDay() === 0;
+		}).every((g: GameMeta) => g.status === 'final');
+	}, [games]);
 
 	return (
 		<Box sx={{ maxWidth: 900, mx: "auto", mt: 3 }}>
@@ -127,20 +149,18 @@ export default function AnalyticsPage() {
 
 			{/* Tabs */}
 			<Tabs value={tab} onChange={(_, v) => setTab(v)} centered sx={{ mb: 2 }}>
-				<Tab label="Key Picks" />
-				<Tab label="Remaining Games" />
-				<Tab label="MNF" />
+				<Tab label="Your Picks" />
+				<Tab label="Top 5" />
 			</Tabs>
 
 			{/* Tab panels */}
 			<Box>
 				{tab === 0 && week && pigeon && (
-					<KeyPicks week={Number(week)} pigeon={Number(pigeon)} />
-				)}
-				{tab === 1 && week && pigeon && (
 					<RemainingGames week={Number(week)} pigeon={Number(pigeon)} />
 				)}
-			{tab === 2 && week && <MnfOutcomes week={Number(week)} />}
+				{tab === 1 && week && (
+					allSundayFinal ? <MnfOutcomes week={Number(week)} /> : <Top5Playground />
+				)}
 			</Box>
 		</Box>
 	);
