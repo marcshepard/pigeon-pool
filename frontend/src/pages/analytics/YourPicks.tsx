@@ -84,7 +84,7 @@ export default function RemainingGames({ week, pigeon }: { week: number; pigeon:
         for (const r of rows) {
           if (r.pigeon_number === pigeon) continue;
           const other = r.picks[key]?.signed;
-          if (typeof other !== "number") continue;
+          if (typeof other !== "number" || other === 0) continue;
           const otherScore = pickScore(other, userSigned);
           sum += otherScore; // user would be 0 if exactly right
           n++;
@@ -110,7 +110,7 @@ export default function RemainingGames({ week, pigeon }: { week: number; pigeon:
         for (const r of rows) {
           if (r.pigeon_number === pigeon) continue;
           const other = r.picks[key]?.signed;
-          if (typeof other !== "number") continue;
+          if (typeof other !== "number" || other === 0) continue;
           const otherScore = pickScore(other, actual);
           sum += otherScore - userScore;
           n++;
