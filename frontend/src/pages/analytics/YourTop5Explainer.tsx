@@ -483,12 +483,12 @@ export default function Top5Explainer({
     return new Set<number>(lastN);
   }, [games]);
 
-  // Effective remaining = scheduled + rewound (for the "come back" message)
+  // Count all games that are not final (scheduled or in progress) + rewound
   const scheduledCount = useMemo(() => {
     const future = games.filter(g => {
-      const isScheduled = g.status !== "in_progress" && g.status !== "final";
+      const isNotFinal = g.status !== "final";
       const isRewound = rewindIds.has(g.game_id);
-      return isScheduled || isRewound;
+      return isNotFinal || isRewound;
     });
     return future.length;
   }, [games, rewindIds]);
