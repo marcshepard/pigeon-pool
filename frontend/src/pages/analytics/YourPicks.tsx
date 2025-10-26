@@ -71,7 +71,7 @@ export default function RemainingGames({ week, pigeon }: { week: number; pigeon:
       let outcome = "";
       if ((g.status === "final" || g.status === "in_progress") && g.home_score != null && g.away_score != null) {
         const signed = g.home_score - g.away_score;
-        if (signed === 0) outcome = g.status === "in_progress" ? "TIE 0 (live)" : "TIE 0";
+        if (signed === 0) outcome = g.status === "in_progress" ? "TIE (live)" : "TIE";
         else outcome = `${signed > 0 ? g.home_abbr : g.away_abbr} ${Math.abs(signed)}${g.status === "in_progress" ? " (live)" : ""}`;
       }
 

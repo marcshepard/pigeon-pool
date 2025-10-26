@@ -1,4 +1,3 @@
-import { useAuth } from '../../auth/useAuth';
 import { useState, useMemo } from 'react';
 import { scoreForPick } from '../../hooks/useResults';
 import { Box, Typography, Button, Paper, Select, MenuItem, FormControl, InputLabel } from '@mui/material';
@@ -11,12 +10,11 @@ import { useResults } from '../../hooks/useResults';
 
 type EnteredScore = { team: string; margin: number };
 
-export default function Top5Playground() {
+export default function Top5Playground({ pigeon }: { pigeon: number }) {
   const [enteredScores, setEnteredScores] = useState<Record<number, EnteredScore>>({});
   const { currentWeek } = useSchedule();
   const week = currentWeek?.week ?? null;
-  const { rows, games } = useResults(week);
-  const { me } = useAuth();
+  const { rows, games, consensusRow } = useResults(week);
 
   // Top 5 players by score/rank
   const top5Players = useMemo(() => {
@@ -32,19 +30,25 @@ export default function Top5Playground() {
   const remainingGames = useMemo(() => {
     return games.filter(g => g.status !== 'final').map(g => {
       const key = `g_${g.game_id}`;
-  // Consensus: best-ranked player's pick (remove appended score)
-  let consensus = rows.length > 0 ? (rows.find(r => r.rank === 1)?.picks[key]?.label || '') : '';
-  consensus = consensus.replace(/ \(\d+\)$/, '');
-  // Your Pick: current user's pick (remove appended score)
-  let yourPick = me ? (rows.find(r => r.pigeon_number === me.pigeon_number)?.picks[key]?.label || '') : '';
-  yourPick = yourPick.replace(/ \(\d+\)$/, '');
+      // Consensus: use consensusRow, show to 1 decimal place
+      let consensus = '';
+      if (consensusRow && consensusRow.picks[key]) {
+        consensus = consensusRow.picks[key].label || '';
+      }
+      // Your Pick: selected pigeon's pick (remove appended score)
+      let yourPick = pigeon ? (rows.find(r => r.pigeon_number === pigeon)?.picks[key]?.label || '') : '';
+      yourPick = yourPick.replace(/ \(\d+\)$/, '');
       // Current score
       let currentScore = '';
-      if (g.home_score != null && g.away_score != null) {
+      if (g.status === 'in_progress' && g.home_score != null && g.away_score != null) {
         const signed = g.home_score - g.away_score;
-        if (signed === 0) currentScore = 'TIE 0';
+        if (signed === 0) currentScore = 'TIE';
         else currentScore = `${signed > 0 ? g.home_abbr : g.away_abbr} ${Math.abs(signed)}`;
-      }
+      } else if (g.status === 'final' && g.home_score != null && g.away_score != null) {
+        const signed = g.home_score - g.away_score;
+        if (signed === 0) currentScore = 'TIE';
+        else currentScore = `${signed > 0 ? g.home_abbr : g.away_abbr} ${Math.abs(signed)}`;
+      } // scheduled games: leave blank
       // Teams for entry
       const teams = [g.home_abbr, g.away_abbr];
       return {
@@ -56,36 +60,32 @@ export default function Top5Playground() {
         teams,
       };
     });
-  }, [games, rows, me]);
+  }, [games, rows, pigeon, consensusRow]);
 
-  // Recalculate Top 5 scores using entered picks for remaining games
+  // Recalculate Top 5 scores using entered picks for all non-final games
   const recalculatedTop5 = useMemo(() => {
     if (!top5Players.length) return [];
-    // Helper: get signed margin for a pick
     function getSignedMargin(team: string, margin: number, home: string) {
       if (!team || margin == null) return null;
       return team === home ? margin : -margin;
     }
-    // Only consider games that are final (have scores)
-    const finalGames = games.filter(g => g.status === 'final' && g.home_score != null && g.away_score != null);
-    // For each player, recalculate their score
+    // Use all games with scores (final or entered)
+    const relevantGames = games.filter(g => (g.status === 'final' && g.home_score != null && g.away_score != null) || enteredScores[g.game_id]);
     const recalculated = top5Players.map(player => {
       let totalScore = 0;
-      for (const game of finalGames) {
+      for (const game of relevantGames) {
         const key = `g_${game.game_id}`;
-        // If user entered a pick for this game, override
-        const entered = enteredScores[game.game_id];
-        let predSigned: number | null = null;
-        if (entered && entered.team && entered.margin != null) {
-          predSigned = getSignedMargin(entered.team, entered.margin, game.home_abbr);
-        } else {
-          // Use player's actual pick
-          const pick = player.picks[key];
-          predSigned = pick ? pick.signed : null;
+        let actualSigned: number | null = null;
+        if (enteredScores[game.game_id] && enteredScores[game.game_id].team && enteredScores[game.game_id].margin != null) {
+          // Use entered score for actual result
+          actualSigned = getSignedMargin(enteredScores[game.game_id].team, enteredScores[game.game_id].margin, game.home_abbr);
+        } else if (game.home_score != null && game.away_score != null) {
+          actualSigned = game.home_score - game.away_score;
         }
-        // Only score if a pick exists and scores are present
-        if (predSigned != null && game.home_score != null && game.away_score != null) {
-          const actualSigned = game.home_score - game.away_score;
+        // Use player's pick for this game
+        const pick = player.picks[key];
+        const predSigned = pick ? pick.signed : null;
+        if (predSigned != null && actualSigned != null) {
           totalScore += scoreForPick(predSigned, actualSigned);
         }
       }
@@ -93,7 +93,6 @@ export default function Top5Playground() {
     });
     // Sort by score ascending (lower is better), then rank
     const sorted = [...recalculated].sort((a, b) => (a.points ?? 9999) - (b.points ?? 9999) || (a.rank ?? 99) - (b.rank ?? 99));
-    // Assign new ranks
     sorted.forEach((p, idx) => { p.rank = idx + 1; });
     return sorted;
   }, [enteredScores, top5Players, games]);

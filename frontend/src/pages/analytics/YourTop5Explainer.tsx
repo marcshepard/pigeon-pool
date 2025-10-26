@@ -240,7 +240,7 @@ function solveN3(
     const g = allGames.find(x => x.game_id === gid)!;
     const H = g.home_abbr, A = g.away_abbr;
     if (lo === hi) {
-      if (lo === 0) return `TIE 0 (${A}@${H})`;
+      if (lo === 0) return `TIE (${A}@${H})`;
       return lo > 0 ? `${H} by  ${lo} (vs ${A})` : `${A} by ${Math.abs(lo)} (@${H})`;
     }
     if (hi < 0) {

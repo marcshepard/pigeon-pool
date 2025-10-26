@@ -187,14 +187,14 @@ export default function PicksheetPage() {
           if (g.home_score != null && g.away_score != null) {
             const signed = g.home_score - g.away_score; // +home, -away, 0 tie
             subLabel = signed === 0
-              ? "Live: TIE 0"
+              ? "Live: TIE"
               : `Live: ${signed >= 0 ? g.home_abbr : g.away_abbr} ${Math.abs(signed)}`;
           } else {
             subLabel = "Live";
           }
         } else if (g.status === "final" && g.home_score != null && g.away_score != null) {
           const signed = g.home_score - g.away_score; // +home, -away, 0 tie
-          subLabel = signed === 0 ? "TIE 0" : `${signed >= 0 ? g.home_abbr : g.away_abbr} ${Math.abs(signed)}`;
+          subLabel = signed === 0 ? "TIE" : `${signed >= 0 ? g.home_abbr : g.away_abbr} ${Math.abs(signed)}`;
         }
       }
 
