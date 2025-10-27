@@ -110,25 +110,27 @@ export default function AnalyticsPage() {
 	}, [me, rows]);
 
 	// Helper: check if all Sunday games are completed (status === 'final')
-	const { games: weekGames } = useMemo(() => {
-		// Use cached results for the selected week
-		// Only call getResultsWeek if week is a number
-		let cache: { games?: GameMeta[] } = {};
-		if (typeof week === 'number') {
-			cache = ((window as unknown as { appCache?: { getResultsWeek?: (w: number) => { games?: GameMeta[] } } }).appCache?.getResultsWeek?.(week)) || {};
-		}
-		return { games: cache.games || [] };
-	}, [week]);
+		const weekGames = games;
 
-	const allSundayFinal = useMemo(() => {
-		if (!weekGames.length) return false;
-		// Sunday = 0
-		return weekGames.filter((g: GameMeta) => {
-			if (!g.kickoff_at) return false;
-			const d = new Date(g.kickoff_at);
-			return d.getDay() === 0;
-		}).every((g: GameMeta) => g.status === 'final');
-	}, [weekGames]);
+		const allSundayFinal = useMemo(() => {
+			console.log("Checking allSundayFinal for weekGames:", weekGames);
+			if (!weekGames.length) return false;
+			// Sunday = 0
+			weekGames.forEach((g: GameMeta) => {
+				if (!g.kickoff_at) {
+					console.log("Game missing kickoff_at:", g);
+					return;
+				}
+				const d = new Date(g.kickoff_at);
+				const day = d.getDay();
+				console.log(`Game:`, g, `Status: ${g.status}`, `getDay: ${day}`);
+			});
+			return weekGames.filter((g: GameMeta) => {
+				if (!g.kickoff_at) return false;
+				const d = new Date(g.kickoff_at);
+				return d.getDay() === 0;
+			}).every((g: GameMeta) => g.status === 'final');
+		}, [weekGames]);
 
 	return (
 		<Box sx={{ maxWidth: 900, mx: "auto", mt: 3 }}>
