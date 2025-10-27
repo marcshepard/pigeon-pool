@@ -472,7 +472,7 @@ export default function Top5Explainer({
   rows: ResultsRow[];
   games: GameMeta[];
 }) {
-  if (pigeon == 0 || rows.length === 0 || games.length === 0)
+  if (pigeon == 0 && rows.length === 0 && games.length === 0)
     console.log ("I love zero"); // Dummy to prevent lint error of unused vars
   return null;
 }

@@ -52,7 +52,34 @@ export default function AnalyticsPage() {
 	}, [tab]);
 
 	// Results for the selected week (to discover all pigeons + names)
-	const { rows } = useResults(week === "" ? null : Number(week));
+	const { rows, games, refreshResults, lastFetched } = useResults(week === "" ? null : Number(week));
+	// Determine if any game is in progress (kickoff passed, not final)
+	const now = Date.now();
+	const gamesInProgress = useMemo(() =>
+		games.some(g => {
+			const kickoff = new Date(g.kickoff_at).getTime();
+			return kickoff <= now && g.status !== "final";
+		}),
+		[games, now]
+	);
+
+	// Auto-refresh on tab focus if data is stale and games are in progress
+	const interval = Number(import.meta.env.VITE_AUTO_REFRESH_INTERVAL_MINUTES);
+	useEffect(() => {
+		function handleVisibilityRefresh() {
+			if (document.visibilityState === "visible" && gamesInProgress && lastFetched != null) {
+				const age = Date.now() - lastFetched;
+				if (age > interval * 60 * 1000) {
+					refreshResults();
+				}
+			}
+		}
+		document.addEventListener("visibilitychange", handleVisibilityRefresh);
+		handleVisibilityRefresh();
+		return () => {
+			document.removeEventListener("visibilitychange", handleVisibilityRefresh);
+		};
+	}, [gamesInProgress, lastFetched, interval, refreshResults]);
 
 	// Build selector sections: Me, Managed, Others
 	const { meOpt, managedOpts, otherOpts } = useMemo(() => {
@@ -83,7 +110,7 @@ export default function AnalyticsPage() {
 	}, [me, rows]);
 
 	// Helper: check if all Sunday games are completed (status === 'final')
-	const { games } = useMemo(() => {
+	const { games: weekGames } = useMemo(() => {
 		// Use cached results for the selected week
 		// Only call getResultsWeek if week is a number
 		let cache: { games?: GameMeta[] } = {};
@@ -94,14 +121,14 @@ export default function AnalyticsPage() {
 	}, [week]);
 
 	const allSundayFinal = useMemo(() => {
-		if (!games.length) return false;
+		if (!weekGames.length) return false;
 		// Sunday = 0
-		return games.filter((g: GameMeta) => {
+		return weekGames.filter((g: GameMeta) => {
 			if (!g.kickoff_at) return false;
 			const d = new Date(g.kickoff_at);
 			return d.getDay() === 0;
 		}).every((g: GameMeta) => g.status === 'final');
-	}, [games]);
+	}, [weekGames]);
 
 	return (
 		<Box sx={{ maxWidth: 900, mx: "auto", mt: 3 }}>

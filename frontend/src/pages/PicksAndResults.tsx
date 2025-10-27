@@ -88,7 +88,7 @@ export default function PicksheetPage() {
   }, [lockedWeeks, week]);
 
   // Cache-backed data for the selected week
-  const { rows, games, currentWeek, consensusRow, loading, error, refreshResults } = useResults(week);
+  const { rows, games, currentWeek, consensusRow, loading, error, refreshResults, lastFetched } = useResults(week);
   // Determine if any game is in progress (kickoff passed, not final)
   const now = Date.now();
   const gamesInProgress = useMemo(() =>
@@ -102,6 +102,24 @@ export default function PicksheetPage() {
   // Only auto-refresh if games are in progress
   const interval = Number(import.meta.env.VITE_AUTO_REFRESH_INTERVAL_MINUTES);
   useAutoRefresh(gamesInProgress, refreshResults, interval);
+
+  // On tab focus, refresh if data is stale and games are in progress
+  useEffect(() => {
+    function handleVisibilityRefresh() {
+      if (document.visibilityState === "visible" && gamesInProgress && lastFetched != null) {
+        const age = Date.now() - lastFetched;
+        if (age > interval * 60 * 1000) {
+          refreshResults();
+        }
+      }
+    }
+    document.addEventListener("visibilitychange", handleVisibilityRefresh);
+    // Also check immediately on mount
+    handleVisibilityRefresh();
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityRefresh);
+    };
+  }, [gamesInProgress, lastFetched, interval, refreshResults]);
 
   // Popover for auto-update info
   const [autoUpdateAnchor, setAutoUpdateAnchor] = useState<null | HTMLElement>(null);

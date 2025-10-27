@@ -93,6 +93,7 @@ export function useResults(week: number | null) {
   const [currentWeek, setCurrentWeek] = useState<CurrentWeek | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState<string | null>(null);
+  const [lastFetched, setLastFetched] = useState<number | null>(null);
 
   // Function to force refresh results from backend, bypassing cache
   const refreshResults = useCallback(async () => {
@@ -107,6 +108,7 @@ export function useResults(week: number | null) {
       setRows([...shaped.rows]);
       setGames(shaped.games);
       setResultsWeekCache(week, { picks, lb, games: shaped.games, rows: shaped.rows as unknown[] });
+      setLastFetched(Date.now());
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e ?? ""));
     } finally {
@@ -128,6 +130,7 @@ export function useResults(week: number | null) {
           if (!cancelled) {
             setRows([...shapedRows]);   // make mutable copy
             setGames(cached.games);
+            setLastFetched(Date.now());
           }
         } else {
           await refreshResults();
@@ -196,5 +199,5 @@ export function useResults(week: number | null) {
     return out;
     }, [rows, games]);
 
-  return { rows, games, currentWeek, consensusRow, loading, error, refreshResults };
+  return { rows, games, currentWeek, consensusRow, loading, error, refreshResults, lastFetched };
 }
