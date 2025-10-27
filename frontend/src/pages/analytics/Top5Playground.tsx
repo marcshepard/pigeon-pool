@@ -1,13 +1,12 @@
+/**
+ * Top 5 Playground - let the user enter scores for remaining games to see effect on top 5
+ */
+
 import { useState, useMemo } from 'react';
 import { scoreForPick } from '../../hooks/useResults';
 import { Box, Typography, Button, Paper, Select, MenuItem, FormControl, InputLabel } from '@mui/material';
 import { useSchedule } from '../../hooks/useSchedule';
 import { useResults } from '../../hooks/useResults';
-
-
-
-
-
 
 type EnteredScore = { team: string; margin: number };
 import type { PickCell } from '../../hooks/useResults';
@@ -136,9 +135,10 @@ export default function Top5Playground({ pigeon }: { pigeon: number }) {
   return (
     <Box sx={{ maxWidth: 800, mx: 'auto', mt: 4 }}>
       <Box sx={{ mt: 4 }}>
-        <Typography variant="body1" align="center">
+        <Typography variant="body1" align="center" sx={{ mb: 1 }}>
           Enter scores to see the effect on the top 5 rankings
         </Typography>
+        <Typography variant="body1" fontWeight={700} gutterBottom>Score from completed games</Typography>
         <Paper sx={{ p: 2 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
@@ -162,7 +162,7 @@ export default function Top5Playground({ pigeon }: { pigeon: number }) {
       </Box>
 
       <Box sx={{ mt: 4 }}>
-        <Typography variant="h6" gutterBottom>Remaining Games</Typography>
+        <Typography variant="body1" fontWeight={700} gutterBottom>Remaining Games</Typography>
         <Paper sx={{ p: 2 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
