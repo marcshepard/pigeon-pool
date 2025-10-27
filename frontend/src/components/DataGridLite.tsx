@@ -98,6 +98,28 @@ export function DataGridLite<T>({
     }
   }, [orderedCols, sortKey, defaultSort?.key, defaultSort?.dir]);
 
+  // Re-apply default sort whenever it changes and the target column exists.
+  // Won't clobber user-chosen sort unless defaultSort itself changes.
+  const defKey = defaultSort?.key ?? null;
+  const defDir = defaultSort?.dir ?? "asc";
+    useEffect(() => {
+    const hasCurrent = sortKey && orderedCols.some(c => c.key === sortKey);
+    if (!hasCurrent && defKey && orderedCols.some(c => c.key === defKey)) {
+      setSortKey(defKey);
+      setSortDir(defDir);
+    }
+  }, [orderedCols, sortKey, defKey, defDir]);
+  useEffect(() => {
+    if (!defKey) return;
+    const hasTarget = orderedCols.some(c => c.key === defKey);
+    const differs = sortKey !== defKey || sortDir !== defDir;
+    if (hasTarget && differs) {
+      setSortKey(defKey);
+      setSortDir(defDir);
+    }
+  }, [defKey, defDir, orderedCols, sortKey, sortDir]);
+
+
   const sortedRows = useMemo(() => {
     if (!allowSort || !sortKey) return rows;
     const col = orderedCols.find(c => c.key === sortKey);

@@ -308,7 +308,6 @@ export default function PicksheetPage() {
               label={<Typography variant="body2">Auto-scroll to my picks</Typography>}
               sx={{ mr: 2, mb: 0 }}
             />
-        {/* Removed dialog, now using popover above */}
             <PrintArea className="print-grid-area">
               <DataGridLite<ResultsRow>
                 key={`grid-${currentWeek}`}
