@@ -149,13 +149,13 @@ export default function Top5Playground({ pigeon }: { pigeon: number }) {
               </tr>
             </thead>
             <tbody>
-              {recalculatedTop5.map((player) => (
-                <tr key={player.pigeon_number}>
-                  <td style={{ padding: '8px', borderTop: '1px solid #eee' }}>{player.pigeon_name}</td>
-                  <td style={{ padding: '8px', borderTop: '1px solid #eee' }}>{player.points}</td>
-                  <td style={{ padding: '8px', borderTop: '1px solid #eee' }}>{player.tie ? `T${player.rank}` : player.rank}</td>
-                </tr>
-              ))}
+                {recalculatedTop5.map((player) => (
+                  <tr key={player.pigeon_number}>
+                    <td style={{ padding: '8px', borderTop: '1px solid #eee' }}>{`${player.pigeon_number} ${player.pigeon_name}`}</td>
+                    <td style={{ padding: '8px', borderTop: '1px solid #eee' }}>{player.points}</td>
+                    <td style={{ padding: '8px', borderTop: '1px solid #eee' }}>{player.tie ? `T${player.rank}` : player.rank}</td>
+                  </tr>
+                ))}
             </tbody>
           </table>
         </Paper>
