@@ -37,8 +37,19 @@ export default function AnalyticsPage() {
 		if (me && pigeon === "") setPigeon(me.pigeon_number);
 	}, [me, pigeon]);
 
-		// Tab state
-		const [tab, setTab] = useState(0);
+	// Tab state, persisted in query string
+	function getTabFromQuery() {
+		const params = new URLSearchParams(window.location.search);
+		const t = params.get('tab');
+		const idx = t !== null ? Number(t) : 0;
+		return isNaN(idx) ? 0 : idx;
+	}
+	const [tab, setTab] = useState(getTabFromQuery());
+	useEffect(() => {
+		const params = new URLSearchParams(window.location.search);
+		params.set('tab', String(tab));
+		window.history.replaceState(null, '', `${window.location.pathname}?${params.toString()}`);
+	}, [tab]);
 
 	// Results for the selected week (to discover all pigeons + names)
 	const { rows } = useResults(week === "" ? null : Number(week));
