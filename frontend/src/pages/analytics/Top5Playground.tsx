@@ -138,7 +138,7 @@ export default function Top5Playground({ pigeon }: { pigeon: number }) {
         <Typography variant="body1" align="center" sx={{ mb: 1 }}>
           Enter scores to see the effect on the top 5 rankings
         </Typography>
-        <Typography variant="body1" fontWeight={700} gutterBottom>Score from completed games</Typography>
+        <Typography variant="body1" fontWeight={700} gutterBottom>Scores from completed games</Typography>
         <Paper sx={{ p: 2 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
@@ -162,7 +162,7 @@ export default function Top5Playground({ pigeon }: { pigeon: number }) {
       </Box>
 
       <Box sx={{ mt: 4 }}>
-        <Typography variant="body1" fontWeight={700} gutterBottom>Remaining Games</Typography>
+        <Typography variant="body1" fontWeight={700} gutterBottom>Remaining games</Typography>
         <Paper sx={{ p: 2 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
