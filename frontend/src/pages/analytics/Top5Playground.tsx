@@ -28,11 +28,17 @@ export default function Top5Playground({ pigeon }: { pigeon: number }) {
   // Top 5 players by score/rank
   const top5Players = useMemo(() => {
     if (!rows.length) return [];
-    // Sort by rank, then score descending
-    return [...rows]
-      .filter(r => typeof r.rank === 'number')
-      .sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99) || (b.points ?? 0) - (a.points ?? 0))
-      .slice(0, 5);
+    // If ranks exist, use top 5 by rank; otherwise use all players sorted by pigeon number
+    const withRanks = rows.filter(r => typeof r.rank === 'number');
+    if (withRanks.length > 0) {
+      // Sort by rank, then score descending
+      return [...withRanks]
+        .sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99) || (b.points ?? 0) - (a.points ?? 0))
+        .slice(0, 5);
+    } else {
+      // No ranks yet (week not started), return all players sorted by pigeon number
+      return [...rows].sort((a, b) => a.pigeon_number - b.pigeon_number);
+    }
   }, [rows]);
 
   // Remaining games (not final)
@@ -73,31 +79,50 @@ export default function Top5Playground({ pigeon }: { pigeon: number }) {
 
   // Recalculate Top 5 scores using entered picks for all non-final games
   const recalculatedTop5 = useMemo(() => {
-    if (!top5Players.length) return [];
+    //console.log('=== Recalculation Debug ===');
+    //console.log('top5Players:', top5Players);
+    //console.log('enteredScores:', enteredScores);
+    //console.log('games:', games);
+    
+    if (!top5Players.length) {
+      console.log('No top5Players, returning empty array');
+      return [];
+    }
+    
     function getSignedMargin(team: string, margin: number, home: string) {
       if (!team || margin == null) return null;
       return team === home ? margin : -margin;
     }
     // Use all games with scores (final or entered)
     const relevantGames = games.filter(g => (g.status === 'final' && g.home_score != null && g.away_score != null) || enteredScores[g.game_id]);
+    //console.log('relevantGames:', relevantGames);
+    
     const recalculated: Player[] = top5Players.map(player => {
       let totalScore = 0;
+      //console.log(`\nProcessing player ${player.pigeon_number} ${player.pigeon_name}`);
       for (const game of relevantGames) {
         const key = `g_${game.game_id}`;
         let actualSigned: number | null = null;
         if (enteredScores[game.game_id] && enteredScores[game.game_id].team && enteredScores[game.game_id].margin != null) {
           // Use entered score for actual result
           actualSigned = getSignedMargin(enteredScores[game.game_id].team, enteredScores[game.game_id].margin, game.home_abbr);
+          //console.log(`  Game ${game.game_id}: entered score actualSigned=${actualSigned}`);
         } else if (game.home_score != null && game.away_score != null) {
           actualSigned = game.home_score - game.away_score;
+          //console.log(`  Game ${game.game_id}: actual score actualSigned=${actualSigned}`);
         }
         // Use player's pick for this game
         const pick = player.picks[key];
         const predSigned = pick ? pick.signed : null;
+        //console.log(`  Game ${game.game_id}: key=${key}, pick=${JSON.stringify(pick)}, predSigned=${predSigned}, actualSigned=${actualSigned}`);
         if (predSigned != null && actualSigned != null) {
-          totalScore += scoreForPick(predSigned, actualSigned);
+          const score = scoreForPick(predSigned, actualSigned);
+          //console.log(`  Game ${game.game_id}: score=${score}, totalScore before=${totalScore}`);
+          totalScore += score;
+          //console.log(`  Game ${game.game_id}: totalScore after=${totalScore}`);
         }
       }
+      //console.log(`Player ${player.pigeon_number} final totalScore: ${totalScore}`);
       return {
         ...player,
         points: totalScore,
@@ -107,6 +132,7 @@ export default function Top5Playground({ pigeon }: { pigeon: number }) {
     });
     // Sort by score ascending (lower is better), then rank
     const sorted = [...recalculated].sort((a, b) => (a.points ?? 9999) - (b.points ?? 9999) || (a.rank ?? 99) - (b.rank ?? 99));
+    //console.log('Sorted recalculated:', sorted);
     // Assign ranks with ties
     let lastScore: number | undefined = undefined;
     let lastRank: number | undefined = undefined;
@@ -123,8 +149,14 @@ export default function Top5Playground({ pigeon }: { pigeon: number }) {
     sorted.forEach((p) => {
       p.tie = sorted.filter(x => x.points === p.points).length > 1;
     });
+    //console.log('Final recalculatedTop5:', sorted);
     return sorted;
   }, [enteredScores, top5Players, games]);
+
+  // Filter to show only top 5 ranked players
+  const displayedTop5 = useMemo(() => {
+    return recalculatedTop5.slice(0, 5);
+  }, [recalculatedTop5]);
 
   const handleScoreChange = (gameId: number, team: string, margin: number) => {
     setEnteredScores(prev => ({ ...prev, [gameId]: { team, margin } }));
@@ -149,7 +181,7 @@ export default function Top5Playground({ pigeon }: { pigeon: number }) {
               </tr>
             </thead>
             <tbody>
-                {recalculatedTop5.map((player) => (
+                {displayedTop5.map((player) => (
                   <tr key={player.pigeon_number}>
                     <td style={{ padding: '8px', borderTop: '1px solid #eee' }}>{`${player.pigeon_number} ${player.pigeon_name}`}</td>
                     <td style={{ padding: '8px', borderTop: '1px solid #eee' }}>{player.points}</td>
