@@ -191,6 +191,22 @@ export default function Top5Playground({ pigeon }: { pigeon: number }) {
             </tbody>
           </table>
         </Paper>
+          {/* Show message if more than 5 players are tied at the last displayed rank */}
+          {(() => {
+            if (recalculatedTop5.length > 5) {
+              const lastRank = displayedTop5.length ? displayedTop5[displayedTop5.length - 1].rank : null;
+              const tiedPlayers = recalculatedTop5.filter(p => p.rank === lastRank);
+              const extraTied = tiedPlayers.length - displayedTop5.filter(p => p.rank === lastRank).length;
+              if (extraTied > 0 && lastRank != null) {
+                return (
+                  <Typography variant="body2" sx={{ mt: 2, color: 'text.secondary', textAlign: 'center' }}>
+                    {extraTied} other player{extraTied > 1 ? 's are' : ' is'} tied at rank {lastRank}
+                  </Typography>
+                );
+              }
+            }
+            return null;
+          })()}
       </Box>
 
       <Box sx={{ mt: 4 }}>
