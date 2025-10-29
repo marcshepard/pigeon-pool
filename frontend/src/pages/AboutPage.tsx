@@ -8,7 +8,7 @@ export default function AboutPage() {
                 Pigeon pool rules
             </Typography>
             <Typography variant="body1" sx={{ mb: 1 }}>
-                <b>1.</b> Submit your picks from the <Link to="/enter-picks">Enter Picks page</Link> by Tuesday midnight PST.
+                <b>1.</b> Submit your picks from the <Link to="/enter-picks">Enter Picks page</Link> by 5PM Tuesday PST.
                 You must pick the WINNER of each game and by how many points they will win (SPREAD).
                 If you don't submit picks by the deadline, you will get a last place finish for the week.
             </Typography>
