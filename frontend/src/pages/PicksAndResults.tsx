@@ -294,29 +294,30 @@ export default function PicksheetPage() {
         {loading ?
           <Alert severity="info">Loading…</Alert>
         : <>
-            {/* Auto-update info with popover */}
-            <Box sx={{ mb: 1, display: 'flex', alignItems: 'center' }}>
-              <Typography variant="body1" sx={{ mr: 0.5 }}>
-                Results are{' '}
-                <Box
-                  component="span"
-                  sx={{ color: 'primary.main', textDecoration: 'underline', cursor: 'pointer', fontWeight: 500 }}
-                  onClick={e => setAutoUpdateAnchor(e.currentTarget as HTMLElement)}
-                  tabIndex={0}
-                  role="button"
-                  aria-label="About auto-updated scores"
-                >
-                  auto-updated
-                </Box>
-              </Typography>
-            </Box>
-            {/* Popover for auto-update info */}
-            <InfoPopover
-              anchorEl={autoUpdateAnchor}
-              onClose={() => setAutoUpdateAnchor(null)}
-            >
-              While games are in-progress, results, scores, and rank are auto-updated within 30 minutes of the live game events
-            </InfoPopover>
+            {/* If results columns are present, show auto-update info */}
+            {showResultsCols && <>
+              <Box sx={{ mb: 1, display: 'flex', alignItems: 'center' }}>
+                <Typography variant="body1" sx={{ mr: 0.5 }}>
+                  Results are{' '}
+                  <Box
+                    component="span"
+                    sx={{ color: 'primary.main', textDecoration: 'underline', cursor: 'pointer', fontWeight: 500 }}
+                    onClick={e => setAutoUpdateAnchor(e.currentTarget as HTMLElement)}
+                    tabIndex={0}
+                    role="button"
+                    aria-label="About auto-updated scores"
+                  >
+                    auto-updated
+                  </Box>
+                </Typography>
+              </Box>
+              <InfoPopover
+                anchorEl={autoUpdateAnchor}
+                onClose={() => setAutoUpdateAnchor(null)}
+              >
+                While games are in-progress, results, scores, and rank are auto-updated within 30 minutes of the live game events
+              </InfoPopover>
+            </>}
             <FormControlLabel
               control={
                 <Checkbox
