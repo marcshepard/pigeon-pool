@@ -75,7 +75,7 @@ export default function PicksheetPage() {
   useEffect(() => {
     localStorage.setItem(AUTO_SCROLL_KEY, String(autoScroll));
   }, [autoScroll]);
-  const { state } = useAuth();
+  const user = useAuth().me;
   const { lockedWeeks } = useSchedule();
   const [ week, setWeek ] = useState<number | null>(null);
   const [ snack, setSnack ] = useState({ open: false, message: "", severity: "info" as Severity });
@@ -131,13 +131,12 @@ export default function PicksheetPage() {
   // Always bring the highlighted user row into view when rows or week change
   useEffect(() => {
     if (!autoScroll) return;
-    if (state.status !== "signedIn") return;
     if (!rows.length) return;
     const el = document.querySelector('.user-row');
     if (el instanceof HTMLElement) {
       el.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
-  }, [rows, state.status, week, autoScroll]);
+  }, [rows, week, autoScroll]);
 
   // Determine whether to show result columns based on selected vs current week
   const showResultsCols = useMemo(() => {
@@ -244,6 +243,9 @@ export default function PicksheetPage() {
     return cols;
   }, [games, selectedWeekHasStarted, showResultsCols]);
 
+  if (!user) return null; // Can't happen due to route protection
+  console.log (user.pigeon_number);
+
   return (
     <>
       <PrintOnlyStyles areaClass="print-area" landscape margin="8mm" />
@@ -338,8 +340,8 @@ export default function PicksheetPage() {
                 defaultSort={showResultsCols ? { key: "points", dir: "asc" } : { key: "pigeon_name", dir: "asc" }}
                 printTitle={`Results — Week ${week ?? ""}`}
                 getRowId={(r) => r.pigeon_number}
-                highlightRowId={state.status === "signedIn" ? state.user.pigeon_number : undefined}
-                highlightExtraRowIds={state.status === "signedIn" ? state.user.alternates.map(a => a.pigeon_number) : undefined}
+                highlightRowId={user.pigeon_number}
+                highlightExtraRowIds={user.alternates.map(a => a.pigeon_number)}
                 autoScrollHighlightOnSort={autoScroll}
               />
             </PrintArea>
