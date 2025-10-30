@@ -34,6 +34,8 @@ import YearToDatePage from "./pages/YearToDatePage";
 import AboutPage from "./pages/AboutPage";
 import AdminPage from "./pages/Admin";
 import AnalyticsPage from "./pages/Analytics";
+import AdminLocksAndPicks from "./pages/admin/AdminLocksAndPicks";
+import AdminRoster from "./pages/admin/AdminRoster";
 
 // Auto-refresh manager
 import { useAutoRefreshManager } from "./hooks/useAutoRefreshManager";
@@ -114,7 +116,11 @@ function PrivateShell() {
         <Route path="/analytics" element={<AnalyticsPage />} />
         <Route path="/year-to-date" element={<YearToDatePage />} />
         <Route path="/about" element={<AboutPage />} />
-        <Route path="/admin" element={me?.is_admin ? <AdminPage /> : <Box p={3}>Not authorized</Box>} />
+        <Route path="/admin" element={me?.is_admin ? <AdminPage /> : <Box p={3}>Not authorized</Box>}>
+          <Route index element={<Navigate to="/admin/picks" replace />} />
+          <Route path="picks" element={<AdminLocksAndPicks />} />
+          <Route path="pigeons" element={<AdminRoster />} />
+        </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </ResponsiveNav>
