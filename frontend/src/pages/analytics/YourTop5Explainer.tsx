@@ -6,7 +6,7 @@
 
 import { useMemo } from "react";
 import { Box, Paper, Table, TableHead, TableBody, TableRow, TableContainer, TableCell, Typography } from "@mui/material";
-import type { ResultsRow } from "../../hooks/useResults";
+import { type ResultsRow } from "../../utils/resultsShaping";
 import type { GameMeta } from "../../hooks/useAppCache";
 
 // ===== Tunables =====

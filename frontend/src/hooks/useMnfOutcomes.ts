@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { ResultsRow } from "./useResults";
+import type { ResultsRow } from "../utils/resultsShaping";
 import type { GameMeta } from "../hooks/useAppCache";
 
 function isMonday(d: Date) { return d.getDay() === 1; } // 0=Sun .. 6=Sat

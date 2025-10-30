@@ -35,6 +35,9 @@ import AboutPage from "./pages/AboutPage";
 import AdminPage from "./pages/Admin";
 import AnalyticsPage from "./pages/Analytics";
 
+// Auto-refresh manager
+import { useAutoRefreshManager } from "./hooks/useAutoRefreshManager";
+
 // ---- optional theme ----
 const theme = createTheme({
   palette: {
@@ -119,6 +122,7 @@ function PrivateShell() {
 }
 
 export default function App() {
+  useAutoRefreshManager();
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />

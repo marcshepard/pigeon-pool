@@ -2,7 +2,7 @@
  * Show picks and results
  */
 
-import { useEffect, useMemo, useState, useRef } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Box,
@@ -29,39 +29,9 @@ import {
 } from "../components/CommonComponents";
 import { type ColumnDef, DataGridLite } from "../components/DataGridLite";
 import { useAuth } from "../auth/useAuth";
-import { useResults, type ResultsRow } from "../hooks/useResults";
+import { useResults } from "../hooks/useResults";
 import { useSchedule } from "../hooks/useSchedule";
-
-// Auto-refresh hook
-function useAutoRefresh(
-  shouldRefresh: boolean,
-  refreshFn: () => void,
-  intervalMinutes: number
-) {
-  const timerRef = useRef<number | null>(null);
-  useEffect(() => {
-    function startTimer() {
-      if (shouldRefresh && document.visibilityState === "visible") {
-        timerRef.current = setInterval(refreshFn, intervalMinutes * 60 * 1000);
-      }
-    }
-    function stopTimer() {
-      if (timerRef.current) clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
-    function handleVisibilityChange() {
-      if (document.visibilityState === "visible") startTimer();
-      else stopTimer();
-    }
-    stopTimer();
-    startTimer();
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => {
-      stopTimer();
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
-  }, [shouldRefresh, refreshFn, intervalMinutes]);
-}
+import { type ResultsRow } from "../utils/resultsShaping";
 
 export default function PicksheetPage() {
   // Auto-scroll toggle state, persisted in localStorage
@@ -75,10 +45,11 @@ export default function PicksheetPage() {
   useEffect(() => {
     localStorage.setItem(AUTO_SCROLL_KEY, String(autoScroll));
   }, [autoScroll]);
+
   const user = useAuth().me;
   const { lockedWeeks } = useSchedule();
-  const [ week, setWeek ] = useState<number | null>(null);
-  const [ snack, setSnack ] = useState({ open: false, message: "", severity: "info" as Severity });
+  const [week, setWeek] = useState<number | null>(null);
+  const [snack, setSnack] = useState({ open: false, message: "", severity: "info" as Severity });
 
   // choose default week when lockedWeeks loaded
   useEffect(() => {
@@ -88,38 +59,8 @@ export default function PicksheetPage() {
   }, [lockedWeeks, week]);
 
   // Cache-backed data for the selected week
-  const { rows, games, currentWeek, consensusRow, loading, error, refreshResults, lastFetched } = useResults(week);
-  // Determine if any game is in progress (kickoff passed, not final)
-  const now = Date.now();
-  const gamesInProgress = useMemo(() =>
-    games.some(g => {
-      const kickoff = new Date(g.kickoff_at).getTime();
-      return kickoff <= now && g.status !== "final";
-    }),
-    [games, now]
-  );
-
-  // Only auto-refresh if games are in progress
-  const interval = Number(import.meta.env.VITE_AUTO_REFRESH_INTERVAL_MINUTES);
-  useAutoRefresh(gamesInProgress, refreshResults, interval);
-
-  // On tab focus, refresh if data is stale and games are in progress
-  useEffect(() => {
-    function handleVisibilityRefresh() {
-      if (document.visibilityState === "visible" && gamesInProgress && lastFetched != null) {
-        const age = Date.now() - lastFetched;
-        if (age > interval * 60 * 1000) {
-          refreshResults();
-        }
-      }
-    }
-    document.addEventListener("visibilitychange", handleVisibilityRefresh);
-    // Also check immediately on mount
-    handleVisibilityRefresh();
-    return () => {
-      document.removeEventListener("visibilitychange", handleVisibilityRefresh);
-    };
-  }, [gamesInProgress, lastFetched, interval, refreshResults]);
+  // Auto-refresh is now handled globally by useAutoRefreshManager in App.tsx
+  const { rows, games, currentWeek, consensusRow, loading, error, refreshResults } = useResults(week);
 
   // Popover for auto-update info
   const [autoUpdateAnchor, setAutoUpdateAnchor] = useState<null | HTMLElement>(null);
@@ -128,7 +69,7 @@ export default function PicksheetPage() {
     if (error) setSnack({ open: true, message: error, severity: "error" });
   }, [error]);
 
-  // Always bring the highlighted user row into view when rows or week change
+  // Auto-scroll to user row when rows or week change
   useEffect(() => {
     if (!autoScroll) return;
     if (!rows.length) return;
@@ -186,11 +127,12 @@ export default function PicksheetPage() {
     const sortedGames = [...games].sort((a, b) => {
       const statusOrder = (s: string) => s === "final" ? 1 : 0;
       const statusDiff = statusOrder(a.status ?? "scheduled") - statusOrder(b.status ?? "scheduled");
-          if (statusDiff !== 0) return statusDiff;
-          const at = new Date(a.kickoff_at).getTime();
-          const bt = new Date(b.kickoff_at).getTime();
-          return at - bt;
+      if (statusDiff !== 0) return statusDiff;
+      const at = new Date(a.kickoff_at).getTime();
+      const bt = new Date(b.kickoff_at).getTime();
+      return at - bt;
     });
+
     for (const g of sortedGames) {
       const key = `g_${g.game_id}`;
       // Build a sub-label under the matchup: Not started | Live: TEAM M | Final score
@@ -244,7 +186,6 @@ export default function PicksheetPage() {
   }, [games, selectedWeekHasStarted, showResultsCols]);
 
   if (!user) return null; // Can't happen due to route protection
-  console.log (user.pigeon_number);
 
   return (
     <>
@@ -285,39 +226,47 @@ export default function PicksheetPage() {
             </Typography>
           </Box>
 
-          {/* Print */}
-          <Box flex={1} display="flex" justifyContent="flex-end" alignItems="center">
-            <Button variant="outlined" onClick={() => window.print()}>Print</Button>
+          {/* Print & Manual Refresh */}
+          <Box flex={1} display="flex" justifyContent="flex-end" alignItems="center" gap={1}>
+            <Button variant="outlined" size="small" onClick={refreshResults}>
+              Refresh
+            </Button>
+            <Button variant="outlined" onClick={() => window.print()}>
+              Print
+            </Button>
           </Box>
         </Stack>
 
-        {loading ?
+        {loading ? (
           <Alert severity="info">Loading…</Alert>
-        : <>
+        ) : (
+          <>
             {/* If results columns are present, show auto-update info */}
-            {showResultsCols && <>
-              <Box sx={{ mb: 1, display: 'flex', alignItems: 'center' }}>
-                <Typography variant="body1" sx={{ mr: 0.5 }}>
-                  Results are{' '}
-                  <Box
-                    component="span"
-                    sx={{ color: 'primary.main', textDecoration: 'underline', cursor: 'pointer', fontWeight: 500 }}
-                    onClick={e => setAutoUpdateAnchor(e.currentTarget as HTMLElement)}
-                    tabIndex={0}
-                    role="button"
-                    aria-label="About auto-updated scores"
-                  >
-                    auto-updated
-                  </Box>
-                </Typography>
-              </Box>
-              <InfoPopover
-                anchorEl={autoUpdateAnchor}
-                onClose={() => setAutoUpdateAnchor(null)}
-              >
-                While games are in-progress, results, scores, and rank are auto-updated within 30 minutes of the live game events
-              </InfoPopover>
-            </>}
+            {showResultsCols && (
+              <>
+                <Box sx={{ mb: 1, display: 'flex', alignItems: 'center' }}>
+                  <Typography variant="body1" sx={{ mr: 0.5 }}>
+                    Results are{' '}
+                    <Box
+                      component="span"
+                      sx={{ color: 'primary.main', textDecoration: 'underline', cursor: 'pointer', fontWeight: 500 }}
+                      onClick={e => setAutoUpdateAnchor(e.currentTarget as HTMLElement)}
+                      tabIndex={0}
+                      role="button"
+                      aria-label="About auto-updated scores"
+                    >
+                      auto-updated
+                    </Box>
+                  </Typography>
+                </Box>
+                <InfoPopover
+                  anchorEl={autoUpdateAnchor}
+                  onClose={() => setAutoUpdateAnchor(null)}
+                >
+                  While games are in-progress, results, scores, and rank are auto-updated every {import.meta.env.VITE_AUTO_REFRESH_INTERVAL_MINUTES || 30} minutes
+                </InfoPopover>
+              </>
+            )}
             <FormControlLabel
               control={
                 <Checkbox
@@ -331,13 +280,11 @@ export default function PicksheetPage() {
             />
             <PrintArea className="print-grid-area">
               <DataGridLite<ResultsRow>
-                key={`grid-${currentWeek}`}
+                key={`grid-${week}`}
                 rows={rows}
                 columns={columns}
                 pinnedTopRows={[]}
-                pinnedBottomRows={
-                  consensusRow ? [consensusRow] : []
-                }
+                pinnedBottomRows={consensusRow ? [consensusRow] : []}
                 defaultSort={showResultsCols ? { key: "points", dir: "asc" } : { key: "pigeon_name", dir: "asc" }}
                 printTitle={`Results — Week ${week ?? ""}`}
                 getRowId={(r) => r.pigeon_number}
@@ -347,7 +294,7 @@ export default function PicksheetPage() {
               />
             </PrintArea>
           </>
-        }
+        )}
 
         <AppSnackbar
           open={snack.open}
