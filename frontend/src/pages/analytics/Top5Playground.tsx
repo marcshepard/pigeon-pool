@@ -3,13 +3,13 @@
  */
 
 import { useState, useMemo } from 'react';
-import { scoreForPick } from '../../hooks/useResults';
 import { Box, Typography, Button, Paper, Select, MenuItem, FormControl, InputLabel } from '@mui/material';
+
 import { useSchedule } from '../../hooks/useSchedule';
 import { useResults } from '../../hooks/useResults';
+import { scoreForPick, type PickCell } from '../../utils/resultsShaping';
 
 type EnteredScore = { team: string; margin: number };
-import type { PickCell } from '../../hooks/useResults';
 type Player = {
   points: number;
   pigeon_number: number;

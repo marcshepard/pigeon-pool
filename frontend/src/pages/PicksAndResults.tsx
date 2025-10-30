@@ -60,7 +60,7 @@ export default function PicksheetPage() {
 
   // Cache-backed data for the selected week
   // Auto-refresh is now handled globally by useAutoRefreshManager in App.tsx
-  const { rows, games, currentWeek, consensusRow, loading, error, refreshResults } = useResults(week);
+  const { rows, games, currentWeek, consensusRow, loading, error } = useResults(week);
 
   // Popover for auto-update info
   const [autoUpdateAnchor, setAutoUpdateAnchor] = useState<null | HTMLElement>(null);
@@ -187,6 +187,67 @@ export default function PicksheetPage() {
 
   if (!user) return null; // Can't happen due to route protection
 
+  // Export to CSV
+  const handleExport = () => {
+    if (!week) return;
+
+    // Build CSV content
+    const csvRows: string[] = [];
+    
+    // Header row
+    const headers = ['Pigeon'];
+    if (showResultsCols) {
+      headers.push('Score', 'Rank');
+    }
+    games.forEach(g => {
+      headers.push(`${g.away_abbr} @ ${g.home_abbr}`);
+    });
+    csvRows.push(headers.map(h => `"${h}"`).join(','));
+
+    // Data rows
+    rows.forEach(row => {
+      const cells: string[] = [];
+      cells.push(`"${row.pigeon_number} ${row.pigeon_name}"`);
+      if (showResultsCols) {
+        cells.push(row.points?.toString() ?? '');
+        cells.push(row.rank?.toString() ?? '');
+      }
+      games.forEach(g => {
+        const key = `g_${g.game_id}`;
+        const pick = row.picks[key];
+        cells.push(pick ? `"${pick.label}"` : '');
+      });
+      csvRows.push(cells.join(','));
+    });
+
+    // Add consensus row if present
+    if (consensusRow) {
+      const cells: string[] = [];
+      cells.push(`"${consensusRow.pigeon_number} ${consensusRow.pigeon_name}"`);
+      if (showResultsCols) {
+        cells.push('', ''); // No score/rank for consensus
+      }
+      games.forEach(g => {
+        const key = `g_${g.game_id}`;
+        const pick = consensusRow.picks[key];
+        cells.push(pick ? `"${pick.label}"` : '');
+      });
+      csvRows.push(cells.join(','));
+    }
+
+    // Create and download CSV
+    const csvContent = csvRows.join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Week_${week}_Picks.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <>
       <PrintOnlyStyles areaClass="print-area" landscape margin="8mm" />
@@ -226,12 +287,12 @@ export default function PicksheetPage() {
             </Typography>
           </Box>
 
-          {/* Print & Manual Refresh */}
+          {/* Export & Print */}
           <Box flex={1} display="flex" justifyContent="flex-end" alignItems="center" gap={1}>
-            <Button variant="outlined" size="small" onClick={refreshResults}>
-              Refresh
+            <Button variant="outlined" size="small" onClick={handleExport}>
+              Export
             </Button>
-            <Button variant="outlined" onClick={() => window.print()}>
+            <Button variant="outlined" size="small" onClick={() => window.print()}>
               Print
             </Button>
           </Box>
