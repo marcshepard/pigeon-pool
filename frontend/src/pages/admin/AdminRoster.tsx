@@ -28,6 +28,7 @@ import {
   adminUpdateUser,
 } from "../../backend/fetch";
 import { AdminPigeon, AdminUser } from "../../backend/types";
+import { AppSnackbar } from "../../components/CommonComponents";
 
 export default function AdminRoster() {
   const [sp, setSp] = useSearchParams();
@@ -35,6 +36,7 @@ export default function AdminRoster() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity?: "success" | "error" | "info" | "warning" }>({ open: false, message: "" });
 
   const selectedPnParam = sp.get("pigeon");
   const selectedEmailParam = sp.get("user");
@@ -78,8 +80,22 @@ export default function AdminRoster() {
 
   return (
     <Box>
-      <Typography variant="body1" gutterBottom align="center" fontWeight={700}>
-        Admin – Users & Pigeons
+      <Typography variant="body1" gutterBottom sx={{ mb: 2 }}>
+        Manage users (who can log in) and pigeons.
+        <Box component="ul" sx={{ pl: 3, mb: 0, textAlign: "left" }}>
+          <li>
+            <Typography variant="body2">Each user should have a primary pigeon that they manage on sign-in.</Typography>
+          </li>
+          <li>
+            <Typography variant="body2">Users can also have one or more secondary pigeons, which they can also manage.</Typography>
+          </li>
+          <li>
+            <Typography variant="body2">To change someones email, just delete the user and create a new one with the new email.</Typography>
+          </li>
+          <li>
+            <Typography variant="body2">You can also change pigeon names and the owner assignments.</Typography>
+          </li>
+        </Box>
       </Typography>
 
       {loading && <Alert severity="info">Loading…</Alert>}
@@ -87,6 +103,24 @@ export default function AdminRoster() {
 
       {!loading && !error && (
         <Stack direction={{ xs: "column", md: "row" }} spacing={3} alignItems="flex-start">
+          <Box flex={1}>
+            <UsersPanel
+              pigeons={pigeons}
+              users={users}
+              selected={selectedUser}
+              onSelect={(email) => {
+                const next = new URLSearchParams(sp);
+                if (!email) next.delete("user");
+                else next.set("user", email);
+                setSp(next, { replace: true });
+              }}
+              onUsersChanged={(nextUsers) => setUsers(nextUsers)}
+              onSnackbar={(message, severity) => setSnackbar({ open: true, message, severity })}
+            />
+          </Box>
+
+          <Divider flexItem orientation="vertical" sx={{ display: { xs: "none", md: "block" } }} />
+
           <Box flex={1}>
             <PigeonsPanel
               pigeons={pigeons}
@@ -103,27 +137,18 @@ export default function AdminRoster() {
                 setPigeons((arr) => arr.map((p) => (p.pigeon_number === updated.pigeon_number ? updated : p)));
               }}
               refreshUsers={async () => setUsers(await adminGetUsers())}
-            />
-          </Box>
-
-          <Divider flexItem orientation="vertical" sx={{ display: { xs: "none", md: "block" } }} />
-
-          <Box flex={1}>
-            <UsersPanel
-              pigeons={pigeons}
-              users={users}
-              selected={selectedUser}
-              onSelect={(email) => {
-                const next = new URLSearchParams(sp);
-                if (!email) next.delete("user");
-                else next.set("user", email);
-                setSp(next, { replace: true });
-              }}
-              onUsersChanged={(nextUsers) => setUsers(nextUsers)}
+              onSnackbar={(message, severity) => setSnackbar({ open: true, message, severity })}
             />
           </Box>
         </Stack>
       )}
+
+      <AppSnackbar
+        open={snackbar.open}
+        message={snackbar.message}
+        severity={snackbar.severity}
+        onClose={() => setSnackbar({ ...snackbar, open: false })}
+      />
     </Box>
   );
 }
@@ -139,6 +164,7 @@ function PigeonsPanel({
   onSelect,
   onPigeonChanged,
   refreshUsers,
+  onSnackbar,
 }: {
   pigeons: AdminPigeon[];
   users: AdminUser[];
@@ -147,18 +173,15 @@ function PigeonsPanel({
   onSelect: (pn: number | null) => void;
   onPigeonChanged: (p: AdminPigeon) => void;
   refreshUsers: () => Promise<void>;
+  onSnackbar: (message: string, severity?: "success" | "error" | "info" | "warning") => void;
 }) {
   const [name, setName] = useState<string>(selected?.pigeon_name ?? "");
   const [ownerEmail, setOwnerEmail] = useState<string | null>(selected?.owner_email ?? null);
   const [saving, setSaving] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
-  const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
     setName(selected?.pigeon_name ?? "");
     setOwnerEmail(selected?.owner_email ?? null);
-    setMsg(null);
-    setErr(null);
   }, [selected]);
 
   const options = useMemo(() => pigeons.map((p) => ({ label: `${p.pigeon_number} – ${p.pigeon_name}`, pn: p.pigeon_number })), [pigeons]);
@@ -205,8 +228,6 @@ function PigeonsPanel({
               disabled={saving}
               onClick={async () => {
                 if (!selected) return;
-                setErr(null);
-                setMsg(null);
                 setSaving(true);
                 try {
                   await adminUpdatePigeon(selected.pigeon_number, {
@@ -219,11 +240,11 @@ function PigeonsPanel({
                     owner_email: ownerEmail,
                   };
                   onPigeonChanged(updated);
-                  setMsg("Saved changes.");
+                  onSnackbar("Saved changes.", "success");
                   // Owner changes affect user assignments; refresh users map
                   await refreshUsers();
                 } catch (e: unknown) {
-                  setErr(e instanceof Error ? e.message : String(e));
+                  onSnackbar(e instanceof Error ? e.message : String(e), "error");
                 } finally {
                   setSaving(false);
                 }
@@ -236,17 +257,15 @@ function PigeonsPanel({
               disabled={saving || !ownerEmail}
               onClick={async () => {
                 if (!selected) return;
-                setErr(null);
-                setMsg(null);
                 setSaving(true);
                 try {
                   await adminUpdatePigeon(selected.pigeon_number, { owner_email: null });
                   onPigeonChanged({ ...selected, owner_email: null });
                   await refreshUsers();
                   setOwnerEmail(null);
-                  setMsg("Owner unassigned.");
+                  onSnackbar("Owner unassigned.", "success");
                 } catch (e: unknown) {
-                  setErr(e instanceof Error ? e.message : String(e));
+                  onSnackbar(e instanceof Error ? e.message : String(e), "error");
                 } finally {
                   setSaving(false);
                 }
@@ -255,9 +274,6 @@ function PigeonsPanel({
               Unassign owner
             </Button>
           </Stack>
-
-          {msg && <Alert severity="success">{msg}</Alert>}
-          {err && <Alert severity="error">{err}</Alert>}
 
           <Box>
             <Typography variant="subtitle2" gutterBottom>Users with this pigeon as primary</Typography>
@@ -299,26 +315,24 @@ function UsersPanel({
   selected,
   onSelect,
   onUsersChanged,
+  onSnackbar,
 }: {
   pigeons: AdminPigeon[];
   users: AdminUser[];
   selected: AdminUser | null;
   onSelect: (email: string | null) => void;
   onUsersChanged: (users: AdminUser[]) => void;
+  onSnackbar: (message: string, severity?: "success" | "error" | "info" | "warning") => void;
 }) {
   const [createOpen, setCreateOpen] = useState(false);
   const [newEmail, setNewEmail] = useState("");
   const [primary, setPrimary] = useState<number | null>(selected?.primary_pigeon ?? null);
   const [secondary, setSecondary] = useState<number[]>(selected?.secondary_pigeons ?? []);
   const [saving, setSaving] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
-  const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
     setPrimary(selected?.primary_pigeon ?? null);
     setSecondary(selected?.secondary_pigeons ?? []);
-    setMsg(null);
-    setErr(null);
   }, [selected]);
 
   const userOptions = useMemo(() => users.map((u) => ({ label: u.email, email: u.email })), [users]);
@@ -384,8 +398,6 @@ function UsersPanel({
               disabled={saving}
               onClick={async () => {
                 if (!selected) return;
-                setErr(null);
-                setMsg(null);
                 setSaving(true);
                 try {
                   await adminUpdateUser(selected.email, {
@@ -399,9 +411,9 @@ function UsersPanel({
                       : u
                   );
                   onUsersChanged(next);
-                  setMsg("Saved changes.");
+                  onSnackbar("Saved changes.", "success");
                 } catch (e: unknown) {
-                  setErr(e instanceof Error ? e.message : String(e));
+                  onSnackbar(e instanceof Error ? e.message : String(e), "error");
                 } finally {
                   setSaving(false);
                 }
@@ -417,20 +429,18 @@ function UsersPanel({
                 if (!selected) return;
                 const ok = confirm(`Delete user ${selected.email}?`);
                 if (!ok) return;
-                setErr(null);
-                setMsg(null);
                 setSaving(true);
                 try {
                   await adminDeleteUser(selected.email);
                   const next = users.filter((u) => u.email !== selected.email);
                   onUsersChanged(next);
                   onSelect(null);
-                  setMsg("User deleted.");
+                  onSnackbar("User deleted.", "success");
                 } catch (e: unknown) {
                   if (String((e as Error | string) instanceof Error ? (e as Error).message : e).includes("owns pigeon")) {
-                    setErr(String((e as Error | string) instanceof Error ? (e as Error).message : e));
+                    onSnackbar(String((e as Error | string) instanceof Error ? (e as Error).message : e), "error");
                   } else {
-                    setErr(e instanceof Error ? e.message : String(e));
+                    onSnackbar(e instanceof Error ? e.message : String(e), "error");
                   }
                 } finally {
                   setSaving(false);
@@ -440,9 +450,6 @@ function UsersPanel({
               Delete user
             </Button>
           </Stack>
-
-          {msg && <Alert severity="success">{msg}</Alert>}
-          {err && <Alert severity="error">{err}</Alert>}
         </Stack>
       )}
 
@@ -473,8 +480,9 @@ function UsersPanel({
                 setNewEmail("");
                 // Select the new user in URL
                 onSelect(nu.email);
+                onSnackbar("User created successfully.", "success");
               } catch (e: unknown) {
-                alert(e instanceof Error ? e.message : String(e));
+                onSnackbar(e instanceof Error ? e.message : String(e), "error");
               }
             }}
             disabled={!newEmail}

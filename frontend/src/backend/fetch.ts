@@ -53,7 +53,7 @@ function setToken(t: string | null) {
 // Generic JSON fetch with type-safe factory & no `any`
 // Redirect to the login page on 401 with session expired message unless they are already on that page
 type FetchInit<T> = RequestInit & {
-  factory: (data: unknown) => T;
+  factory: (data: unknown, res?: Response) => T;
   redirectOn401?: boolean; // default true; set false for boot-time /auth/me
 };
 
@@ -84,19 +84,46 @@ export async function apiFetch<T>(path: string, init: FetchInit<T>): Promise<T> 
       }
       throw new Error("Unauthorized");
     }
+    // Try to surface server-provided message, tolerate empty bodies
     let message = res.statusText || "Request failed";
     try {
-      const text = await res.text();
-      if (text) message = text;
-    } catch { /* ignore */ }
+      const ct = res.headers.get("content-type") || "";
+      if (ct.includes("application/json")) {
+        const j = await res.json();
+        if (j && typeof j === "object" && "detail" in j) {
+          message = String((j as { detail?: unknown }).detail ?? message);
+        } else {
+          message = JSON.stringify(j);
+        }
+      } else {
+        const text = await res.text();
+        if (text) message = text;
+      }
+    } catch {
+      /* ignore parse errors */
+    }
     throw new Error(`API error ${res.status}: ${message}`);
   }
 
-  if (res.status === 204) {
-    return init.factory(undefined);
+  // No-content statuses: never attempt to parse
+  if (res.status === 204 || res.status === 205) {
+    return init.factory(undefined, res);
   }
-  const json = await res.json();
-  return init.factory(json);
+
+  // Only parse JSON when content-type indicates JSON; tolerate empty body
+  const ct = res.headers.get("content-type") || "";
+  if (ct.includes("application/json")) {
+    let data: unknown = undefined;
+    try {
+      data = await res.json();
+    } catch {
+      // empty body or invalid JSON -> leave data undefined
+    }
+    return init.factory(data, res);
+  }
+
+  // Non-JSON success: pass undefined (or read text if you ever need it)
+  return init.factory(undefined, res);
 }
 
 // =============================

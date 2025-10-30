@@ -58,10 +58,10 @@ CREATE TABLE IF NOT EXISTS user_players (
 CREATE UNIQUE INDEX IF NOT EXISTS uniq_pigeon_single_owner
   ON user_players(pigeon_number)
   WHERE role = 'owner';
--- Exactly one primary pigeon (default login) per user
-CREATE UNIQUE INDEX IF NOT EXISTS uniq_pigeon_single_primary
-  ON user_players(pigeon_number)
-  WHERE is_primary;
+-- Each user can have only one primary pigeon
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_user_single_primary
+  ON user_players(user_id)
+  WHERE is_primary = TRUE;
 
 -- === PICKS ===
 -- Now includes the user who made the pick (nullable for legacy picks)
