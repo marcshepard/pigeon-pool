@@ -31,6 +31,7 @@ jobs:
 
       - name: Zip artifact from repo root
         run: |
+          chmod +x backend/startup.sh
           zip -r ${{ env.ZIP_NAME }} backend requirements.txt \
             -x "backend/venv/**" "backend/.venv/**" "backend/__pycache__/**" "*.pyc" \
                "backend/.git/**" "backend/.github/**" "backend/.pytest_cache/**" "backend/tests/**" \
