@@ -1,16 +1,19 @@
 /**
- * useAutoRefreshManager.ts - global auto-refresh manager hook.
- * Mount once at the app level to auto-refresh all weeks with live games.
+ * useAutoRefreshManager.ts
+ * Global auto-refresh manager hook.
+ * Only refreshes the current week when it has in-progress games.
  */
 
 import { useEffect, useRef } from "react";
 import { useAppCache } from "./useAppCache";
 import { shapeRowsAndGames } from "../utils/resultsShaping";
-import { getResultsWeekLeaderboard, getResultsWeekPicks } from "../backend/fetch";
+import { getResultsWeekLeaderboard, getResultsWeekPicks, getCurrentWeek } from "../backend/fetch";
 
 export function useAutoRefreshManager() {
   const resultsByWeek = useAppCache((s) => s.resultsByWeek);
   const setResultsWeek = useAppCache((s) => s.setResultsWeek);
+  const getCurrentWeekCache = useAppCache((s) => s.getCurrentWeek);
+  const setCurrentWeekCache = useAppCache((s) => s.setCurrentWeek);
   
   const timerRef = useRef<number | null>(null);
   const isRefreshingRef = useRef(false);
@@ -18,47 +21,57 @@ export function useAutoRefreshManager() {
   const intervalMs = Number(import.meta.env.VITE_AUTO_REFRESH_INTERVAL_MINUTES || 30) * 60 * 1000;
 
   useEffect(() => {
-    async function refreshAllLiveWeeks() {
+    async function refreshCurrentWeekIfLive() {
       if (isRefreshingRef.current) return;
       
-      const now = Date.now();
-      const weeksToRefresh: number[] = [];
-      
-      for (const [weekStr, cached] of Object.entries(resultsByWeek)) {
-        if (!cached) continue;
-        const week = Number(weekStr);
+      try {
+        // First, get the current week info
+        const currentWeekData = await getCurrentWeek();
+        setCurrentWeekCache(currentWeekData);
+        
+        // Only refresh if status is "in_progress"
+        if (currentWeekData.status !== "in_progress") {
+          return;
+        }
+        
+        const currentWeekNum = currentWeekData.week;
+        
+        // Check if current week is in cache and has live games
+        const cached = resultsByWeek[currentWeekNum];
+        if (!cached) {
+          // Not in cache yet, no need to refresh (will be fetched on first visit)
+          return;
+        }
+        
+        // Verify there are actually in-progress games (kickoff passed, not final)
+        const now = Date.now();
         const hasLiveGames = cached.data.games.some(g => {
           const kickoff = new Date(g.kickoff_at).getTime();
           return kickoff <= now && g.status !== "final";
         });
-        if (hasLiveGames) weeksToRefresh.push(week);
-      }
+        
+        if (!hasLiveGames) {
+          return;
+        }
 
-      if (weeksToRefresh.length === 0) return;
-
-      console.log(`[AutoRefresh] Refreshing weeks: ${weeksToRefresh.join(', ')}`);
-      
-      isRefreshingRef.current = true;
-      try {
-        await Promise.all(
-          weeksToRefresh.map(async (week) => {
-            try {
-              const [picks, lb] = await Promise.all([
-                getResultsWeekPicks(week),
-                getResultsWeekLeaderboard(week),
-              ]);
-              const shaped = shapeRowsAndGames(picks, lb);
-              setResultsWeek(week, { 
-                picks, 
-                lb, 
-                games: shaped.games, 
-                rows: shaped.rows as unknown[] 
-              });
-            } catch (err) {
-              console.error(`[AutoRefresh] Failed to refresh week ${week}:`, err);
-            }
-          })
-        );
+        console.log(`[AutoRefresh] Refreshing current week ${currentWeekNum}`);
+        
+        isRefreshingRef.current = true;
+        try {
+          const [picks, lb] = await Promise.all([
+            getResultsWeekPicks(currentWeekNum),
+            getResultsWeekLeaderboard(currentWeekNum),
+          ]);
+          const shaped = shapeRowsAndGames(picks, lb);
+          setResultsWeek(currentWeekNum, { 
+            picks, 
+            lb, 
+            games: shaped.games, 
+            rows: shaped.rows as unknown[] 
+          });
+        } catch (err) {
+          console.error(`[AutoRefresh] Failed to refresh week ${currentWeekNum}:`, err);
+        }
       } finally {
         isRefreshingRef.current = false;
       }
@@ -66,8 +79,10 @@ export function useAutoRefreshManager() {
 
     function startTimer() {
       if (document.visibilityState === "visible") {
-        refreshAllLiveWeeks();
-        timerRef.current = window.setInterval(refreshAllLiveWeeks, intervalMs);
+        // Refresh immediately on start
+        refreshCurrentWeekIfLive();
+        // Then set up interval
+        timerRef.current = window.setInterval(refreshCurrentWeekIfLive, intervalMs);
       }
     }
 
@@ -94,5 +109,5 @@ export function useAutoRefreshManager() {
       stopTimer();
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [resultsByWeek, setResultsWeek, intervalMs]);
+  }, [resultsByWeek, setResultsWeek, getCurrentWeekCache, setCurrentWeekCache, intervalMs]);
 }
