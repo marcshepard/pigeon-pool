@@ -80,22 +80,8 @@ export default function AdminRoster() {
 
   return (
     <Box>
-      <Typography variant="body1" gutterBottom sx={{ mb: 2 }}>
+      <Typography variant="body1" align="center" gutterBottom sx={{ mb: 2 }}>
         Manage users (who can log in) and pigeons.
-        <Box component="ul" sx={{ pl: 3, mb: 0, textAlign: "left" }}>
-          <li>
-            <Typography variant="body2">Each user should have a primary pigeon that they manage on sign-in.</Typography>
-          </li>
-          <li>
-            <Typography variant="body2">Users can also have one or more secondary pigeons, which they can also manage.</Typography>
-          </li>
-          <li>
-            <Typography variant="body2">To change someones email, just delete the user and create a new one with the new email.</Typography>
-          </li>
-          <li>
-            <Typography variant="body2">You can also change pigeon names and the owner assignments.</Typography>
-          </li>
-        </Box>
       </Typography>
 
       {loading && <Alert severity="info">Loading…</Alert>}
@@ -195,6 +181,10 @@ function PigeonsPanel({
     <Box>
       <Typography variant="h6" gutterBottom>
         Pigeons
+      </Typography>
+
+      <Typography variant="body2" sx={{ mb: 6 }}>
+        You can change a pigeons name or owner here
       </Typography>
 
       <Autocomplete
@@ -347,14 +337,23 @@ function UsersPanel({
     return pigeonOptions.filter((o) => !exclude.has(o.pn));
   }, [pigeonOptions, primary]);
 
-  // Typed "None" option to avoid `as any`
-  const noneOption: { label: string; pn: number | null } = { label: "None", pn: null };
-
   return (
     <Box>
       <Typography variant="h6" gutterBottom>
         Users
       </Typography>
+
+      <Box component="ul" sx={{ pl: 3, mb: 6, textAlign: "left" }}>
+        <li>
+          <Typography variant="body2">Each user must have a primary pigeon they manage on sign-in</Typography>
+        </li>
+        <li>
+          <Typography variant="body2">Users can have secondary pigeons which they also manage</Typography>
+        </li>
+        <li>
+          <Typography variant="body2">To change someones email, delete the user and create a new one</Typography>
+        </li>
+      </Box>
 
       <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems="center" sx={{ mb: 2 }}>
         <Autocomplete
@@ -373,15 +372,24 @@ function UsersPanel({
 
       {selected && (
         <Stack spacing={2} maxWidth={520}>
+          {primary == null && (
+            <Alert severity="warning">
+              This user must have a primary pigeon assigned to sign in.
+            </Alert>
+          )}
+
           <Autocomplete
-            options={[noneOption, ...pigeonOptions]}
-            value={
-              primary == null
-                ? noneOption
-                : pigeonOptions.find((o) => o.pn === primary) ?? null
-            }
+            options={pigeonOptions}
+            value={pigeonOptions.find((o) => o.pn === primary) ?? null}
             onChange={(_, v) => setPrimary(v?.pn ?? null)}
-            renderInput={(params) => <TextField {...params} label="Primary pigeon" />}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                label="Primary pigeon"
+                required
+                helperText="Required - user must have a primary pigeon"
+              />
+            )}
           />
 
           <Autocomplete
@@ -395,7 +403,7 @@ function UsersPanel({
           <Stack direction="row" spacing={1}>
             <Button
               variant="contained"
-              disabled={saving}
+              disabled={saving || primary == null}
               onClick={async () => {
                 if (!selected) return;
                 setSaving(true);
