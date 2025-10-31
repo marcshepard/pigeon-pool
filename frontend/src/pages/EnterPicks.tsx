@@ -2,8 +2,9 @@
  * Let the user make or edit their picks for a given week.
  */
 
-import { useEffect, useMemo, useState, useRef } from "react";
+import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { useAuth } from "../auth/useAuth";
+import { useBeforeUnload, useLocation, useNavigate } from "react-router-dom";
 import { Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, FormControl, FormControlLabel, Radio, RadioGroup, Stack, TextField, Typography } from "@mui/material";
 import WarningAmberOutlinedIcon from '@mui/icons-material/WarningAmberOutlined';
 import { alpha } from "@mui/material/styles";
@@ -66,7 +67,53 @@ export default function EnterPicksPage() {
   const [touchedPickSide, setTouchedPickSide] = useState<Record<number, boolean>>({});
   // Track unsaved changes
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  // Track pending week/pigeon changes (for confirmation dialog)
+  const [pendingChange, setPendingChange] = useState<{ type: 'week' | 'pigeon', value: number } | null>(null);
+  // Track pending navigation (for confirmation dialog)
+  const [pendingNavigation, setPendingNavigation] = useState<string | null>(null);
+  const navigate = useNavigate();
+  const location = useLocation();
   const handleHomeDoubleTap = useDoubleTap(() => setHomeDialogOpen(true));
+
+  // Warn before closing/refreshing browser tab with unsaved changes
+  useBeforeUnload(
+    useCallback(
+      (e) => {
+        if (hasUnsavedChanges) {
+          e.preventDefault();
+          return (e.returnValue = '');
+        }
+      },
+      [hasUnsavedChanges]
+    ),
+    { capture: true }
+  );
+
+  // Intercept navigation attempts when there are unsaved changes
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+
+    const handleClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      const link = target.closest('a');
+      
+      if (link && link.href) {
+        const url = new URL(link.href);
+        // Only intercept internal navigation (same origin)
+        if (url.origin === window.location.origin) {
+          const targetPath = url.pathname;
+          if (targetPath !== location.pathname) {
+            e.preventDefault();
+            e.stopPropagation();
+            setPendingNavigation(targetPath);
+          }
+        }
+      }
+    };
+
+    document.addEventListener('click', handleClick, true);
+    return () => document.removeEventListener('click', handleClick, true);
+  }, [hasUnsavedChanges, location.pathname]);
 
   const handleHomeDialog = () => {
     setHomeDialogOpen(true);
@@ -185,6 +232,34 @@ export default function EnterPicksPage() {
   }, [week, selectedPigeon, me?.pigeon_number]);
 
   // — handlers —
+  const handleWeekChange = (newWeek: number) => {
+    if (hasUnsavedChanges) {
+      setPendingChange({ type: 'week', value: newWeek });
+    } else {
+      setWeek(newWeek);
+      setHasUnsavedChanges(false);
+    }
+  };
+
+  const handlePigeonChange = (newPigeon: number) => {
+    if (hasUnsavedChanges) {
+      setPendingChange({ type: 'pigeon', value: newPigeon });
+    } else {
+      setSelectedPigeon(newPigeon);
+      setHasUnsavedChanges(false);
+    }
+  };
+
+  const confirmDiscardChanges = () => {
+    if (pendingChange?.type === 'week') {
+      setWeek(pendingChange.value);
+    } else if (pendingChange?.type === 'pigeon') {
+      setSelectedPigeon(pendingChange.value);
+    }
+    setHasUnsavedChanges(false);
+    setPendingChange(null);
+  };
+
   const handlePick = (gameId: number, value: "home" | "away") => {
     setDraft((d) => {
       const prev = d[gameId] ?? { picked_home: value === "home", predicted_margin: 0 };
@@ -297,6 +372,34 @@ export default function EnterPicksPage() {
 
   return (
     <Box sx={{ maxWidth: 900, mx: "auto", height: '100vh', display: 'flex', flexDirection: 'column' }}>
+      {/* Navigation blocker dialog */}
+      <ConfirmDialog
+        open={!!pendingNavigation}
+        title="Unsaved changes"
+        content="You have unsaved picks. Continue and discard them?"
+        confirmText="Yes"
+        cancelText="No"
+        onConfirm={() => {
+          if (pendingNavigation) {
+            setHasUnsavedChanges(false);
+            navigate(pendingNavigation);
+            setPendingNavigation(null);
+          }
+        }}
+        onClose={() => setPendingNavigation(null)}
+      />
+
+      {/* Week/Pigeon change confirmation dialog */}
+      <ConfirmDialog
+        open={!!pendingChange}
+        title="Unsaved changes"
+        content="You have unsaved picks. Continue and discard them?"
+        confirmText="Yes"
+        cancelText="No"
+        onConfirm={confirmDiscardChanges}
+        onClose={() => setPendingChange(null)}
+      />
+
       {/* Confirmation dialog for >29 spreads */}
       <ConfirmDialog
         open={confirmState.open}
@@ -328,7 +431,7 @@ export default function EnterPicksPage() {
           <LabeledSelect
             label="Week"
             value={String(week)}
-            onChange={(e) => setWeek(Number(e.target.value))}
+            onChange={(e) => handleWeekChange(Number(e.target.value))}
             options={futureWeeks.map((w) => ({ value: String(w), label: `Week ${w}` }))}
           />
 
@@ -392,7 +495,7 @@ export default function EnterPicksPage() {
               <LabeledSelect
                 label="Pigeon"
                 value={selectedPigeon ? String(selectedPigeon) : String(me.pigeon_number)}
-                onChange={(e) => setSelectedPigeon(Number(e.target.value))}
+                onChange={(e) => handlePigeonChange(Number(e.target.value))}
                 options={allOptions}
                 sx={{ minWidth: 160 }}
               />
