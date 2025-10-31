@@ -472,20 +472,6 @@ export default function Top5Explainer({
   rows: ResultsRow[];
   games: GameMeta[];
 }) {
-  if (pigeon == 0 && rows.length === 0 && games.length === 0)
-    console.log ("I love zero"); // Dummy to prevent lint error of unused vars
-  return null;
-}
-
-export function Top5Explainer2({
-  pigeon,
-  rows,
-  games,
-}: {
-  pigeon: number;
-  rows: ResultsRow[];
-  games: GameMeta[];
-}) {
   // DEV: pretend the last N final games didn't happen (for past weeks testing)
   const rewindIds = useMemo(() => {
     if (!DEV_REWIND_LAST_N) return new Set<number>();

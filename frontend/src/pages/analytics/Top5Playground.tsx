@@ -3,8 +3,9 @@
  */
 
 import { useState, useMemo } from 'react';
-import { Box, Typography, Button, Paper, Select, MenuItem, FormControl, InputLabel } from '@mui/material';
+import { Box, Typography, Button, Paper, Select, MenuItem, FormControl, InputLabel, Dialog, DialogContent, DialogActions } from '@mui/material';
 
+import Top5Explainer from "./YourTop5Explainer";
 import { useResults } from '../../hooks/useResults';
 import { scoreForPick, type PickCell } from '../../utils/resultsShaping';
 
@@ -21,6 +22,23 @@ type Player = {
 export default function Top5Playground({ pigeon, week }: { pigeon: number; week: number }) {
   const [enteredScores, setEnteredScores] = useState<Record<number, EnteredScore>>({});
   const { rows, games, consensusRow } = useResults(week);
+
+  // Secret modal state
+  const [explainerOpen, setExplainerOpen] = useState(false);
+
+  // Secret modal for Top 5 explainer using MUI Dialog
+  function SecretModal({ open, onClose, children }: { open: boolean; onClose: () => void; children: React.ReactNode }) {
+    return (
+      <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+        <DialogContent>
+          {children}
+        </DialogContent>
+        <DialogActions sx={{ justifyContent: 'center', pb: 2 }}>
+          <Button onClick={onClose} variant="contained" color="primary">Close</Button>
+        </DialogActions>
+      </Dialog>
+    );
+  }
 
   // Remaining games (not final)
   const remainingGames = useMemo(() => {
@@ -114,6 +132,7 @@ export default function Top5Playground({ pigeon, week }: { pigeon: number; week:
     // Sort by score ascending (lower is better), then rank
     const sorted = [...recalculated].sort((a, b) => (a.points ?? 9999) - (b.points ?? 9999) || (a.rank ?? 99) - (b.rank ?? 99));
     //console.log('Sorted recalculated:', sorted);
+  // ...existing code...
     // Assign ranks with ties
     let lastScore: number | undefined = undefined;
     let lastRank: number | undefined = undefined;
@@ -183,6 +202,7 @@ export default function Top5Playground({ pigeon, week }: { pigeon: number; week:
                       style={{ 
                         backgroundColor: isCurrentPigeon ? '#fff59d' : undefined 
                       }}
+                      onDoubleClick={() => setExplainerOpen(true)}
                     >
                       <td style={{ padding: '8px', borderTop: '1px solid #eee' }}>{`${player.pigeon_number} ${player.pigeon_name}`}</td>
                       <td style={{ padding: '8px', borderTop: '1px solid #eee' }}>{player.points}</td>
@@ -275,6 +295,9 @@ export default function Top5Playground({ pigeon, week }: { pigeon: number; week:
             <Button variant="outlined" color="secondary" onClick={handleReset}>Reset</Button>
           </Box>
         )}
+        <SecretModal open={explainerOpen} onClose={() => setExplainerOpen(false)}>
+          <Top5Explainer pigeon={pigeon} rows={rows} games={games} />
+        </SecretModal>
       </Box>
     </Box>
   );
