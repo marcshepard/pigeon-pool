@@ -326,8 +326,8 @@ export function ConfirmDialog({
         <DialogContent sx={{ p: 0, m: 0, minHeight: 0 }} />
       )}
       <DialogActions sx={{ justifyContent: 'center', mt: content ? 0 : '-12px' }}>
-        <Button onClick={onClose} color="inherit">{cancelText}</Button>
-        <BusyButton onClick={onConfirm} variant="contained">{confirmText}</BusyButton>
+        <BusyButton onClick={onConfirm} color="inherit">{confirmText}</BusyButton>
+        <Button onClick={onClose} variant="contained">{cancelText}</Button>
       </DialogActions>
     </Dialog>
   );
