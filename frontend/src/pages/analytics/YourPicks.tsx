@@ -199,7 +199,7 @@ export default function RemainingGames({ week, pigeon }: { week: number; pigeon:
   const [infoAnchor, setInfoAnchor] = useState<null | HTMLElement>(null);
   const [actualInfoAnchor, setActualInfoAnchor] = useState<null | HTMLElement>(null);
   const infoText = "Avg points gained on other pigeons if your pick is exactly right";
-  const actualInfoText = "Average points gained (or lost if negative) vs other pigeons if the current live score holds";
+  const actualInfoText = "Average points gained (or lost if negative) vs other pigeons based on the actual result";
 
   const columns: ColumnDef<Row>[] = [
     {
