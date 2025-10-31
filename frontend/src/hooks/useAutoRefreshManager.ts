@@ -10,11 +10,6 @@ import { shapeRowsAndGames } from "../utils/resultsShaping";
 import { getResultsWeekLeaderboard, getResultsWeekPicks, getCurrentWeek } from "../backend/fetch";
 
 export function useAutoRefreshManager() {
-  const resultsByWeek = useAppCache((s) => s.resultsByWeek);
-  const setResultsWeek = useAppCache((s) => s.setResultsWeek);
-  const getCurrentWeekCache = useAppCache((s) => s.getCurrentWeek);
-  const setCurrentWeekCache = useAppCache((s) => s.setCurrentWeek);
-  
   const timerRef = useRef<number | null>(null);
   const isRefreshingRef = useRef(false);
 
@@ -27,7 +22,7 @@ export function useAutoRefreshManager() {
       try {
         // First, get the current week info
         const currentWeekData = await getCurrentWeek();
-        setCurrentWeekCache(currentWeekData);
+        useAppCache.getState().setCurrentWeek(currentWeekData);
         
         // Only refresh if status is "in_progress"
         if (currentWeekData.status !== "in_progress") {
@@ -37,7 +32,7 @@ export function useAutoRefreshManager() {
         const currentWeekNum = currentWeekData.week;
         
         // Check if current week is in cache and has live games
-        const cached = resultsByWeek[currentWeekNum];
+        const cached = useAppCache.getState().resultsByWeek[currentWeekNum];
         if (!cached) {
           // Not in cache yet, no need to refresh (will be fetched on first visit)
           return;
@@ -63,7 +58,7 @@ export function useAutoRefreshManager() {
             getResultsWeekLeaderboard(currentWeekNum),
           ]);
           const shaped = shapeRowsAndGames(picks, lb);
-          setResultsWeek(currentWeekNum, { 
+          useAppCache.getState().setResultsWeek(currentWeekNum, { 
             picks, 
             lb, 
             games: shaped.games, 
@@ -109,5 +104,5 @@ export function useAutoRefreshManager() {
       stopTimer();
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [resultsByWeek, setResultsWeek, getCurrentWeekCache, setCurrentWeekCache, intervalMs]);
+  }, [intervalMs]);
 }

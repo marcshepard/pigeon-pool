@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 from typing import Any
+from datetime import datetime
 
 from sqlalchemy import bindparam, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -131,13 +132,16 @@ async def run_poll_scores(session: AsyncSession) -> dict[str, Any]:
     syncer = ScoreSync(session)
     updated = await syncer.sync_scores_and_status(week)
 
-    # Log only when we actually ran (scheduler already guards with predicate).
+    # Log with timestamp and update count for monitoring
+    now = datetime.now()
+    time_str = now.strftime("%H:%M")
     info(
         "component=jobs",
         job="score_sync",
+        time=time_str,
         week=week,
         games_updated=updated,
-        message="scores synced",
+        message=f"Scores synced at {time_str} - {updated} game(s) updated",
     )
     return {"week": week, "games_updated": updated}
 
