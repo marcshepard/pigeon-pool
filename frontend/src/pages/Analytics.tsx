@@ -176,11 +176,11 @@ export default function AnalyticsPage() {
         {tab === 0 && week && pigeon && (
           <RemainingGames week={Number(week)} pigeon={Number(pigeon)} />
         )}
-        {tab === 1 && week && (
+        {tab === 1 && week && pigeon && (
           allSundayFinal ? (
             <MnfOutcomes week={Number(week)} />
           ) : (
-            <Top5Playground pigeon={Number(pigeon)} />
+            <Top5Playground pigeon={Number(pigeon)} week={Number(week)} />
           )
         )}
       </Box>

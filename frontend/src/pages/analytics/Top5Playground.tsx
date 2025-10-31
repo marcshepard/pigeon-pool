@@ -5,7 +5,6 @@
 import { useState, useMemo } from 'react';
 import { Box, Typography, Button, Paper, Select, MenuItem, FormControl, InputLabel } from '@mui/material';
 
-import { useSchedule } from '../../hooks/useSchedule';
 import { useResults } from '../../hooks/useResults';
 import { scoreForPick, type PickCell } from '../../utils/resultsShaping';
 
@@ -19,27 +18,9 @@ type Player = {
   tie?: boolean;
 };
 
-export default function Top5Playground({ pigeon }: { pigeon: number }) {
+export default function Top5Playground({ pigeon, week }: { pigeon: number; week: number }) {
   const [enteredScores, setEnteredScores] = useState<Record<number, EnteredScore>>({});
-  const { currentWeek } = useSchedule();
-  const week = currentWeek?.week ?? null;
   const { rows, games, consensusRow } = useResults(week);
-
-  // Top 5 players by score/rank
-  const top5Players = useMemo(() => {
-    if (!rows.length) return [];
-    // If ranks exist, use top 5 by rank; otherwise use all players sorted by pigeon number
-    const withRanks = rows.filter(r => typeof r.rank === 'number');
-    if (withRanks.length > 0) {
-      // Sort by rank, then score descending
-      return [...withRanks]
-        .sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99) || (b.points ?? 0) - (a.points ?? 0))
-        .slice(0, 5);
-    } else {
-      // No ranks yet (week not started), return all players sorted by pigeon number
-      return [...rows].sort((a, b) => a.pigeon_number - b.pigeon_number);
-    }
-  }, [rows]);
 
   // Remaining games (not final)
   const remainingGames = useMemo(() => {
@@ -77,15 +58,15 @@ export default function Top5Playground({ pigeon }: { pigeon: number }) {
     });
   }, [games, rows, pigeon, consensusRow]);
 
-  // Recalculate Top 5 scores using entered picks for all non-final games
-  const recalculatedTop5 = useMemo(() => {
+  // Recalculate ALL player scores using entered picks for all non-final games
+  const recalculatedPlayers = useMemo(() => {
     //console.log('=== Recalculation Debug ===');
-    //console.log('top5Players:', top5Players);
+    //console.log('rows:', rows);
     //console.log('enteredScores:', enteredScores);
     //console.log('games:', games);
     
-    if (!top5Players.length) {
-      console.log('No top5Players, returning empty array');
+    if (!rows.length) {
+      console.log('No rows, returning empty array');
       return [];
     }
     
@@ -97,7 +78,7 @@ export default function Top5Playground({ pigeon }: { pigeon: number }) {
     const relevantGames = games.filter(g => (g.status === 'final' && g.home_score != null && g.away_score != null) || enteredScores[g.game_id]);
     //console.log('relevantGames:', relevantGames);
     
-    const recalculated: Player[] = top5Players.map(player => {
+    const recalculated: Player[] = rows.map(player => {
       let totalScore = 0;
       //console.log(`\nProcessing player ${player.pigeon_number} ${player.pigeon_name}`);
       for (const game of relevantGames) {
@@ -149,14 +130,27 @@ export default function Top5Playground({ pigeon }: { pigeon: number }) {
     sorted.forEach((p) => {
       p.tie = sorted.filter(x => x.points === p.points).length > 1;
     });
-    //console.log('Final recalculatedTop5:', sorted);
+    //console.log('Final recalculatedPlayers:', sorted);
     return sorted;
-  }, [enteredScores, top5Players, games]);
+  }, [enteredScores, rows, games]);
 
-  // Filter to show only top 5 ranked players
+  // Filter to show only top 5 ranked players, plus always include current pigeon if not in top 5
   const displayedTop5 = useMemo(() => {
-    return recalculatedTop5.slice(0, 5);
-  }, [recalculatedTop5]);
+    const top5 = recalculatedPlayers.slice(0, 5);
+    
+    // Check if current pigeon is already in top 5
+    const isPigeonInTop5 = top5.some(p => p.pigeon_number === pigeon);
+    
+    // If current pigeon is not in top 5 but exists in recalculated list, add them
+    if (!isPigeonInTop5 && pigeon) {
+      const currentPigeon = recalculatedPlayers.find(p => p.pigeon_number === pigeon);
+      if (currentPigeon) {
+        return [...top5, currentPigeon];
+      }
+    }
+    
+    return top5;
+  }, [recalculatedPlayers, pigeon]);
 
   const handleScoreChange = (gameId: number, team: string, margin: number) => {
     setEnteredScores(prev => ({ ...prev, [gameId]: { team, margin } }));
@@ -181,28 +175,44 @@ export default function Top5Playground({ pigeon }: { pigeon: number }) {
               </tr>
             </thead>
             <tbody>
-                {displayedTop5.map((player) => (
-                  <tr key={player.pigeon_number}>
-                    <td style={{ padding: '8px', borderTop: '1px solid #eee' }}>{`${player.pigeon_number} ${player.pigeon_name}`}</td>
-                    <td style={{ padding: '8px', borderTop: '1px solid #eee' }}>{player.points}</td>
-                    <td style={{ padding: '8px', borderTop: '1px solid #eee' }}>{player.tie ? `T${player.rank}` : player.rank}</td>
-                  </tr>
-                ))}
+                {displayedTop5.map((player) => {
+                  const isCurrentPigeon = player.pigeon_number === pigeon;
+                  return (
+                    <tr 
+                      key={player.pigeon_number}
+                      style={{ 
+                        backgroundColor: isCurrentPigeon ? '#fff59d' : undefined 
+                      }}
+                    >
+                      <td style={{ padding: '8px', borderTop: '1px solid #eee' }}>{`${player.pigeon_number} ${player.pigeon_name}`}</td>
+                      <td style={{ padding: '8px', borderTop: '1px solid #eee' }}>{player.points}</td>
+                      <td style={{ padding: '8px', borderTop: '1px solid #eee' }}>{player.tie ? `T${player.rank}` : player.rank}</td>
+                    </tr>
+                  );
+                })}
             </tbody>
           </table>
         </Paper>
-          {/* Show message if more than 5 players are tied at the last displayed rank */}
+          {/* Show message if more than 5 players are tied at the 5th rank */}
           {(() => {
-            if (recalculatedTop5.length > 5) {
-              const lastRank = displayedTop5.length ? displayedTop5[displayedTop5.length - 1].rank : null;
-              const tiedPlayers = recalculatedTop5.filter(p => p.rank === lastRank);
-              const extraTied = tiedPlayers.length - displayedTop5.filter(p => p.rank === lastRank).length;
-              if (extraTied > 0 && lastRank != null) {
-                return (
-                  <Typography variant="body2" sx={{ mt: 2, color: 'text.secondary', textAlign: 'center' }}>
-                    {extraTied} other player{extraTied > 1 ? 's are' : ' is'} tied at rank {lastRank}
-                  </Typography>
-                );
+            if (recalculatedPlayers.length > 5) {
+              // Get the top 5 players only (excluding current pigeon if added separately)
+              const top5Only = recalculatedPlayers.slice(0, 5);
+              const lastTop5Rank = top5Only.length ? top5Only[top5Only.length - 1].rank : null;
+              
+              if (lastTop5Rank != null) {
+                // Count all players at that rank
+                const tiedPlayers = recalculatedPlayers.filter(p => p.rank === lastTop5Rank);
+                // Subtract the ones already shown in top 5
+                const extraTied = tiedPlayers.length - top5Only.filter(p => p.rank === lastTop5Rank).length;
+                
+                if (extraTied > 0) {
+                  return (
+                    <Typography variant="body2" sx={{ mt: 2, color: 'text.secondary', textAlign: 'center' }}>
+                      {extraTied} other player{extraTied > 1 ? 's are' : ' is'} tied at rank {lastTop5Rank}
+                    </Typography>
+                  );
+                }
               }
             }
             return null;
