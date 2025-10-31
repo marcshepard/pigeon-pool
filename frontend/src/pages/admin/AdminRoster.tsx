@@ -184,7 +184,7 @@ function PigeonsPanel({
       </Typography>
 
       <Typography variant="body2" sx={{ mb: 6 }}>
-        You can change a pigeons name or owner here
+        You can change a pigeon's name or owner here
       </Typography>
 
       <Autocomplete
