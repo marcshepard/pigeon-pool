@@ -171,11 +171,21 @@ export default function Top5Playground({ pigeon, week }: { pigeon: number; week:
     return top5;
   }, [recalculatedPlayers, pigeon]);
 
+
   const handleScoreChange = (gameId: number, team: string, margin: number) => {
     setEnteredScores(prev => ({ ...prev, [gameId]: { team, margin } }));
   };
 
   const handleReset = () => setEnteredScores({});
+
+  // Reset a single game's entered score
+  const handleRowReset = (gameId: number) => {
+    setEnteredScores(prev => {
+      const updated = { ...prev };
+      delete updated[gameId];
+      return updated;
+    });
+  };
 
   return (
     <Box sx={{ maxWidth: 800, mx: 'auto', mt: 4 }}>
@@ -250,6 +260,7 @@ export default function Top5Playground({ pigeon, week }: { pigeon: number; week:
                 <th style={{ textAlign: 'left', padding: '8px' }}>Your Pick</th>
                 <th style={{ textAlign: 'left', padding: '8px' }}>Current Score</th>
                 <th style={{ textAlign: 'left', padding: '8px' }}>Enter Score</th>
+                <th style={{ textAlign: 'left', padding: '8px' }}></th>
               </tr>
             </thead>
             <tbody>
@@ -284,6 +295,13 @@ export default function Top5Playground({ pigeon, week }: { pigeon: number; week:
                         ))}
                       </Select>
                     </FormControl>
+                  </td>
+                  <td style={{ padding: '8px', borderTop: '1px solid #eee', textAlign: 'center' }}>
+                    {enteredScores[game.id] && (
+                      <Button variant="outlined" color="secondary" size="small" onClick={() => handleRowReset(game.id)}>
+                        Reset
+                      </Button>
+                    )}
                   </td>
                 </tr>
               ))}
