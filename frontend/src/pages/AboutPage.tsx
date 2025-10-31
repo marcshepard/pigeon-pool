@@ -26,10 +26,7 @@ export default function AboutPage() {
                 the <Link to="/year-to-date">Year-to-date page</Link>.
             </Typography>
             <Typography variant="body1" sx={{ mb: 1 }}>
-                <b>6.</b> Coming soon: What-if scenarios for MNF
-            </Typography>
-            <Typography variant="body1" sx={{ mb: 1 }}>
-                <b>7.</b> Payoffs are per the table below and are sent by US mail.
+                <b>6.</b> Payoffs are per the table below and are sent by US mail.
             </Typography>
             <Box mt={4}>
                 <Typography variant="h6" gutterBottom align="center">Payoff Table</Typography>
