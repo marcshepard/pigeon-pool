@@ -93,6 +93,31 @@ export default function EnterPicksPage() {
   useEffect(() => {
     if (!hasUnsavedChanges) return;
 
+    // Store the original navigate function
+    const originalPushState = window.history.pushState;
+    const originalReplaceState = window.history.replaceState;
+
+    // Override history methods to intercept programmatic navigation
+    window.history.pushState = function(...args) {
+      const targetPath = args[2] as string;
+      if (targetPath && targetPath !== location.pathname) {
+        // Prevent the navigation and show dialog
+        setPendingNavigation(targetPath);
+        return;
+      }
+      return originalPushState.apply(window.history, args);
+    };
+
+    window.history.replaceState = function(...args) {
+      const targetPath = args[2] as string;
+      if (targetPath && targetPath !== location.pathname) {
+        setPendingNavigation(targetPath);
+        return;
+      }
+      return originalReplaceState.apply(window.history, args);
+    };
+
+    // Also intercept link clicks
     const handleClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
       const link = target.closest('a');
@@ -112,7 +137,13 @@ export default function EnterPicksPage() {
     };
 
     document.addEventListener('click', handleClick, true);
-    return () => document.removeEventListener('click', handleClick, true);
+
+    return () => {
+      // Restore original functions
+      window.history.pushState = originalPushState;
+      window.history.replaceState = originalReplaceState;
+      document.removeEventListener('click', handleClick, true);
+    };
   }, [hasUnsavedChanges, location.pathname]);
 
   const handleHomeDialog = () => {
