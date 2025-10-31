@@ -5,47 +5,38 @@
  * - Also derives lockedWeeks (1..next_picks_week-1 or full 1..18 if season over)
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { getCurrentWeek } from "../backend/fetch";
 import { useAppCache } from "../hooks/useAppCache";
-import type { CurrentWeek } from "../backend/types";
 
 export function useSchedule() {
-  const getCurrentWeekCache = useAppCache((s) => s.getCurrentWeek);
   const setCurrentWeekCache = useAppCache((s) => s.setCurrentWeek);
+  
+  // Subscribe to currentWeek from Zustand for reactivity
+  const currentWeekFromCache = useAppCache((s) => s.currentWeek?.data ?? null);
 
-  const [currentWeek, setCurrentWeek] = useState<CurrentWeek | null>(null);
-  const [lockedWeeks, setLockedWeeks] = useState<number[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Compute locked weeks based on current week
+  const lockedWeeks = useMemo(() => {
+    if (!currentWeekFromCache) return [];
+    return computeLockedWeeks(currentWeekFromCache.week + 1);
+  }, [currentWeekFromCache]);
+
+  // Fetch current week on mount if not cached
   useEffect(() => {
+    if (currentWeekFromCache) return; // Already cached
+    
     let cancelled = false;
 
     (async () => {
       try {
         setLoading(true);
 
-        // 1) Try cache first
-        const cached = getCurrentWeekCache();
-        if (cached) {
-          if (!cancelled) {
-            setCurrentWeek(cached);
-            const weeks = computeLockedWeeks(cached.week + 1);
-            setLockedWeeks(weeks);
-            setLoading(false);
-          }
-          return;
-        }
-
-        // 2) Fallback to network
         const current = await getCurrentWeek();
-        setCurrentWeekCache(current);
-
         if (!cancelled) {
-          setCurrentWeek(current);
-          const weeks = computeLockedWeeks(current.week + 1);
-          setLockedWeeks(weeks);
+          setCurrentWeekCache(current);
         }
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e ?? ""));
@@ -57,9 +48,9 @@ export function useSchedule() {
     return () => {
       cancelled = true;
     };
-  }, [getCurrentWeekCache, setCurrentWeekCache]);
+  }, [currentWeekFromCache, setCurrentWeekCache]);
 
-  return { currentWeek, lockedWeeks, loading, error };
+  return { currentWeek: currentWeekFromCache, lockedWeeks, loading, error };
 }
 
 function computeLockedWeeks(next_picks_week: number | null): number[] {

@@ -61,6 +61,7 @@ class Settings:
     live_poll_seconds: int
     kickoff_sync_hour: int
     tue_warning_hour: int
+    email_delay_minutes: int    # Delay before sending emails (to allow FE to refresh)
 
     # Helpers
     def psycopg_kwargs(self) -> dict:
@@ -102,6 +103,7 @@ def get_settings() -> Settings:
         live_poll_seconds=int(_req("PP_LIVE_POLL_SECONDS")),
         kickoff_sync_hour=int(_req("PP_KICKOFF_SYNC_HOUR")),
         tue_warning_hour=int(_req("PP_TUE_WARNING_HOUR")),
+        email_delay_minutes=int(os.getenv("EMAIL_DELAY_MINUTES", "0")),
     )
 
 def reset_settings_cache() -> None:

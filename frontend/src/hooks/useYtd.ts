@@ -28,6 +28,9 @@ export function useYtd() {
   const getYtdCache      = useAppCache((s) => s.getYtd);
   const setYtdCache      = useAppCache((s) => s.setYtd);
   const setCurrentWeekCache = useAppCache((s) => s.setCurrentWeek);
+  
+  // Subscribe to currentWeek for reactivity (refetch when week/status changes)
+  const currentWeek = useAppCache((s) => s.currentWeek?.data ?? null);
 
   const [rows, setRows]   = useState<YtdRow[]>([]);
   const [weeks, setWeeks] = useState<number[]>([]);
@@ -40,8 +43,18 @@ export function useYtd() {
       try {
         setLoading(true);
 
-        // 1) Cache first
+        // 1) Check cache first
         const cached = getYtdCache();
+        
+        // 2) Get or fetch current week
+        let current = currentWeek;
+        if (!current) {
+          current = await getCurrentWeek();
+          if (!cancelled) setCurrentWeekCache(current);
+        }
+        
+        // 3) If cache exists and current week hasn't changed, use cache
+        //    Cache is invalidated by setCurrentWeek when week/status changes
         if (cached && !cancelled) {
           setRows(cached.rows as YtdRow[]);
           setWeeks(cached.weeks);
@@ -49,11 +62,7 @@ export function useYtd() {
           return;
         }
 
-        // 2) Else get the current week
-        const current = await getCurrentWeek();
-        setCurrentWeekCache(current);
-
-        // 3) Fetch all leaderboards and filter out live week
+        // 4) Fetch all leaderboards and filter out live week (unless final)
         const weekly: LeaderboardRow[] = await getResultsAllLeaderboards();
         const filtered = current.status === "final" ? weekly : weekly.filter(w => w.week_number !== current.week);
 
@@ -151,7 +160,7 @@ export function useYtd() {
       }
     })();
     return () => { cancelled = true; };
-  }, [getYtdCache, setYtdCache, setCurrentWeekCache]);
+  }, [getYtdCache, setYtdCache, setCurrentWeekCache, currentWeek]);
 
   return { rows, weeks, loading, error };
 }

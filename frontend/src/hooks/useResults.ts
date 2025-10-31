@@ -10,7 +10,6 @@
 
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { getResultsWeekLeaderboard, getResultsWeekPicks, getCurrentWeek } from "../backend/fetch";
-import { CurrentWeek } from "../backend/types";
 import { useAppCache, type GameMeta } from "../hooks/useAppCache";
 import { shapeRowsAndGames, type ResultsRow } from "../utils/resultsShaping";
 
@@ -19,10 +18,12 @@ export function useResults(week: number | null) {
   const setResultsWeekCache = useAppCache((s) => s.setResultsWeek);
   const getCurrentWeekCache = useAppCache((s) => s.getCurrentWeek);
   const setCurrentWeekCache = useAppCache((s) => s.setCurrentWeek);
+  
+  // Subscribe to currentWeek from Zustand for reactivity
+  const currentWeekFromCache = useAppCache((s) => s.currentWeek?.data ?? null);
 
   const [rows, setRows] = useState<ResultsRow[]>([]);
   const [games, setGames] = useState<GameMeta[]>([]);
-  const [currentWeek, setCurrentWeek] = useState<CurrentWeek | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -83,25 +84,21 @@ export function useResults(week: number | null) {
     return () => { cancelled = true; };
   }, [week, getResultsWeekCache, refreshResults]);
 
-  // Fetch/cache current week info
+  // Fetch/cache current week info on mount if not already cached
   useEffect(() => {
+    const cached = getCurrentWeekCache();
+    if (cached) return; // Already cached, subscription will handle updates
+    
     let cancelled = false;
     
     (async () => {
       try {
-        const cached = getCurrentWeekCache();
-        if (cached && !cancelled) {
-          setCurrentWeek(cached);
-          return;
-        }
-
         const current = await getCurrentWeek();
-        setCurrentWeekCache(current);
         if (!cancelled) {
-          setCurrentWeek(current);
+          setCurrentWeekCache(current);
         }
       } catch {
-        // ignore
+        // ignore - auto-refresh manager will retry
       }
     })();
     
@@ -149,7 +146,7 @@ export function useResults(week: number | null) {
   return { 
     rows, 
     games, 
-    currentWeek, 
+    currentWeek: currentWeekFromCache, 
     consensusRow, 
     loading, 
     error, 

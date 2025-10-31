@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .logger import info
 from .score_sync import ScoreSync
 from .emailer import send_bulk_email_bcc
+from .settings import get_settings
 
 #pylint: disable=line-too-long
 
@@ -152,7 +153,18 @@ async def run_poll_scores(session: AsyncSession) -> dict[str, Any]:
 async def run_email_sun(session: AsyncSession) -> dict[str, Any]:
     """
     Send the Sunday-night summary email to all players (BCC in email.py).
+    Delays EMAIL_DELAY_MINUTES after SNF ends to allow frontend to refresh.
     """
+    # Wait for configured delay (allows FE auto-refresh to pick up state change)
+    delay_minutes = get_settings().email_delay_minutes
+    if delay_minutes > 0:
+        info(
+            "component=jobs",
+            job="email_sun",
+            message=f"waiting {delay_minutes} minutes before sending email",
+        )
+        await asyncio.sleep(delay_minutes * 60)
+
     # current week = latest week already locked
     res = await session.execute(text("SELECT MAX(week_number) FROM weeks WHERE lock_at <= now()"))
     row = res.first()
@@ -191,7 +203,18 @@ async def run_email_sun(session: AsyncSession) -> dict[str, Any]:
 async def run_email_mon(session: AsyncSession) -> dict[str, Any]:
     """
     Send the Monday-night wrap-up email to all players (BCC in email.py).
+    Delays EMAIL_DELAY_MINUTES after MNF ends to allow frontend to refresh.
     """
+    # Wait for configured delay (allows FE auto-refresh to pick up state change)
+    delay_minutes = get_settings().email_delay_minutes
+    if delay_minutes > 0:
+        info(
+            "component=jobs",
+            job="email_mon",
+            message=f"waiting {delay_minutes} minutes before sending email",
+        )
+        await asyncio.sleep(delay_minutes * 60)
+
     # current week = latest week already locked
     res = await session.execute(text("SELECT MAX(week_number) FROM weeks WHERE lock_at <= now()"))
     row = res.first()

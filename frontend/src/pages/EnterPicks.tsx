@@ -9,7 +9,8 @@ import WarningAmberOutlinedIcon from '@mui/icons-material/WarningAmberOutlined';
 import { alpha } from "@mui/material/styles";
 import { AppSnackbar, Loading, Banner, ConfirmDialog, LabeledSelect } from "../components/CommonComponents";
 import { getCurrentWeek, getGamesForWeek, getMyPicksForWeek, setMyPicks } from "../backend/fetch";
-import type { CurrentWeek, Game } from "../backend/types";
+import type { Game } from "../backend/types";
+import { useAppCache } from "../hooks/useAppCache";
 
 // Utility: detect double tap on mobile
 function useDoubleTap(callback: () => void, ms = 300) {
@@ -48,7 +49,11 @@ export default function EnterPicksPage() {
   const [lastSubmission, setLastSubmission] = useState<string | null>(null);
   const { me } = useAuth();
   const [selectedPigeon, setSelectedPigeon] = useState<number | null>(null);
-  const [currentWeek, setCurrentWeek] = useState<CurrentWeek | null>(null);
+  
+  // Subscribe to currentWeek from Zustand for reactivity
+  const currentWeek = useAppCache((s) => s.currentWeek?.data ?? null);
+  const setCurrentWeekCache = useAppCache((s) => s.setCurrentWeek);
+  
   const [week, setWeek] = useState<number | "">("");
   const [games, setGames] = useState<Game[] | null>(null);
   const [draft, setDraft] = useState<Record<number, PickDraft>>({});
@@ -81,18 +86,28 @@ export default function EnterPicksPage() {
     }, 250);
   };
 
-  // Load schedule/current once and pick a default week
+  // Load current week on mount if not cached, and set default week
   useEffect(() => {
     let cancelled = false;
+    
+    // If already cached, use it
+    if (currentWeek) {
+      const defaultWeek = currentWeek.week + 1;
+      setWeek(defaultWeek ?? "");
+      console.log("EnterPicks: using cached current week, default picks week:", defaultWeek);
+      return;
+    }
+    
+    // Otherwise fetch
     (async () => {
       try {
         const cw = await getCurrentWeek();
-        console.log("EnterPicks: useEffect got current week:", cw);
+        console.log("EnterPicks: fetched current week:", cw);
         if (cancelled) return;
-        setCurrentWeek(cw);
+        setCurrentWeekCache(cw);
         const defaultWeek = cw.week + 1;
         setWeek(defaultWeek ?? "");
-        console.log("EnterPicks: useEffect setting default picks week:", defaultWeek);
+        console.log("EnterPicks: setting default picks week:", defaultWeek);
       } catch (e: unknown) {
         if (!cancelled) {
           setLoadingError(e instanceof Error ? e.message : "Failed to load schedule");
@@ -101,7 +116,7 @@ export default function EnterPicksPage() {
       }
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [currentWeek, setCurrentWeekCache]);
 
   // Future week options (next_picks_week..18), fallback start=1
   const futureWeeks = useMemo(() => {
