@@ -5,6 +5,7 @@
 import { useEffect, useMemo, useState, useRef } from "react";
 import { useAuth } from "../auth/useAuth";
 import { Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, FormControl, FormControlLabel, Radio, RadioGroup, Stack, TextField, Typography } from "@mui/material";
+import WarningAmberOutlinedIcon from '@mui/icons-material/WarningAmberOutlined';
 import { alpha } from "@mui/material/styles";
 import { AppSnackbar, Loading, Banner, ConfirmDialog, LabeledSelect } from "../components/CommonComponents";
 import { getCurrentWeek, getGamesForWeek, getMyPicksForWeek, setMyPicks } from "../backend/fetch";
@@ -58,6 +59,8 @@ export default function EnterPicksPage() {
   const [homeDialogOpen, setHomeDialogOpen] = useState(false);
   const [submitDialog, setSubmitDialog] = useState<{ open: boolean; error: string | null }>({ open: false, error: null });
   const [touchedPickSide, setTouchedPickSide] = useState<Record<number, boolean>>({});
+  // Track unsaved changes
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const handleHomeDoubleTap = useDoubleTap(() => setHomeDialogOpen(true));
 
   const handleHomeDialog = () => {
@@ -174,12 +177,14 @@ export default function EnterPicksPage() {
       return next;
     });
     setTouchedPickSide((m) => ({ ...m, [gameId]: true }));
+    setHasUnsavedChanges(true);
   };
 
   const handleMargin = (gameId: number, raw: string) => {
     const digits = raw.replace(/[^0-9]/g, "").slice(0, 2);
     const n = digits === "" ? 0 : Math.max(0, Math.min(99, Number(digits)));
     setDraft((d) => ({ ...d, [gameId]: { ...d[gameId], predicted_margin: n } }));
+    setHasUnsavedChanges(true);
   };
 
   const handleSubmit = async () => {
@@ -241,7 +246,6 @@ export default function EnterPicksPage() {
       predicted_margin: draft[g.game_id].predicted_margin,
     }));
 
-
     try {
       // Show submitting dialog
       setSubmitDialog({ open: true, error: null });
@@ -252,6 +256,7 @@ export default function EnterPicksPage() {
       // Close dialog immediately once submission succeeds
       setSubmitDialog({ open: false, error: null });
       setSnackbar({ open: true, message: "Picks submitted!", severity: "success" });
+      setHasUnsavedChanges(false);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Failed to submit picks";
       // Keep dialog open and show error
@@ -261,7 +266,7 @@ export default function EnterPicksPage() {
 
     // Re-fetch picks to reflect server-side normalization, if any (best-effort)
     try {
-  const newPicks = await getMyPicksForWeek(week, selectedPigeon ?? me?.pigeon_number);
+      const newPicks = await getMyPicksForWeek(week, selectedPigeon ?? me?.pigeon_number);
       const byGame: Record<number, PickDraft> = {};
       for (const p of newPicks) byGame[p.game_id] = { picked_home: p.picked_home, predicted_margin: p.predicted_margin };
       setDraft((prev) => {
@@ -387,6 +392,13 @@ export default function EnterPicksPage() {
         {lastSubmission && (
           <Banner severity="info" sx={{ mb: 2 }}>
             Last submission: {formatSubmissionTime(lastSubmission)}
+          </Banner>
+        )}
+        {/* Unsaved changes warning banner */}
+        {hasUnsavedChanges && (
+          <Banner severity="warning" sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+            <WarningAmberOutlinedIcon sx={{ color: '#f57c00', verticalAlign: 'middle' }} />
+            <span> Your changes are not yet submitted</span>
           </Banner>
         )}
 
