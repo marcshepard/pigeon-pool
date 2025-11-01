@@ -8,25 +8,27 @@ export default function AboutPage() {
                 Pigeon pool rules
             </Typography>
             <Typography variant="body1" sx={{ mb: 1 }}>
-                <b>1.</b> Submit your picks from the <Link to="/enter-picks">Enter Picks page</Link> by 5PM Tuesday PST.
+                <b>1.</b> Submit your picks from the <Link to="/enter-picks">Enter Picks page</Link> by Tuesday, 5PM PST.
                 You must pick the WINNER of each game and by how many points they will win (SPREAD).
                 If you don't submit picks by the deadline, you will get a last place finish for the week.
             </Typography>
             <Typography variant="body1" sx={{ mb: 1 }}>
                 <b>2.</b> You will be able to see everyone's picks on the <Link to="/picks-and-results">Picks and Results</Link> Wednesday morning.
+                The <Link to="/analytics">Analytics</Link> page provides analysis of your picks, including which are the most important and
+                how you can finish in the money.
             </Typography>
             <Typography variant="body1" sx={{ mb: 1 }}>
-                <b>4.</b> Your score for the week is the total of the DIFFERENCES between your picked spreads and the actual spreads,
+                <b>3.</b> Your score for the week is the total of the DIFFERENCES between your picked spreads and the actual spreads,
                 plus a seven point “penalty” for each game where you did not pick the winning team. The lower your weekly score, the better.
                 Partial and final scores will also be available on the <Link to="/picks-and-results">Picks and Results</Link> once the first game has started.
             </Typography>
             <Typography variant="body1" sx={{ mb: 1 }}>
-                <b>5.</b> Your cumulative score is the sum of your weekly rankings, MINUS your highest weekly ranking.
+                <b>4.</b> Your cumulative score is the sum of your weekly rankings, MINUS your highest weekly ranking.
                 The lower your cumulative score, the better. You can view your weekly and cumulative scores on
                 the <Link to="/year-to-date">Year-to-date page</Link>.
             </Typography>
             <Typography variant="body1" sx={{ mb: 1 }}>
-                <b>6.</b> Payoffs are per the table below and are sent by US mail.
+                <b>5.</b> Payoffs are per the table below and are sent by US mail.
             </Typography>
             <Box mt={4}>
                 <Typography variant="h6" gutterBottom align="center">Payoff Table</Typography>
