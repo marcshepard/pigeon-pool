@@ -92,6 +92,13 @@ export default function PicksheetPage() {
     return games.some(g => g.status !== "scheduled");
   }, [games]);
 
+  // Memoize defaultSort to prevent unnecessary re-renders and sort resets
+  const defaultSort = useMemo(() => {
+    return showResultsCols 
+      ? { key: "points", dir: "asc" as const } 
+      : { key: "pigeon_name", dir: "asc" as const };
+  }, [showResultsCols]);
+
   // Columns ----------------------------------------------------------
   const columns: ColumnDef<ResultsRow>[] = useMemo(() => {
     const cols: ColumnDef<ResultsRow>[] = [
@@ -346,7 +353,7 @@ export default function PicksheetPage() {
                 columns={columns}
                 pinnedTopRows={[]}
                 pinnedBottomRows={consensusRow ? [consensusRow] : []}
-                defaultSort={showResultsCols ? { key: "points", dir: "asc" } : { key: "pigeon_name", dir: "asc" }}
+                defaultSort={defaultSort}
                 printTitle={`Results — Week ${week ?? ""}`}
                 getRowId={(r) => r.pigeon_number}
                 highlightRowId={user.pigeon_number}

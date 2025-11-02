@@ -78,6 +78,7 @@ export function DataGridLite<T>({
   const [sortKey, setSortKey] = useState<string | null>(defaultSort?.key ?? null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">(defaultSort?.dir ?? "asc");
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const userOverrodeSort = useRef(false); // Track if user manually changed sort
 
   const orderedCols = useMemo(() => {
     const left = columns.filter(c => c.pin === "left");
@@ -110,6 +111,8 @@ export function DataGridLite<T>({
     }
   }, [orderedCols, sortKey, defKey, defDir]);
   useEffect(() => {
+    // Only reset to default if user hasn't manually overridden the sort
+    if (userOverrodeSort.current) return;
     if (!defKey) return;
     const hasTarget = orderedCols.some(c => c.key === defKey);
     const differs = sortKey !== defKey || sortDir !== defDir;
@@ -117,7 +120,14 @@ export function DataGridLite<T>({
       setSortKey(defKey);
       setSortDir(defDir);
     }
-  }, [defKey, defDir, orderedCols, sortKey, sortDir]);
+    // Note: orderedCols deliberately excluded to avoid resetting user's sort when columns update
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defKey, defDir, sortKey, sortDir]);
+  
+  // Reset the override flag when defaultSort changes
+  useEffect(() => {
+    userOverrodeSort.current = false;
+  }, [defKey, defDir]);
 
 
   const sortedRows = useMemo(() => {
@@ -164,6 +174,7 @@ export function DataGridLite<T>({
 
     const onToggle = () => {
       if (!sortable) return;
+      userOverrodeSort.current = true; // Mark that user manually changed sort
       if (!isSorted) {
         setSortKey(c.key);
         setSortDir("asc");

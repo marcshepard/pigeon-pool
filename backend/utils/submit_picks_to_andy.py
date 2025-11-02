@@ -23,6 +23,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from playwright.async_api import async_playwright
 
+from backend.utils.logger import info
+
 
 class PickForAndy(BaseModel):
     home: str
@@ -147,6 +149,7 @@ async def _enter_form(page) -> None:
 
 async def submit_to_andy(body: SubmitBody, deadline_sec: int = 20) -> Dict[str, Any]:
     url = f"https://pigeonpool.survey.fm/week{str(body.week).zfill(2)}-25"
+    info(f"Submitting picks to Andy's Pigeon Pool: {url}")
     shot = os.path.join(
         tempfile.gettempdir(),
         f"andy-w{body.week}-p{body.pigeon_number}-{datetime.now(timezone.utc):%Y%m%d-%H%M%S}.png",
