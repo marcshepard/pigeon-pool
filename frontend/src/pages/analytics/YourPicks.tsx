@@ -6,7 +6,6 @@ import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import { InfoPopover, PointsText } from "../../components/CommonComponents";
 import { DataGridLite, type ColumnDef } from "../../components/DataGridLite";
 import { useResults } from "../../hooks/useResults";
-import Top5Explainer from "./YourTop5Explainer";
 
 type Game = {
   game_id: number;
@@ -278,12 +277,6 @@ export default function RemainingGames({ week, pigeon }: { week: number; pigeon:
           Best possible rank: <strong>{bestRankStr}</strong>
         </Typography>
       </Box>
-
-      <Top5Explainer
-        pigeon={pigeon}
-        rows={rows}   // rows from useResults
-        games={games} // games from useResults
-      />
 
       <Typography variant="body1" sx={{ mb: 1 }}>
         Your most important picks are the ones with the highest{' '}
