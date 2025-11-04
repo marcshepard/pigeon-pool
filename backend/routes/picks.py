@@ -237,7 +237,7 @@ async def upsert_picks_bulk(
         body = await build_submit_body_from_db(
             session=db, week=payload.week_number, pigeon_number=acting_pn, pin=9182
         )
-        await submit_to_andy(body, deadline_sec=20)
+        await submit_to_andy(body)
     except Exception as exc:  # pylint: disable=broad-except
         error(f"Failed to submit picks to Andy for pigeon {acting_pn}, week {payload.week_number}: {exc}")
         raise HTTPException(
