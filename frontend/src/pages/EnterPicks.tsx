@@ -535,19 +535,20 @@ export default function EnterPicksPage() {
         </Box>
       )}
 
+      {/* Unsaved changes warning banner - always visible above scrollable area */}
+      {hasUnsavedChanges && (
+        <Banner severity="warning" sx={{ mx: 0.5, mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <WarningAmberOutlinedIcon sx={{ color: '#f57c00', verticalAlign: 'middle' }} />
+          <span> Your changes are not yet submitted</span>
+        </Banner>
+      )}
+
       {/* Scrollable picks area below header and selector */}
       <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto', px: 0.5, pt: 2 }}>
         {/* Last submission time */}
         {lastSubmission && (
           <Banner severity="info" sx={{ mb: 2 }}>
             Last submission: {formatSubmissionTime(lastSubmission)}
-          </Banner>
-        )}
-        {/* Unsaved changes warning banner */}
-        {hasUnsavedChanges && (
-          <Banner severity="warning" sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
-            <WarningAmberOutlinedIcon sx={{ color: '#f57c00', verticalAlign: 'middle' }} />
-            <span> Your changes are not yet submitted</span>
           </Banner>
         )}
 
