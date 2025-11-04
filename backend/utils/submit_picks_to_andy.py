@@ -10,13 +10,11 @@ python -m playwright install chromium && <old startup command>
 from __future__ import annotations
 
 import asyncio
-import os
 import re
 import sys
 import threading
 import queue
-import tempfile
-from datetime import datetime, timezone
+import contextlib
 from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
@@ -25,6 +23,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from playwright.async_api import async_playwright
 
 from backend.utils.logger import debug, info, warn
+
+# ---- Tunable timeouts (ms / s) ----
+DEFAULT_DEADLINE_SEC          = 60      # whole coroutine deadline (goto -> fill -> click -> confirm)
+SURVEY_JSON_READY_TIMEOUT_MS  = 8000    # wait for window.survey to be populated
+PLAYWRIGHT_ELEMENT_TIMEOUT_MS = 8000    # per-element waits (selectors, fill, check)
+PLAYWRIGHT_NAV_TIMEOUT_MS     = 30000   # navigation/goto
+FINISH_CLICK_TIMEOUT_MS       = 8000    # clicking the Finish button
+SUCCESS_WAIT_TIMEOUT_MS       = 30000   # wait for "Your picks have been recorded."
 
 # --- Helper functions for translating the game names on the form with the game names in the database ---"""
 def _dbg_log(msg: str) -> None:
@@ -149,13 +155,16 @@ async def _enter_form(page) -> None:
     if await page.locator("body.survey-start").count() > 0:
         btn = page.locator('input[type="submit"][value*="Start Survey" i]')
         if await btn.count() > 0:
-            await btn.click(timeout=6000)
+            await btn.click(timeout=FINISH_CLICK_TIMEOUT_MS)
         else:
-            await page.get_by_role("button", name=re.compile(r"start\s+survey", re.I)).click(timeout=6000)
-    await page.wait_for_selector("body.survey-page-1", timeout=8000)
+            await page.get_by_role("button", name=re.compile(r"start\s+survey", re.I))\
+                      .click(timeout=FINISH_CLICK_TIMEOUT_MS)
+
+    await page.wait_for_selector("body.survey-page-1", timeout=PLAYWRIGHT_ELEMENT_TIMEOUT_MS)
+
     await page.wait_for_function(
         "typeof window.survey==='object' && Array.isArray(window.survey.pages)",
-        timeout=8000,
+        timeout=SURVEY_JSON_READY_TIMEOUT_MS,
     )
 
     # Extra assert + context for logs if form isn't present
@@ -164,19 +173,17 @@ async def _enter_form(page) -> None:
         _dbg_log("[submit] Did not find form#page-1; first 600 chars of HTML:\n" + html_snip)
         raise RuntimeError("expected survey form not found")
 
-async def submit_to_andy(body: SubmitBody, deadline_sec: int = 20) -> Dict[str, Any]:
+async def submit_to_andy(body: SubmitBody, deadline_sec: int = DEFAULT_DEADLINE_SEC) -> None:
     """ Submits picks to Andy's Pigeon Pool survey site using Playwright. """
     url = f"https://pigeonpool.survey.fm/week{str(body.week).zfill(2)}-25"
     info(f"Submitting picks to Andy's Pigeon Pool: {url}")
-    shot = os.path.join(
-        tempfile.gettempdir(),
-        f"andy-w{body.week}-p{body.pigeon_number}-{datetime.now(timezone.utc):%Y%m%d-%H%M%S}.png",
-    )
 
-    async def _run() -> Dict[str, Any]:
+    async def _run() -> None:
         async with async_playwright() as pw:
             browser = await pw.chromium.launch(args=["--no-sandbox"])
             page = await browser.new_page()
+            page.set_default_timeout(PLAYWRIGHT_ELEMENT_TIMEOUT_MS)
+            page.set_default_navigation_timeout(PLAYWRIGHT_NAV_TIMEOUT_MS)
 
             # Pipe page console/errors into your logs
             page.on("console", lambda m: debug(f"[PAGE CONSOLE] {m.type}: {m.text}"))
@@ -302,7 +309,7 @@ async def submit_to_andy(body: SubmitBody, deadline_sec: int = 20) -> Dict[str, 
                         raise RuntimeError(f"No radio answer for team '{winner_team}' in '{key_used}'")
 
                     qid_w = str(wq["question_id"])
-                    await page.check(f'#q_{qid_w}_{ans_id}', timeout=8000)
+                    await page.check(f'#q_{qid_w}_{ans_id}', timeout=PLAYWRIGHT_ELEMENT_TIMEOUT_MS)
                     qid_s = str(sq["question_id"])
                     await page.fill(f'input[name="q_{qid_s}[value]"]', str(pick.spread))
                     debug(f"[submit] Filled: {key_used} → winner '{winner_team}', spread {pick.spread}")
@@ -314,17 +321,15 @@ async def submit_to_andy(body: SubmitBody, deadline_sec: int = 20) -> Dict[str, 
                 debug(f"[submit] Checked radio count: {checked}; expected={len(body.picks)}")
 
                 # --- Click Finish and REQUIRE the success text (unchanged) ---
-                await page.get_by_role("button", name=re.compile(r"finish\s+survey", re.I)).click(timeout=8000)
+                await page.get_by_role("button", name=re.compile(r"finish\s+survey", re.I)).click(timeout=FINISH_CLICK_TIMEOUT_MS)
 
                 success_selector = "text=Your picks have been recorded."
                 error_selector = ".PDF_error, .error, .qError, .PDF_mand ~ .error"
                 try:
-                    await page.wait_for_selector(success_selector, timeout=10000)
+                    await page.wait_for_selector(success_selector, timeout=SUCCESS_WAIT_TIMEOUT_MS)
                     submitted_ok = True
                 except Exception:
                     submitted_ok = False
-
-                await page.screenshot(path=shot, full_page=True)
 
                 if not submitted_ok:
                     err_count = await page.locator(error_selector).count()
@@ -335,22 +340,21 @@ async def submit_to_andy(body: SubmitBody, deadline_sec: int = 20) -> Dict[str, 
                     warn(f"[submit] Submit failed: success text not found. Current URL: {page.url}")
                     raise RuntimeError("submit_failed:unknown")
 
-                await browser.close()
-                return {"ok": True, "screenshot_path": shot}
+                return
 
-            except Exception:
-                await browser.close()
-                raise
+            finally:
+                with contextlib.suppress(Exception):
+                    await browser.close()
 
     # Windows worker thread wrapper (unchanged semantics)
     if sys.platform.startswith("win"):
-        def _run_in_proactor_thread(coro: "asyncio.Future[Dict[str, Any]]") -> Dict[str, Any]:
+        def _run_in_proactor_thread(coro: "asyncio.Future[None]") -> None:
             q: "queue.Queue[tuple[str, object]]" = queue.Queue()
             def _worker() -> None:
                 try:
                     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())  # type: ignore[attr-defined]
-                    result = asyncio.run(coro)
-                    q.put(("ok", result))
+                    asyncio.run(coro)
+                    q.put(("ok", None))
                 except Exception as e:
                     q.put(("err", e))
             t = threading.Thread(target=_worker, daemon=True)
@@ -361,13 +365,14 @@ async def submit_to_andy(body: SubmitBody, deadline_sec: int = 20) -> Dict[str, 
                 raise RuntimeError("timeout")
             kind, payload = q.get_nowait()
             if kind == "ok":
-                return payload  # type: ignore[return-value]
-            raise payload  # type: ignore[misc]
+                return  # success (None)
+            raise payload  # re-raise original exception
 
-        return _run_in_proactor_thread(_run())
+        _run_in_proactor_thread(_run())
+        return
 
     try:
-        return await asyncio.wait_for(_run(), timeout=deadline_sec)
+        await asyncio.wait_for(_run(), timeout=deadline_sec)
     except asyncio.TimeoutError:
         warn("[submit] Timed out waiting for Playwright submit coroutine")
         raise
