@@ -243,7 +243,7 @@ async def run_email_mon(session: AsyncSession) -> dict[str, Any]:
         f"Congratulations to {' and '.join(winners)} for the first place finish in Week {week}!\n"
         "The final results are available at https://www.pigeonpool.com/picks-and-results.\n"
         "The year-to-date cummulative scores are available at  https://www.pigeonpool.com/year-to-date.\n\n"
-        "Don't forget to enter your picks for next week before the Tuesday midnight deadline at https://www.pigeonpool.com/enter-picks!\n\n"
+        "Don't forget to enter your picks in before the Tuesday's 5PM PST deadline at https://www.pigeonpool.com/enter-picks!\n\n"
         "--Andy (not really, as this email is automated from the pigeonpool app)"
     )
     html = (
@@ -251,7 +251,7 @@ async def run_email_mon(session: AsyncSession) -> dict[str, Any]:
         f"<p>Congratulations to <b>{' and '.join(winners)}</b> for the first place finish in Week {week}!</p>"
         "<p>The final results are available at <a href='https://www.pigeonpool.com/picks-and-results'>https://www.pigeonpool.com/picks-and-results</a>.</p>"
         "<p>The year-to-date cummulative scores are available at https://www.pigeonpool.com/year-to-date.</p>"
-        "<p>Don't forget to enter your picks for next week before the 5PM Tuesday PST deadline at https://www.pigeonpool.com/enter-picks.</p>"
+        "<p>Don't forget to enter your picks in before Tuesday's 5PM PST deadline at https://www.pigeonpool.com/enter-picks.</p>"
         "<p>--Andy (not really, as this email is automated from the pigeonpool app)</p>"
     )
 
@@ -304,15 +304,17 @@ ORDER BY pl.pigeon_number
     plain = (
         "Friendly Reminder"
         "It looks like you haven’t submitted all your picks for this week.\n"
-        "Please log in and enter them before tonight’s deadline at https://www.pigeonpool.com/enter-picks.\n\n"
+        "I will leave the entry form open for another couple hours at https://www.pigeonpool.com/enter-picks.\n\n"
         "Good luck!"
+        "--Andy (not really, as this email is automated from the pigeonpool app)"
     )
     html = (
         "<p>Friendly Reminder</p>"
         "<p>It looks like you haven’t submitted all your picks for this week.</p>"
-        "<p>Please enter them before tonight’s deadline at https://www.pigeonpool.com/enter-picks.</p>"
+        "<p>I will leave the entry form open for another couple hours at https://www.pigeonpool.com/enter-picks.</p>"
         "<p/>"
         "<p>Good luck!</p>"
+        "<p>--Andy (not really, as this email is automated from the pigeonpool app)</p>"
     )
 
     ok = await asyncio.to_thread(send_bulk_email_bcc, emails, subject, plain, html)
