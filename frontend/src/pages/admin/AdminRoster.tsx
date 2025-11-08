@@ -110,7 +110,6 @@ export default function AdminRoster() {
           <Box flex={1}>
             <PigeonsPanel
               pigeons={pigeons}
-              users={users}
               byPigeon={byPigeon}
               selected={selectedPigeon}
               onSelect={(pn) => {
@@ -133,7 +132,7 @@ export default function AdminRoster() {
         open={snackbar.open}
         message={snackbar.message}
         severity={snackbar.severity}
-        onClose={() => setSnackbar({ ...snackbar, open: false })}
+        onClose={() => setSnackbar((s) => ({ ...s, open: false }))}
       />
     </Box>
   );
@@ -144,7 +143,6 @@ export default function AdminRoster() {
 // -----------------------------
 function PigeonsPanel({
   pigeons,
-  users,
   byPigeon,
   selected,
   onSelect,
@@ -153,7 +151,6 @@ function PigeonsPanel({
   onSnackbar,
 }: {
   pigeons: AdminPigeon[];
-  users: AdminUser[];
   byPigeon: { primary: Record<number, string[]>; secondary: Record<number, string[]> };
   selected: AdminPigeon | null;
   onSelect: (pn: number | null) => void;
@@ -162,17 +159,13 @@ function PigeonsPanel({
   onSnackbar: (message: string, severity?: "success" | "error" | "info" | "warning") => void;
 }) {
   const [name, setName] = useState<string>(selected?.pigeon_name ?? "");
-  const [ownerEmail, setOwnerEmail] = useState<string | null>(selected?.owner_email ?? null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     setName(selected?.pigeon_name ?? "");
-    setOwnerEmail(selected?.owner_email ?? null);
   }, [selected]);
 
   const options = useMemo(() => pigeons.map((p) => ({ label: `${p.pigeon_number} – ${p.pigeon_name}`, pn: p.pigeon_number })), [pigeons]);
-
-  const ownerOptions = useMemo(() => users.map((u) => ({ label: u.email, email: u.email })), [users]);
 
   const primaryList = selected ? byPigeon.primary[selected.pigeon_number] ?? [] : [];
   const secondaryList = selected ? byPigeon.secondary[selected.pigeon_number] ?? [] : [];
@@ -184,7 +177,7 @@ function PigeonsPanel({
       </Typography>
 
       <Typography variant="body2" sx={{ mb: 6 }}>
-        You can change a pigeon's name or owner here
+        You can change a pigeon's name here
       </Typography>
 
       <Autocomplete
@@ -205,13 +198,6 @@ function PigeonsPanel({
             onChange={(e) => setName(e.target.value)}
           />
 
-          <Autocomplete
-            options={ownerOptions}
-            value={ownerEmail ? { label: ownerEmail, email: ownerEmail } : null}
-            onChange={(_, v) => setOwnerEmail(v?.email ?? null)}
-            renderInput={(params) => <TextField {...params} label="Owner (optional)" helperText="Choose an existing user or leave unassigned" />}
-          />
-
           <Stack direction="row" spacing={1}>
             <Button
               variant="contained"
@@ -222,16 +208,14 @@ function PigeonsPanel({
                 try {
                   await adminUpdatePigeon(selected.pigeon_number, {
                     pigeon_name: name === selected.pigeon_name ? undefined : name,
-                    owner_email: ownerEmail === selected.owner_email ? undefined : ownerEmail,
                   });
                   const updated: AdminPigeon = {
                     pigeon_number: selected.pigeon_number,
                     pigeon_name: name,
-                    owner_email: ownerEmail,
+                    owner_email: selected.owner_email ?? null,
                   };
                   onPigeonChanged(updated);
                   onSnackbar("Saved changes.", "success");
-                  // Owner changes affect user assignments; refresh users map
                   await refreshUsers();
                 } catch (e: unknown) {
                   onSnackbar(e instanceof Error ? e.message : String(e), "error");
@@ -241,27 +225,6 @@ function PigeonsPanel({
               }}
             >
               Save changes
-            </Button>
-            <Button
-              variant="outlined"
-              disabled={saving || !ownerEmail}
-              onClick={async () => {
-                if (!selected) return;
-                setSaving(true);
-                try {
-                  await adminUpdatePigeon(selected.pigeon_number, { owner_email: null });
-                  onPigeonChanged({ ...selected, owner_email: null });
-                  await refreshUsers();
-                  setOwnerEmail(null);
-                  onSnackbar("Owner unassigned.", "success");
-                } catch (e: unknown) {
-                  onSnackbar(e instanceof Error ? e.message : String(e), "error");
-                } finally {
-                  setSaving(false);
-                }
-              }}
-            >
-              Unassign owner
             </Button>
           </Stack>
 

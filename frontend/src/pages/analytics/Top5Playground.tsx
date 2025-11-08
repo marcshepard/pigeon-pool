@@ -3,7 +3,8 @@
  */
 
 import { useState, useMemo } from 'react';
-import { Box, Typography, Button, Paper, Select, MenuItem, FormControl, InputLabel, Dialog, DialogContent, DialogActions } from '@mui/material';
+import { Box, Typography, Button, Paper, Select, MenuItem, FormControl, InputLabel, Dialog, DialogContent, DialogActions, IconButton } from '@mui/material';
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 
 import Top5Explainer from "./YourTop5Explainer";
 import { useResults } from '../../hooks/useResults';
@@ -78,61 +79,45 @@ export default function Top5Playground({ pigeon, week }: { pigeon: number; week:
 
   // Recalculate ALL player scores using entered picks for all non-final games
   const recalculatedPlayers = useMemo(() => {
-    //console.log('=== Recalculation Debug ===');
-    //console.log('rows:', rows);
-    //console.log('enteredScores:', enteredScores);
-    //console.log('games:', games);
-    
-    if (!rows.length) {
-      console.log('No rows, returning empty array');
-      return [];
-    }
-    
+    if (!rows.length) return [];
     function getSignedMargin(team: string, margin: number, home: string) {
       if (!team || margin == null) return null;
       return team === home ? margin : -margin;
     }
     // Use all games with scores (final or entered)
     const relevantGames = games.filter(g => (g.status === 'final' && g.home_score != null && g.away_score != null) || enteredScores[g.game_id]);
-    //console.log('relevantGames:', relevantGames);
-    
-    const recalculated: Player[] = rows.map(player => {
+    // Calculate totalScore and validPickCount for each player
+    const recalculated: (Player & { validPickCount: number })[] = rows.map(player => {
       let totalScore = 0;
-      //console.log(`\nProcessing player ${player.pigeon_number} ${player.pigeon_name}`);
+      let validPickCount = 0;
       for (const game of relevantGames) {
         const key = `g_${game.game_id}`;
         let actualSigned: number | null = null;
         if (enteredScores[game.game_id] && enteredScores[game.game_id].team && enteredScores[game.game_id].margin != null) {
-          // Use entered score for actual result
           actualSigned = getSignedMargin(enteredScores[game.game_id].team, enteredScores[game.game_id].margin, game.home_abbr);
-          //console.log(`  Game ${game.game_id}: entered score actualSigned=${actualSigned}`);
         } else if (game.home_score != null && game.away_score != null) {
           actualSigned = game.home_score - game.away_score;
-          //console.log(`  Game ${game.game_id}: actual score actualSigned=${actualSigned}`);
         }
-        // Use player's pick for this game
         const pick = player.picks[key];
         const predSigned = pick ? pick.signed : null;
-        //console.log(`  Game ${game.game_id}: key=${key}, pick=${JSON.stringify(pick)}, predSigned=${predSigned}, actualSigned=${actualSigned}`);
-        if (predSigned != null && actualSigned != null) {
+        if (typeof predSigned === 'number' && predSigned !== 0 && actualSigned != null) {
           const score = scoreForPick(predSigned, actualSigned);
-          //console.log(`  Game ${game.game_id}: score=${score}, totalScore before=${totalScore}`);
           totalScore += score;
-          //console.log(`  Game ${game.game_id}: totalScore after=${totalScore}`);
+          validPickCount++;
         }
       }
-      //console.log(`Player ${player.pigeon_number} final totalScore: ${totalScore}`);
       return {
         ...player,
         points: totalScore,
         rank: 0,
         tie: false,
+        validPickCount,
       };
     });
+    // Only include players with at least one valid pick
+    const filtered = recalculated.filter(p => p.validPickCount > 0);
     // Sort by score ascending (lower is better), then rank
-    const sorted = [...recalculated].sort((a, b) => (a.points ?? 9999) - (b.points ?? 9999) || (a.rank ?? 99) - (b.rank ?? 99));
-    //console.log('Sorted recalculated:', sorted);
-  // ...existing code...
+    const sorted = [...filtered].sort((a, b) => (a.points ?? 9999) - (b.points ?? 9999) || (a.rank ?? 99) - (b.rank ?? 99));
     // Assign ranks with ties
     let lastScore: number | undefined = undefined;
     let lastRank: number | undefined = undefined;
@@ -149,7 +134,6 @@ export default function Top5Playground({ pigeon, week }: { pigeon: number; week:
     sorted.forEach((p) => {
       p.tie = sorted.filter(x => x.points === p.points).length > 1;
     });
-    //console.log('Final recalculatedPlayers:', sorted);
     return sorted;
   }, [enteredScores, rows, games]);
 
@@ -187,6 +171,7 @@ export default function Top5Playground({ pigeon, week }: { pigeon: number; week:
     });
   };
 
+  // --- Removed "Current rank" and "Best possible rank" display at the top ---
   return (
     <Box sx={{ maxWidth: 800, mx: 'auto', mt: 4 }}>
       <Box sx={{ mt: 4 }}>
@@ -212,7 +197,6 @@ export default function Top5Playground({ pigeon, week }: { pigeon: number; week:
                       style={{ 
                         backgroundColor: isCurrentPigeon ? '#fff59d' : undefined 
                       }}
-                      onDoubleClick={() => setExplainerOpen(true)}
                     >
                       <td style={{ padding: '8px', borderTop: '1px solid #eee' }}>{`${player.pigeon_number} ${player.pigeon_name}`}</td>
                       <td style={{ padding: '8px', borderTop: '1px solid #eee' }}>{player.points}</td>
@@ -248,6 +232,60 @@ export default function Top5Playground({ pigeon, week }: { pigeon: number; week:
             return null;
           })()}
       </Box>
+
+      {/* Best possible rank for the current pigeon */}
+      {(() => {
+        // Calculate best possible rank for the current pigeon
+        if (!rows.length) return null;
+        const basePoints = new Map<number, number>();
+        for (const r of rows) basePoints.set(r.pigeon_number, r.points ?? 0);
+        const bestTotals = new Map<number, number>(basePoints);
+        const userRow = rows.find((r) => r.pigeon_number === pigeon) || null;
+        if (userRow) {
+          for (const g of games) {
+            if (g.status === "final") continue;
+            const key = `g_${g.game_id}`;
+            const uPred = userRow.picks[key]?.signed;
+            if (typeof uPred !== "number") continue; // if user has no pick, skip game
+            // This becomes the hypothetical actual
+            const actual = uPred;
+            for (const r of rows) {
+              const pred = r.picks[key]?.signed;
+              if (typeof pred !== "number") continue;
+              const pickScore = (predSigned: number, actualSigned: number) =>
+                Math.abs(predSigned - actualSigned) + (Math.sign(predSigned) !== Math.sign(actualSigned) ? 7 : 0);
+              bestTotals.set(r.pigeon_number, (bestTotals.get(r.pigeon_number) ?? 0) + pickScore(pred, actual));
+            }
+          }
+        }
+        // Only include players with at least one valid pick
+        const validPigeons = rows.filter(r => {
+          return Object.values(r.picks).some(p => typeof p?.signed === 'number' && p.signed !== 0);
+        });
+        const bestUserTotal = bestTotals.get(pigeon);
+        let bestRankStr = "—";
+        let bestRankNum: number | null = null;
+        if (typeof bestUserTotal === "number") {
+          const totals = validPigeons.map(r => bestTotals.get(r.pigeon_number)).filter(t => typeof t === 'number') as number[];
+          const sorted = [...totals].sort((a, b) => a - b);
+          const rank = sorted.findIndex((t) => t === bestUserTotal) + 1;
+          const tie = totals.filter((t) => t === bestUserTotal).length > 1;
+          bestRankStr = `${tie ? "T" : ""}${rank}`;
+          bestRankNum = rank;
+        }
+        return (
+          <Box sx={{ mt: 2, textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
+            <Typography variant="body1">
+              Your best possible rank: <strong>{bestRankStr}</strong>
+            </Typography>
+            {bestRankNum !== null && bestRankNum <= 5 && (
+              <IconButton size="small" onClick={() => setExplainerOpen(true)} aria-label="Best possible rank info">
+                <InfoOutlinedIcon fontSize="small" />
+              </IconButton>
+            )}
+          </Box>
+        );
+      })()}
 
       <Box sx={{ mt: 4 }}>
         <Typography variant="body1" fontWeight={700} gutterBottom>Remaining games</Typography>

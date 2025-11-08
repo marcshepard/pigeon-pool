@@ -132,67 +132,7 @@ export default function RemainingGames({ week, pigeon }: { week: number; pigeon:
   }, [remGames, consensusRow, rows, userRow, pigeon]);
 
   // Ranks header: current rank (finals + live-as-final), best possible rank (future as user's picks)
-  const { currentRankStr, bestRankStr } = useMemo(() => {
-    if (!rows.length) return { currentRankStr: "—", bestRankStr: "—" };
 
-    const basePoints = new Map<number, number>();
-    for (const r of rows) basePoints.set(r.pigeon_number, r.points ?? 0);
-
-    // 1) Current rank: treat in-progress as if ended now
-    const nowTotals = new Map<number, number>(basePoints);
-    for (const g of games) {
-      if (g.status !== "in_progress") continue;
-      if (g.home_score == null || g.away_score == null) continue;
-      const actual = g.home_score - g.away_score;
-      const key = `g_${g.game_id}`;
-      for (const r of rows) {
-        const pred = r.picks[key]?.signed;
-        if (typeof pred !== "number") continue;
-        nowTotals.set(r.pigeon_number, (nowTotals.get(r.pigeon_number) ?? 0) + pickScore(pred, actual));
-      }
-    }
-
-    const currentUserTotal = nowTotals.get(pigeon);
-    let currentRankStr = "—";
-    if (typeof currentUserTotal === "number") {
-      const totals = [...nowTotals.values()];
-      const sorted = [...totals].sort((a, b) => a - b);
-      const rank = sorted.findIndex((t) => t === currentUserTotal) + 1;
-      const tie = totals.filter((t) => t === currentUserTotal).length > 1;
-      currentRankStr = `${tie ? "T" : ""}${rank}`;
-    }
-
-    // 2) Best possible rank: assume every non-final ends exactly as user picked
-    const bestTotals = new Map<number, number>(basePoints);
-    const uRow = userRow;
-    if (uRow) {
-      for (const g of games) {
-        if (g.status === "final") continue;
-        const key = `g_${g.game_id}`;
-        const uPred = uRow.picks[key]?.signed;
-        if (typeof uPred !== "number") continue; // if user has no pick, skip game
-        // This becomes the hypothetical actual
-        const actual = uPred;
-        for (const r of rows) {
-          const pred = r.picks[key]?.signed;
-          if (typeof pred !== "number") continue;
-          bestTotals.set(r.pigeon_number, (bestTotals.get(r.pigeon_number) ?? 0) + pickScore(pred, actual));
-        }
-      }
-    }
-
-    const bestUserTotal = bestTotals.get(pigeon);
-    let bestRankStr = "—";
-    if (typeof bestUserTotal === "number") {
-      const totals = [...bestTotals.values()];
-      const sorted = [...totals].sort((a, b) => a - b);
-      const rank = sorted.findIndex((t) => t === bestUserTotal) + 1;
-      const tie = totals.filter((t) => t === bestUserTotal).length > 1;
-      bestRankStr = `${tie ? "T" : ""}${rank}`;
-    }
-
-    return { currentRankStr, bestRankStr };
-  }, [rows, games, pigeon, userRow]);
 
   const [detailsAnchor, setDetailsAnchor] = useState<null | HTMLElement>(null);
   const [infoAnchor, setInfoAnchor] = useState<null | HTMLElement>(null);
@@ -267,17 +207,9 @@ export default function RemainingGames({ week, pigeon }: { week: number; pigeon:
   if (loading) return <Typography>Loading…</Typography>;
   if (error) return <Typography color="error">{error}</Typography>;
 
+
   return (
     <Box>
-      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 2, mb: 2 }}>
-        <Typography variant="body1">
-          Current rank: <strong>{currentRankStr}</strong>
-        </Typography>
-        <Typography variant="body1">
-          Best possible rank: <strong>{bestRankStr}</strong>
-        </Typography>
-      </Box>
-
       <Typography variant="body1" sx={{ mb: 1 }}>
         Your most important picks are the ones with the highest{' '}
         <Box component="span" sx={{ display: 'inline' }}>

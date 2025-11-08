@@ -10,7 +10,7 @@ import { type ResultsRow } from "../../utils/resultsShaping";
 import type { GameMeta } from "../../hooks/useAppCache";
 
 // ===== Tunables =====
-const MAX_EXPLAIN_GAMES = 3;   // change here if you later want 4
+const MAX_EXPLAIN_GAMES = 2;   // change here if you later want 4
 const TOP_K = 5;
 
 // ===== Testing and debugging =====
