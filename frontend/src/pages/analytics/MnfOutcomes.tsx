@@ -201,8 +201,8 @@ function OneGameTable(props: {
   // Build a legend like the two-game grid (only from displayed rows)
   const legendMap = useMemo(() => {
     const names = new Set<string>();
-    displayRows.forEach((r, idx) => {
-      // Rebuild rankCols logic to match table display
+    displayRows.forEach((r) => {
+      // Rebuild rankCols logic to match the table display
       const ranks = r.top5Ranks ?? (() => {
         const t = r.top5;
         if (!t || t.length === 0) return [] as Array<Array<{ pn: number; name: string; total: number }>>;
