@@ -201,9 +201,33 @@ function OneGameTable(props: {
   // Build a legend like the two-game grid (only from displayed rows)
   const legendMap = useMemo(() => {
     const names = new Set<string>();
-    displayRows.forEach(r => {
-      (r.top5Ranks ?? []).forEach(rank => rank.forEach(p => names.add(p.name)));
-      r.top5.forEach(p => names.add(p.name));
+    displayRows.forEach((r, idx) => {
+      // Rebuild rankCols logic to match table display
+      const ranks = r.top5Ranks ?? (() => {
+        const t = r.top5;
+        if (!t || t.length === 0) return [] as Array<Array<{ pn: number; name: string; total: number }>>;
+        const groups: Array<Array<{ pn: number; name: string; total: number }>> = [];
+        let i = 0;
+        while (i < t.length && groups.length < 5) {
+          const g: Array<{ pn: number; name: string; total: number }> = [t[i]];
+          let j = i + 1;
+          while (j < t.length && t[j].total === t[i].total) { g.push(t[j]); j++; }
+          groups.push(g);
+          i = j;
+        }
+        return groups;
+      })();
+      const rankCols: Array<Array<{ pn: number; name: string; total: number }>> = [[], [], [], [], []];
+      let pos = 1;
+      for (const g of ranks) {
+        if (pos > 5) break;
+        rankCols[pos - 1] = g;
+        pos += g.length;
+      }
+      // Only add players actually shown in the table (columns 1-5)
+      for (let i = 0; i < 5; ++i) {
+        rankCols[i].forEach(p => names.add(p.name));
+      }
     });
     const arr = Array.from(names).sort();
     return arr.map(name => ({ name, tag: initials(name) }));
