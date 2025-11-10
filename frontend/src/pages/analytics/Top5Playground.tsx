@@ -5,9 +5,10 @@
 import { useState, useMemo } from 'react';
 import { Box, Typography, Button, Paper, Select, MenuItem, FormControl, InputLabel, Dialog, DialogContent, DialogActions } from '@mui/material';
 
+import { scoreForPick, type PickCell } from '../../utils/resultsShaping';
+import { calculateBestPossibleRank } from '../../utils/bestPossibleRank';
 import Top5Explainer from "./YourTop5Explainer";
 import { useResults } from '../../hooks/useResults';
-import { scoreForPick, type PickCell } from '../../utils/resultsShaping';
 
 type EnteredScore = { team: string; margin: number };
 type Player = {
@@ -178,58 +179,11 @@ export default function Top5Playground({ pigeon, week }: { pigeon: number; week:
           Enter scores to see the effect on the top 5 rankings
         </Typography>
               {/* Best possible rank for the current pigeon */}
-        {(() => {
-          // Calculate best possible rank for the current pigeon
-          if (!rows.length) return null;
-          const basePoints = new Map<number, number>();
-          for (const r of rows) basePoints.set(r.pigeon_number, r.points ?? 0);
-          const bestTotals = new Map<number, number>(basePoints);
-          const userRow = rows.find((r) => r.pigeon_number === pigeon) || null;
-          // Check if pigeon has entered any picks
-          const hasAnyPicks = userRow && Object.values(userRow.picks).some(p => typeof p?.signed === 'number' && p.signed !== 0);
-          let bestRankStr = "—";
-          if (!hasAnyPicks) {
-            // No picks entered: last place
-            bestRankStr = "last place";
-          } else {
-            if (userRow) {
-              for (const g of games) {
-                if (g.status === "final") continue;
-                const key = `g_${g.game_id}`;
-                const uPred = userRow.picks[key]?.signed;
-                if (typeof uPred !== "number") continue; // if user has no pick, skip game
-                // This becomes the hypothetical actual
-                const actual = uPred;
-                for (const r of rows) {
-                  const pred = r.picks[key]?.signed;
-                  if (typeof pred !== "number") continue;
-                  const pickScore = (predSigned: number, actualSigned: number) =>
-                    Math.abs(predSigned - actualSigned) + (Math.sign(predSigned) !== Math.sign(actualSigned) ? 7 : 0);
-                  bestTotals.set(r.pigeon_number, (bestTotals.get(r.pigeon_number) ?? 0) + pickScore(pred, actual));
-                }
-              }
-            }
-            // Only include players with at least one valid pick
-            const validPigeons = rows.filter(r => {
-              return Object.values(r.picks).some(p => typeof p?.signed === 'number' && p.signed !== 0);
-            });
-            const bestUserTotal = bestTotals.get(pigeon);
-            if (typeof bestUserTotal === "number") {
-              const totals = validPigeons.map(r => bestTotals.get(r.pigeon_number)).filter(t => typeof t === 'number') as number[];
-              const sorted = [...totals].sort((a, b) => a - b);
-              const rank = sorted.findIndex((t) => t === bestUserTotal) + 1;
-              const tie = totals.filter((t) => t === bestUserTotal).length > 1;
-              bestRankStr = `${tie ? "T" : ""}${rank}`;
-            }
-          }
-          return (
-            <Box sx={{ my: 1, textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
-              <Typography variant="body1">
-                Your best possible rank: <strong>{bestRankStr}</strong>
-              </Typography>
-            </Box>
-          );
-        })()}
+        <Box sx={{ my: 1, textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
+          <Typography variant="body1">
+            Your best possible rank: <strong>{calculateBestPossibleRank(pigeon, rows, games)}</strong>
+          </Typography>
+        </Box>
         <Typography variant="body1" fontWeight={700} gutterBottom>Scores from completed games</Typography>
         <Paper sx={{ p: 2 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
