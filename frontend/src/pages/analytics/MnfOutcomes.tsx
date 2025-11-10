@@ -161,48 +161,53 @@ function OneGameTable(props: {
   }
 
   // Collapse consecutive rows with identical Top 5 (names and order)
-  // Helper to get both order and tie structure for Top 5
-  function top5OrderAndTiesKey(top5: Array<{ name: string; total: number }>) {
-    if (!top5.length) return '';
+  // Helper to get both order and tie structure for Top 5 ranks (includes all tied players at rank 5)
+  function top5RanksKey(top5Ranks?: Array<Array<{ name: string; total: number }>>) {
+    if (!top5Ranks || !top5Ranks.length) return '';
     let key = '';
-    let prevScore = top5[0].total;
-    key += top5[0].name;
-    for (let i = 1; i < top5.length; ++i) {
-      key += (top5[i].total === prevScore ? '=' : '>') + top5[i].name;
-      prevScore = top5[i].total;
+    for (let rankIdx = 0; rankIdx < top5Ranks.length; rankIdx++) {
+      const group = top5Ranks[rankIdx];
+      if (rankIdx > 0) key += '>';
+      // Sort names within the group for consistent comparison
+      const sortedNames = group.map(p => p.name).sort();
+      if (group.length > 1) {
+        key += '[' + sortedNames.join('=') + ']';
+      } else {
+        key += sortedNames[0];
+      }
     }
     return key;
   }
-
-  // Build a legend like the two-game grid
-  const legendMap = useMemo(() => {
-    const names = new Set<string>();
-    rows.forEach(r => {
-      (r.top5Ranks ?? []).forEach(rank => rank.forEach(p => names.add(p.name)));
-      r.top5.forEach(p => names.add(p.name));
-    });
-    const arr = Array.from(names).sort();
-    return arr.map(name => ({ name, tag: initials(name) }));
-  }, [rows]);
 
   // Prune both the highest and lowest margin rows for each team as described
   // Prune only the top run and bottom run of identical Top 5 order (including ties)
   let start = 0;
   while (
     start < rows.length - 1 &&
-    top5OrderAndTiesKey(rows[start].top5) === top5OrderAndTiesKey(rows[start + 1].top5)
+    top5RanksKey(rows[start].top5Ranks) === top5RanksKey(rows[start + 1].top5Ranks)
   ) {
     start++;
   }
   let end = rows.length - 1;
   while (
     end > start &&
-    top5OrderAndTiesKey(rows[end].top5) === top5OrderAndTiesKey(rows[end - 1].top5)
+    top5RanksKey(rows[end].top5Ranks) === top5RanksKey(rows[end - 1].top5Ranks)
   ) {
     end--;
   }
   // Always include all rows between start and end, inclusive
   const displayRows = rows.slice(start, end + 1);
+
+  // Build a legend like the two-game grid (only from displayed rows)
+  const legendMap = useMemo(() => {
+    const names = new Set<string>();
+    displayRows.forEach(r => {
+      (r.top5Ranks ?? []).forEach(rank => rank.forEach(p => names.add(p.name)));
+      r.top5.forEach(p => names.add(p.name));
+    });
+    const arr = Array.from(names).sort();
+    return arr.map(name => ({ name, tag: initials(name) }));
+  }, [displayRows]);
 
   // If only one row is displayed, show '<TEAM> any' (no margin, no '+')
   const singleRowAnyLabel = React.useMemo(() => {
