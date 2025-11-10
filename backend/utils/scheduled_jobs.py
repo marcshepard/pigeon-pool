@@ -174,13 +174,13 @@ async def run_email_sun(session: AsyncSession) -> dict[str, Any]:
     subject = f"Interim Results for week {week}"
     plain = (
         "To ALL Pigeons --\n\n"
-        "The Week 6 Interim Results through Sunday are available at https://www.pigeonpool.com/picks-and-results.\n"
+        f"The Week {week} Interim Results through Sunday are available at https://www.pigeonpool.com/picks-and-results.\n"
         "Outcomes for various MNF scores are available at https://www.pigeonpool.com/analytics?tab=1.\n\n"
         "--Andy (not really, as this email is automated from the pigeonpool app)"
     )
     html = (
         "<p>To ALL Pigeons --</p>"
-        "<p>The Week 6 Interim Results through Sunday are available at https://www.pigeonpool.com/picks-and-results.</p>"
+        f"<p>The Week {week} Interim Results through Sunday are available at https://www.pigeonpool.com/picks-and-results.</p>"
         "<p>Outcomes for various MNF scores are available at https://www.pigeonpool.com/analytics?tab=1.</p>"
         "<p>--Andy (not really, as this email is automated from the pigeonpool app)</p>"
     )
