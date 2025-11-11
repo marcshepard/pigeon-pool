@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 import os
 import binascii
 from typing import List, Optional, Tuple
+import re
 
 import jwt
 import psycopg
@@ -206,19 +207,30 @@ def mark_jti_used(cur: psycopg.Cursor, jti: str, user_id: int) -> None:
 
 def sent_password_reset_email(to_email: str, token: str) -> None:
     """ Send a password reset email to the given address """
+    # Robustly extract the first frontend origin, supporting both list and string formats
+    origins = S.frontend_origins
+    if isinstance(origins, list):
+        base_url = origins[0] if origins else ""
+    elif isinstance(origins, str):
+        # Try to extract the first URL from a string like [http://a, http://b]
+        m = re.search(r"https?://[^,\]\[]+", origins)
+        base_url = m.group(0) if m else ""
+    else:
+        base_url = ""
+
     subject = "Pigeon Pool Password Reset"
     plain_text = (
         "You requested a password reset for your Pigeon Pool account.\n\n"
         "If you did not make this request, you can ignore this email.\n\n"
         "To reset your password, click the link below:\n\n"
-        f"{FRONTEND_ORIGIN}/reset-password?token={token}\n\n"
+        f"{base_url}/reset-password?token={token}\n\n"
         "This link will expire in 30 minutes."
     )
     html = (
         "<p>You requested a password reset for your Pigeon Pool account.</p>"
         "<p>If you did not make this request, you can ignore this email.</p>"
         "<p>To reset your password, click the link below:</p>"
-        f'<p><a href="{FRONTEND_ORIGIN}/reset-password?token={token}">Reset Password</a></p>'
+        f'<p><a href="{base_url}/reset-password?token={token}">Reset Password</a></p>'
         "<p>This link will expire in 30 minutes.</p>"
     )
     send_email(to_email, subject, plain_text, html)
