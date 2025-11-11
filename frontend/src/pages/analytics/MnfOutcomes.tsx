@@ -9,6 +9,7 @@ import { useSchedule } from "../../hooks/useSchedule";
 import { useResults } from "../../hooks/useResults";
 import { useMnfOutcomes } from "../../hooks/useMnfOutcomes"; // the hook you asked for (aka useMnfWhatIf)
 import type { GameMeta } from "../../hooks/useAppCache";
+import { calculateBestPossibleRank } from "../../utils/bestPossibleRank";
 
 function isSunday(dt: Date) { return dt.getDay() === 0; } // 0=Sun
 function isMonday(dt: Date) { return dt.getDay() === 1; } // 1=Mon
@@ -50,9 +51,9 @@ function allSundayGamesFinal(games: GameMeta[]): boolean {
   return sundayGames.every(g => g.status === "final");
 }
 
-type MnfOutcomesProps = { week: number };
+type MnfOutcomesProps = { pigeon: number; week: number };
 
-export default function MnfOutcomes({ week }: MnfOutcomesProps) {
+export default function MnfOutcomes({ pigeon, week }: MnfOutcomesProps) {
   const { currentWeek, loading: scheduleLoading } = useSchedule();
   const { rows, games, loading, error } = useResults(week);
   const whatIf = useMnfOutcomes(week, rows, games);
@@ -111,8 +112,13 @@ export default function MnfOutcomes({ week }: MnfOutcomesProps) {
     );
   }
 
+  const bestPossibleRank = calculateBestPossibleRank(pigeon, rows, games);
+
   return (
     <Box sx={{ maxWidth: 1100, mx: "auto", p: 1 }}>
+      <Typography variant="body1" align="center" sx={{ mb: 1 }}>
+        Your best possible rank: <strong>{bestPossibleRank}</strong>
+      </Typography>
       {whatIf.kind === "one" && (
         <OneGameTable
           buckets={whatIf.buckets}
