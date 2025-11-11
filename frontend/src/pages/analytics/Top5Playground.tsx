@@ -6,7 +6,7 @@ import { useState, useMemo } from 'react';
 import { Box, Typography, Button, Paper, Select, MenuItem, FormControl, InputLabel, Dialog, DialogContent, DialogActions } from '@mui/material';
 
 import { scoreForPick, type PickCell } from '../../utils/resultsShaping';
-import { calculateBestPossibleRank } from '../../utils/bestPossibleRank';
+//import { calculateBestPossibleRank } from '../../utils/bestPossibleRank';
 import Top5Explainer from "./YourTop5Explainer";
 import { useResults } from '../../hooks/useResults';
 
@@ -178,12 +178,13 @@ export default function Top5Playground({ pigeon, week }: { pigeon: number; week:
         <Typography variant="body1" align="center" sx={{ mb: 1 }}>
           Enter scores to see the effect on the top 5 rankings
         </Typography>
-              {/* Best possible rank for the current pigeon */}
+        {/* Best possible rank for the current pigeon
         <Box sx={{ my: 1, textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
           <Typography variant="body1">
             Your best possible rank: <strong>{calculateBestPossibleRank(pigeon, rows, games)}</strong>
           </Typography>
         </Box>
+         */}
         <Typography variant="body1" fontWeight={700} gutterBottom>Scores from completed games</Typography>
         <Paper sx={{ p: 2 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>

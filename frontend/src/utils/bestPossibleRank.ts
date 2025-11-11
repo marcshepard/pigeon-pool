@@ -9,7 +9,7 @@ import { scoreForPick, type PickCell, type ResultsRow } from './resultsShaping';
 export function calculateBestPossibleRank(
   pigeon: number,
   rows: ResultsRow[],
-  games: { game_id: number; status?: string }[]
+  games: { game_id: number; status?: string; home_score?: number | null; away_score?: number | null }[]
 ): string {
   const userRow = rows.find((r) => r.pigeon_number === pigeon) || null;
   // Check if pigeon has entered any picks
@@ -24,10 +24,16 @@ export function calculateBestPossibleRank(
   if (userRow) {
     for (const g of games) {
       const key = `g_${g.game_id}`;
-      const uPred = (userRow.picks as Record<string, PickCell>)[key]?.signed;
-      if (typeof uPred !== "number") continue; // if user has no pick, skip game
-      // This becomes the hypothetical actual
-      const actual = uPred;
+      let actual: number | undefined;
+  if ((g.status ?? "") === "final" && typeof g.home_score === 'number' && typeof g.away_score === 'number') {
+        // Use actual result for final games
+        actual = g.home_score - g.away_score;
+      } else {
+        // Simulate as user's pick for non-final games
+        const uPred = (userRow.picks as Record<string, PickCell>)[key]?.signed;
+        if (typeof uPred !== "number") continue; // if user has no pick, skip game
+        actual = uPred;
+      }
       for (const r of rows) {
         const pred = (r.picks as Record<string, PickCell>)[key]?.signed;
         if (typeof pred !== "number") continue;
