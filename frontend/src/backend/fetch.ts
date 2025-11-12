@@ -441,3 +441,31 @@ export function adminSendBulkEmail(
     factory: () => undefined,
   });
 }
+
+// =============================
+// Bulk import picks for a given week from an XLSX file (admin only)
+// =============================
+/**
+ * Bulk import picks for a given week from an XLSX file (admin only).
+ * @param week - week number (1-18)
+ * @param file - File object (XLSX)
+ * @returns { processed: number }
+ */
+export function adminBulkImportPicks(
+  week: number,
+  file: File
+): Promise<number> {
+  const form = new FormData();
+  form.append("week", String(week));
+  form.append("file", file);
+  return apiFetch(`/admin/import-picks-xlsx`, {
+    method: "POST",
+    body: form,
+    factory: (data: unknown) => {
+      // Always coerce to number: if object with processed, use it; else, try to cast directly
+      return (data && typeof data === "object" && "processed" in data)
+        ? Number((data as { processed: unknown }).processed)
+        : Number(data);
+    },
+  });
+}

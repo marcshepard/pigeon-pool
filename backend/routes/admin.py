@@ -1,28 +1,29 @@
 """
 Admin-only endpoints for managing and viewing picks.
 """
-from __future__ import annotations
 
-from typing import List, Optional
-from datetime import datetime, timezone
+#pylint: disable=line-too-long
+
+from __future__ import annotations
+import os
 import secrets
 import string
+import tempfile
+from typing import List, Optional
+from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status, Body, Response
-
+from fastapi import APIRouter, Depends, HTTPException, status, Body, Response, UploadFile, File, Form
 from pydantic import BaseModel, EmailStr
-
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.utils.db import get_db
 from backend.utils.logger import debug, info, warn
 from backend.utils.emailer import send_bulk_email_to_all_users
+from backend.utils.import_picks_xlsx import import_picks_pivot_xlsx
 from .auth import require_user, require_admin
 from .results import WeekPicksRow
 from .schedule import get_current_week
-
-#pylint: disable=line-too-long
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -587,3 +588,38 @@ async def send_bulk_email(
     if not ok:
         raise HTTPException(status_code=500, detail="Failed to send bulk email.")
     return Response(status_code=204)
+
+# -----------------------------------------------------------------------------
+# Bulk Import Picks from XLSX (Admin)
+# -----------------------------------------------------------------------------
+@router.post(
+    "/import-picks-xlsx",
+    status_code=200,
+    summary="Bulk import picks from XLSX for a given week (admin only)",
+)
+async def import_picks_xlsx_api(
+    week: int = Form(...),
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_admin),  # noqa: ARG001
+):
+    """Import picks for a given week from an uploaded XLSX file."""
+    if not 1 <= week <= 18:
+        raise HTTPException(status_code=400, detail="Week must be between 1 and 18.")
+    # Save uploaded file to a temp file
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
+        contents = await file.read()
+        tmp.write(contents)
+        tmp_path = tmp.name
+    try:
+        # Use a sync connection for compatibility with import_picks_pivot_xlsx
+        sync_conn = await db.connection()
+        raw_conn = sync_conn.connection
+        processed = import_picks_pivot_xlsx(xlsx_path=tmp_path, conn=raw_conn, only_week=week)
+        await db.commit()
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=f"Import failed: {e}") from e
+    finally:
+        os.unlink(tmp_path)
+    return {"processed": processed}

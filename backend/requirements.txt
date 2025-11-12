@@ -27,6 +27,7 @@ email-validator >=2.2.0            # RFC-compliant email validation for EmailStr
 
 # --- For interacting with external systems
 openpyxl>=3.1                       # For importing Andy's Excel format picks
+python-multipart >=0.0.5            # For FastAPI file upload of Andy's xlsx picks
 playwright>=1.47                    # For submitting picks to Andy's survey site
 httpx >=0.27.0,<1.0                 # For importing scores and game data from ESPN
 azure-communication-email >=1.0.0   # Azure Communication Services email client

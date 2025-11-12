@@ -2,7 +2,7 @@
 // File: src/pages/admin/AdminLocksAndPicks.tsx
 // (Refactor of your current Admin.tsx content)
 // =============================================
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import {
   Alert,
   Box,
@@ -16,10 +16,11 @@ import {
 } from "@mui/material";
 import { useSchedule } from "../../hooks/useSchedule";
 import {
-    getGamesForWeek,
-    adminGetWeeksLocks,
-    adminAdjustWeekLock,
-    adminGetWeekPicks,
+  getGamesForWeek,
+  adminGetWeeksLocks,
+  adminAdjustWeekLock,
+  adminGetWeekPicks,
+  adminBulkImportPicks,
 } from "../../backend/fetch";
 import {
     AdminWeekLock,
@@ -161,6 +162,30 @@ export default function AdminLocksAndPicks() {
   const [lockError, setLockError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  // Bulk Import Picks state
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<{ success: boolean; message: string } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const importWeek = currentWeek ? currentWeek.week : 1;
+
+  const handleImport = async () => {
+    if (!importFile) return;
+    setImporting(true);
+    setImportResult(null);
+    try {
+      const res = await adminBulkImportPicks(importWeek, importFile);
+      setImportResult({ success: true, message: `Imported ${res} picks for week ${importWeek}.` });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Import failed.";
+      setImportResult({ success: false, message: msg });
+    } finally {
+      setImporting(false);
+    }
+  };
+
   useEffect(() => {
     if (currentWeek?.week) {
       setSelectedWeek(currentWeek.status === "scheduled" ? currentWeek.week : currentWeek.week + 1);
@@ -201,6 +226,62 @@ export default function AdminLocksAndPicks() {
 
   return (
     <Box sx={{ mt: 4 }}>
+      {/* Bulk Import Picks xlsx for the current week */}
+      <Box sx={{ mb: 3, textAlign: "left" }}>
+        <Button
+          variant="contained"
+          color="secondary"
+          onClick={() => setImportDialogOpen(true)}
+        >
+          Import picks xlsx for week {importWeek}
+        </Button>
+        <Dialog open={importDialogOpen} onClose={importing ? undefined : () => setImportDialogOpen(false)} maxWidth="xs" fullWidth>
+          <DialogTitle>Import Picks for Week {importWeek}</DialogTitle>
+          <DialogContent>
+            <Box sx={{ my: 2 }}>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".xlsx"
+                style={{ display: "none" }}
+                onChange={e => setImportFile(e.target.files?.[0] || null)}
+                disabled={importing || !!importResult}
+              />
+              <Button
+                variant="outlined"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={importing || !!importResult}
+                sx={{ mb: 1 }}
+              >
+                {importFile ? importFile.name : "Choose XLSX file"}
+              </Button>
+            </Box>
+            {importResult && (
+              <Alert severity={importResult.success ? "success" : "error"}>{importResult.message}</Alert>
+            )}
+          </DialogContent>
+          <DialogActions>
+            {!importResult ? (
+              <>
+                <Button onClick={() => setImportDialogOpen(false)} disabled={importing}>Cancel</Button>
+                <Button
+                  variant="contained"
+                  onClick={handleImport}
+                  disabled={importing || !importFile}
+                >
+                  {importing ? "Importing..." : "Import"}
+                </Button>
+              </>
+            ) : (
+              <Button onClick={() => {
+                setImportDialogOpen(false);
+                setImportFile(null);
+                setImportResult(null);
+              }} variant="contained">Dismiss</Button>
+            )}
+          </DialogActions>
+        </Dialog>
+      </Box>
       {/* Text + Week selector on one line */}
       <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 2, my: 1 }}>
         <Typography variant="body1">Picks for</Typography>
