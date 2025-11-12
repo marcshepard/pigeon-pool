@@ -20,6 +20,7 @@ import {
   PickOut,
   PicksBulkIn,
   WeekPicksRow,
+  type AdminBulkEmailRequest
 } from "./types";
 
 // Base URL for API calls, from env or default to relative /api (for dev with proxy)
@@ -429,3 +430,14 @@ export function adminDeleteUser(email: string): Promise<void> {
   });
 }
 
+/** Send a bulk email to all users (admin only). Returns void on success. */
+export function adminSendBulkEmail(
+  req: AdminBulkEmailRequest
+): Promise<void> {
+  return apiFetch<void>(`/admin/bulk-email`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+    factory: () => undefined,
+  });
+}

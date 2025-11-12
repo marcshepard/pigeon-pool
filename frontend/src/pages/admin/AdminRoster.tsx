@@ -134,6 +134,97 @@ export default function AdminRoster() {
         severity={snackbar.severity}
         onClose={() => setSnackbar((s) => ({ ...s, open: false }))}
       />
+
+    {/* Bulk Email Announcement Feature */}
+    <BulkEmailAnnouncement onSnackbar={(message, severity) => setSnackbar({ open: true, message, severity })} />
+  </Box>
+  );
+}
+
+// -----------------------------
+// BulkEmailAnnouncement
+// -----------------------------
+import { adminSendBulkEmail } from "../../backend/fetch";
+
+function BulkEmailAnnouncement({ onSnackbar }: { onSnackbar: (message: string, severity?: "success" | "error") => void }) {
+  const [open, setOpen] = useState(false);
+  const [subject, setSubject] = useState("");
+  const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+  const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  const handleSend = async () => {
+    setSending(true);
+    setResult(null);
+    try {
+      await adminSendBulkEmail({ subject, text });
+      setResult({ success: true, message: "Announcement sent to all users." });
+      onSnackbar("Announcement sent.", "success");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Failed to send announcement.";
+      setResult({ success: false, message: msg });
+      onSnackbar(msg, "error");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleClose = () => {
+    setOpen(false);
+    setSubject("");
+    setText("");
+    setResult(null);
+    setSending(false);
+  };
+
+  return (
+    <Box sx={{ mt: 6, textAlign: "center" }}>
+      <Button variant="contained" color="secondary" onClick={() => setOpen(true)}>
+        Send Email Announcement
+      </Button>
+      <Dialog open={open} onClose={sending ? undefined : handleClose} maxWidth="sm" fullWidth>
+        <DialogTitle>Send Email Announcement</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <TextField
+              label="Subject"
+              value={subject}
+              onChange={e => setSubject(e.target.value)}
+              fullWidth
+              disabled={sending || !!result}
+              autoFocus
+            />
+            <TextField
+              label="Message"
+              value={text}
+              onChange={e => setText(e.target.value)}
+              fullWidth
+              multiline
+              minRows={5}
+              disabled={sending || !!result}
+            />
+            {result && (
+              <Alert severity={result.success ? "success" : "error"}>{result.message}</Alert>
+            )}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          {!result ? (
+            <>
+              <Button onClick={handleClose} disabled={sending}>Cancel</Button>
+              <Button
+                variant="contained"
+                onClick={handleSend}
+                disabled={sending || !subject.trim() || !text.trim()}
+              >
+                {sending ? "Sending..." : "Send"}
+              </Button>
+            </>
+          ) : (
+            <Button onClick={handleClose} variant="contained">Dismiss</Button>
+          )}
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

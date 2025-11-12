@@ -37,7 +37,7 @@ from backend.utils.scheduled_jobs import (
     run_email_tue_warn,
     get_all_player_emails,
 )
-from .import_picks_xlsx import import_picks_pivot_xlsx
+from .utils.import_picks_xlsx import import_picks_pivot_xlsx
 
 # Mapping of scheduled job names to their runner functions
 _JOBS: dict[str, Callable[[Any], Awaitable[dict[str, Any]]]] = {

@@ -8,7 +8,7 @@ import os
 
 from azure.communication.email import EmailClient
 from .settings import get_settings
-from .logger import debug, info, error
+from .logger import debug, info, warn, error
 
 # pylint: disable=line-too-long, broad-except
 
@@ -83,3 +83,12 @@ def send_bulk_email_bcc(bcc: list[str], subject: str, plain_text: str, html: str
     except Exception:
         error("Error sending bulk email", exc_info=True)
         return False
+
+# New helper for admin bulk email to all users (no SQL)
+def send_bulk_email_to_all_users(emails: list[str], subject: str, plain_text: str) -> bool:
+    """Send a plain text email to all users (admin bulk email)."""
+    if not emails:
+        warn("No user emails found for bulk email.")
+        return False
+    # Use BCC for privacy
+    return send_bulk_email_bcc(emails, subject, plain_text, None)

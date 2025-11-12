@@ -564,3 +564,11 @@ export class AdminWeekLockUpdateIn {
     return { lock_at: this.lock_at };
   }
 }
+
+// =============================
+// Admin Bulk Email types
+// =============================
+export interface AdminBulkEmailRequest {
+  subject: string;
+  text: string;
+}

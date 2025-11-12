@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.utils.db import get_db
 from backend.utils.logger import debug, info, warn
+from backend.utils.emailer import send_bulk_email_to_all_users
 from .auth import require_user, require_admin
 from .results import WeekPicksRow
 from .schedule import get_current_week
@@ -551,4 +552,38 @@ async def delete_user(
 
     await db.commit()
     info("admin: user deleted", email=email)
+    return Response(status_code=204)
+
+# --- Bulk Email API ---
+class BulkEmailRequest(BaseModel):
+    """ Request body for bulk email """
+    subject: str
+    text: str
+
+
+# SQL to fetch all user emails
+GET_ALL_USER_EMAILS_SQL = text("""
+    SELECT DISTINCT email
+    FROM users
+    WHERE email IS NOT NULL AND email != ''
+    ORDER BY email
+""")
+
+@router.post(
+    "/bulk-email",
+    status_code=204,
+    summary="Send a bulk email to all users (admin only)",
+)
+async def send_bulk_email(
+    req: BulkEmailRequest,
+    db: AsyncSession = Depends(get_db),
+    me=Depends(require_admin),
+):
+    """Send a plain text email to all users."""
+    debug("admin: send_bulk_email called", user=me.pigeon_number, subject=req.subject)
+    rows = (await db.execute(GET_ALL_USER_EMAILS_SQL)).fetchall()
+    emails = [r[0] for r in rows if r[0]]
+    ok = send_bulk_email_to_all_users(emails, req.subject, req.text)
+    if not ok:
+        raise HTTPException(status_code=500, detail="Failed to send bulk email.")
     return Response(status_code=204)
