@@ -25,7 +25,10 @@ from dataclasses import dataclass
 import logging
 import os
 
+from sqlalchemy import create_engine
 from openpyxl import load_workbook
+
+from backend.utils.settings import get_settings
 
 # ---------------------------
 # Logging setup
@@ -35,6 +38,30 @@ logging.basicConfig(level=getattr(logging, LOG_LEVEL, logging.INFO),
                     format="%(levelname)s %(message)s")
 log = logging.getLogger("picks_import")
 
+# TEMPORARY: Helper to run import with a sync SQLAlchemy engine (psycopg2)
+def import_picks_pivot_xlsx_with_engine(xlsx_path: str, only_week: int = None) -> int:
+    """
+    Create a sync SQLAlchemy engine (psycopg2), get a connection, and run the import.
+    This is a temporary hack for admin/CLI import; remove when DB is source of truth.
+    """
+    settings = get_settings()
+    url = f"postgresql+psycopg2://{settings.pg_user}:{settings.pg_password}@{settings.pg_host}:{settings.pg_port}/{settings.pg_db}"
+    engine = create_engine(url, future=True)
+    try:
+        with engine.connect() as conn:
+            # Set bypass flag for this session (bypasses week lock trigger)
+            with conn.connection.cursor() as cur:
+                cur.execute("SET app.bypass_lock = 'on';")
+            try:
+                raw_conn = conn.connection  # DBAPI connection
+                result = import_picks_pivot_xlsx(xlsx_path=xlsx_path, conn=raw_conn, only_week=only_week)
+            finally:
+                # Always clear the flag so future uses of this connection (or pooled conns) are safe
+                with conn.connection.cursor() as cur:
+                    cur.execute("RESET app.bypass_lock;")
+            return result
+    finally:
+        engine.dispose()
 
 # ---------------------------
 # Spreadsheet → ESPN aliases

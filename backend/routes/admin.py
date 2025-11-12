@@ -11,16 +11,17 @@ import string
 import tempfile
 from typing import List, Optional
 from datetime import datetime, timezone
+import traceback
 
 from fastapi import APIRouter, Depends, HTTPException, status, Body, Response, UploadFile, File, Form
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.utils.import_picks_xlsx import import_picks_pivot_xlsx_with_engine
 from backend.utils.db import get_db
-from backend.utils.logger import debug, info, warn
+from backend.utils.logger import debug, info, warn, error
 from backend.utils.emailer import send_bulk_email_to_all_users
-from backend.utils.import_picks_xlsx import import_picks_pivot_xlsx
 from .auth import require_user, require_admin
 from .results import WeekPicksRow
 from .schedule import get_current_week
@@ -604,7 +605,9 @@ async def import_picks_xlsx_api(
     _=Depends(require_admin),  # noqa: ARG001
 ):
     """Import picks for a given week from an uploaded XLSX file."""
+    info("import_picks_xlsx_api: received request", week=week, file_type=str(type(file)), file_filename=getattr(file, 'filename', None))
     if not 1 <= week <= 18:
+        debug("import_picks_xlsx_api: invalid week received", week=week)
         raise HTTPException(status_code=400, detail="Week must be between 1 and 18.")
     # Save uploaded file to a temp file
     with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
@@ -613,13 +616,14 @@ async def import_picks_xlsx_api(
         tmp_path = tmp.name
     try:
         # Use a sync connection for compatibility with import_picks_pivot_xlsx
-        sync_conn = await db.connection()
-        raw_conn = sync_conn.connection
-        processed = import_picks_pivot_xlsx(xlsx_path=tmp_path, conn=raw_conn, only_week=week)
+        warn("import_picks_xlsx_api: using dedicated sync engine for import (TEMPORARY)")
+        processed = import_picks_pivot_xlsx_with_engine(xlsx_path=tmp_path, only_week=week)
         await db.commit()
     except Exception as e:
         await db.rollback()
-        raise HTTPException(status_code=500, detail=f"Import failed: {e}") from e
+        tb = traceback.format_exc()
+        error("import_picks_xlsx_api: exception during import", error=str(e), traceback=tb)
+        raise HTTPException(status_code=500, detail="Import failed.") from e
     finally:
         os.unlink(tmp_path)
     return {"processed": processed}

@@ -61,8 +61,9 @@ type FetchInit<T> = RequestInit & {
 export async function apiFetch<T>(path: string, init: FetchInit<T>): Promise<T> {
   console.log(`API ${init.method || "GET"} ${path}`);
   const url = `${BASE}${path}`;
+  const isFormData = init.body instanceof FormData;
   const headers: Record<string, string> = {
-    "Content-Type": "application/json",
+    ...(isFormData ? {} : { "Content-Type": "application/json" }),
     ...(init.headers as Record<string, string> | undefined),
   };
 
