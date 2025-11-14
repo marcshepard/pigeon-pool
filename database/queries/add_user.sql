@@ -1,7 +1,7 @@
 WITH vals AS (
   SELECT
-    'davidmoore1987@icloud.com'::text AS email,
-    41::int AS pigeon
+    'marcshepard@outlook.com'::text AS email,
+    57::int AS pigeon
 ),
 u AS (
   INSERT INTO users (email, password_hash)

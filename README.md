@@ -29,12 +29,14 @@ Note: there is no .env.production.local; production secrets are stored as Azure 
 ### 1. DB setup
 1. Install PostgreSQL, take all the defaults (they should match backend/.env), create a DB called "pigeon_pool", note the password
 2. Run database/schema.sql to create the DB schema
+3. Add yourself as an admin user and pigeon using the database/queries/add_user.sql script
 
 ### 2. Backend API setup
 1. Create a backend/.env.development.local file and add these lines:
 ```env
 POSTGRES_PASSWORD=whatever password you used when installing postgresql
-JWT_SECRET=any string you like
+JWT_SECRET=any-string-you-like
+EMAIL_ACCESS_KEY=<get from Marc or Joe>
 ```
 Note: this file constains secrets and will be .gitignored. Never check in secrets.
 
@@ -70,7 +72,15 @@ Note: You can also use the backend.cmd script on windows so you don't have to re
 
 ### 3. FE setup
 1. Install node.js from https://nodejs.org/en/download
-2. Start the front-end
+
+2. Install the frontend
+```bash
+cd fronend
+npm install
+npm audit fix
+```
+
+3. start the front-end
 ```bash
 cd fronend
 npm run dev

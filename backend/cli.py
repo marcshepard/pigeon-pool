@@ -66,17 +66,15 @@ def get_connection(cfg: Dict[str, Any]) -> psycopg.Connection:
 # -----------------------------------------------------------------------------
 # Commands
 # -----------------------------------------------------------------------------
-def cmd_load_schedule(_: argparse.Namespace) -> int:
+async def cmd_load_schedule(_: argparse.Namespace) -> int:
     """
     Populate/refresh the current season's schedule (weeks 1–18).
-    Uses get_settings() for env+DB config.
+    Uses async SQLAlchemy session.
     """
-    settings = get_settings()
-    cfg = settings.psycopg_kwargs()
-    print(f"[cli] DB → {cfg['user']}@{cfg['host']}:{cfg['port']}/{cfg['dbname']} (env via utils.settings)")
-    with get_connection(cfg) as conn:
-        sync = ScoreSync(conn)
-        changed = sync.load_schedule()
+    print("[cli] sync-schedule (async SQLAlchemy)")
+    async with AsyncSessionLocal() as session:
+        sync = ScoreSync(session)
+        changed = await sync.load_schedule()
         print(f"[cli] sync-schedule: upserted {changed} game rows.")
     return 0
 

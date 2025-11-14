@@ -17,12 +17,14 @@ def _load_env_files() -> None:
     """Load .env, .env.<env>, .env.<env>.local (base is required)."""
     root = Path(__file__).resolve().parents[1]
     env  = os.getenv("APP_ENV") or os.getenv("ENV") or "development"
+    print ("Loading env files for env:", env)
     files = [root / ".env", root / f".env.{env}", root / f".env.{env}.local"]
     if not files[0].exists():
         print(f"❌ Missing required env file: {files[0]}", file=sys.stderr)
         sys.exit(1)
     for f in files:
         if f.exists():
+            print ("Loading env file:", f)
             load_dotenv(f, override=True)
 
 def _req(name: str) -> str:
