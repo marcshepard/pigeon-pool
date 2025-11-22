@@ -314,7 +314,7 @@ export default function PicksheetPage() {
               <>
                 <Box sx={{ mb: 1, display: 'flex', alignItems: 'center' }}>
                   <Typography variant="body1" sx={{ mr: 0.5 }}>
-                    Results are{' '}
+                    Results include{' '}
                     <Box
                       component="span"
                       sx={{ color: 'primary.main', textDecoration: 'underline', cursor: 'pointer', fontWeight: 500 }}
@@ -323,7 +323,7 @@ export default function PicksheetPage() {
                       role="button"
                       aria-label="About auto-updated scores"
                     >
-                      auto-updated
+                      in-progress game
                     </Box>
                   </Typography>
                 </Box>
@@ -331,7 +331,7 @@ export default function PicksheetPage() {
                   anchorEl={autoUpdateAnchor}
                   onClose={() => setAutoUpdateAnchor(null)}
                 >
-                  While games are in-progress, results, scores, and rank are auto-updated every {import.meta.env.VITE_AUTO_REFRESH_INTERVAL_MINUTES || 30} minutes
+                  Scores and rank are auto-updated every {import.meta.env.VITE_AUTO_REFRESH_INTERVAL_MINUTES || 30} minutes and include in-progess games
                 </InfoPopover>
               </>
             )}
