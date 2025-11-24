@@ -12,7 +12,7 @@ import { AppSnackbar, Loading, Banner, ConfirmDialog, LabeledSelect } from "../c
 import { getCurrentWeek, getGamesForWeek, getMyPicksForWeek, setMyPicks } from "../backend/fetch";
 import type { Game } from "../backend/types";
 import { useAppCache } from "../hooks/useAppCache";
-import { PageFit } from "../components/Layout";
+import { PageFit, NORMAL_PAGE_MAX_WIDTH } from "../components/Layout";
 
 // Utility: detect double tap on mobile
 function useDoubleTap(callback: () => void, ms = 300) {
@@ -403,7 +403,7 @@ export default function EnterPicksPage() {
   };
 
   return (
-    <PageFit>
+    <PageFit maxWidth={NORMAL_PAGE_MAX_WIDTH}>
       {/* Navigation blocker dialog */}
       <ConfirmDialog
         open={!!pendingNavigation}

@@ -44,6 +44,8 @@
 import { Box, type BoxProps } from "@mui/material";
 import { type ReactNode, useEffect } from "react";
 
+export const NORMAL_PAGE_MAX_WIDTH = 800;
+
 /**
  * Viewport - Own the *real* viewport height across iOS/Android/desktop + safe areas.
  *
@@ -160,7 +162,7 @@ function PageFrame({
   ...props
 }: BoxProps & {
   children: ReactNode;
-  maxWidth?: string;
+  maxWidth?: string | number;
 }) {
   return (
     <StackColumn {...props} sx={sx}>
@@ -228,7 +230,7 @@ function FillContainer({ sx, ...props }: BoxProps) {
 export function PageScroll({
   maxWidth,
   ...props
-}: BoxProps & { maxWidth?: string }) {
+}: BoxProps & { maxWidth?: string | number }) {
   return (
     <PageFrame maxWidth={maxWidth}>
       <PageContainer scroll {...props} />
@@ -250,7 +252,7 @@ export function PageFit({
   header?: React.ReactNode;
   footer?: React.ReactNode;
   children: React.ReactNode; // put your scrollable stuff in <PageFit.ScrollArea>
-  maxWidth?: string;
+  maxWidth?: string | number;
 }) {
   return (
     <PageFrame maxWidth={maxWidth}>

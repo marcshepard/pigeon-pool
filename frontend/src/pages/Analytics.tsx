@@ -14,6 +14,8 @@ import type { GameMeta } from "../hooks/useAppCache";
 import Top5Playground from "./analytics/Top5Playground";
 import { useResults } from "../hooks/useResults";
 
+import { PageFit, NORMAL_PAGE_MAX_WIDTH } from "../components/Layout";
+
 function uniqBy<T, K>(arr: T[], keyFn: (t: T) => K): T[] {
   const seen = new Set<K>();
   const out: T[] = [];
@@ -108,9 +110,9 @@ export default function AnalyticsPage() {
   }, [games]);
 
   return (
-    <Box sx={{ mx: "auto", mt: 3 }}>
+    <PageFit maxWidth={NORMAL_PAGE_MAX_WIDTH}>
       {/* Header: Week selector, Analytics, Pigeon selector */}
-      <Stack direction="row" alignItems="center" spacing={2} justifyContent="center" sx={{ mb: 2 }}>
+      <Stack direction="row" alignItems="center" spacing={2} justifyContent="center" sx={{ my: 1 }}>
         {/* Week selector using LabeledSelect */}
         <LabeledSelect
           label="Week"
@@ -164,6 +166,6 @@ export default function AnalyticsPage() {
           )
         )}
       </Box>
-    </Box>
+    </PageFit>
   );
 }

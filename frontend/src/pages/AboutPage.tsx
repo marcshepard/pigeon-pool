@@ -1,10 +1,10 @@
 import { Typography, Box, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper } from "@mui/material";
 import { Link } from "react-router-dom";
-import { PageScroll } from "../components/Layout";
+import { PageScroll, NORMAL_PAGE_MAX_WIDTH } from "../components/Layout";
 
 export default function AboutPage() {
     return (
-        <PageScroll>
+        <PageScroll maxWidth={NORMAL_PAGE_MAX_WIDTH}>
             <Typography variant="body1" gutterBottom align="center" fontWeight={700}>
                 Pigeon pool rules
             </Typography>

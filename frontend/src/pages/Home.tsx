@@ -10,7 +10,7 @@ import EmojiEventsIcon from "@mui/icons-material/EmojiEvents";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import BarChartIcon from "@mui/icons-material/BarChart";
 
-import { PageScroll } from "../components/Layout";
+import { NORMAL_PAGE_MAX_WIDTH, PageScroll } from "../components/Layout";
 
 const tiles = [
     {
@@ -47,7 +47,7 @@ const tiles = [
 
 export default function HomePage() {
     return (
-        <PageScroll sx={{ px:1, width:"100%", maxWidth: 600, mx: "auto" }}>
+        <PageScroll maxWidth={NORMAL_PAGE_MAX_WIDTH} sx={{ px: 1 }}>
             <Typography variant="body1" align="center" fontWeight="bold">
                 Welcome to the Pigeon Pool
             </Typography>
