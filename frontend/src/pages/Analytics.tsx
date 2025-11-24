@@ -107,11 +107,11 @@ export default function AnalyticsPage() {
   }, [games]);
 
   return (
-    <Box sx={{ maxWidth: 900, mx: "auto", mt: 3 }}>
+    <Box sx={{ mx: "auto", mt: 3 }}>
       {/* Header: Week selector, Analytics, Pigeon selector */}
       <Stack direction="row" alignItems="center" spacing={2} justifyContent="center" sx={{ mb: 2 }}>
         {/* Week selector */}
-        <FormControl size="small" sx={{ minWidth: 100 }}>
+        <FormControl size="small">
           <InputLabel id="week-label">Week</InputLabel>
           <Select
             labelId="week-label"

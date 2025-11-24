@@ -12,6 +12,7 @@ import { AppSnackbar, Loading, Banner, ConfirmDialog, LabeledSelect } from "../c
 import { getCurrentWeek, getGamesForWeek, getMyPicksForWeek, setMyPicks } from "../backend/fetch";
 import type { Game } from "../backend/types";
 import { useAppCache } from "../hooks/useAppCache";
+import { PageFit } from "../components/Layout";
 
 // Utility: detect double tap on mobile
 function useDoubleTap(callback: () => void, ms = 300) {
@@ -402,7 +403,7 @@ export default function EnterPicksPage() {
   };
 
   return (
-    <Box sx={{ maxWidth: 900, mx: "auto", height: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <PageFit>
       {/* Navigation blocker dialog */}
       <ConfirmDialog
         open={!!pendingNavigation}
@@ -482,16 +483,17 @@ export default function EnterPicksPage() {
               Enter picks
             </Typography>
           </Box>
-      {/* Hidden dialog for home-by-3 */}
-      <ConfirmDialog
-        open={homeDialogOpen}
-        title="Auto-select home teams by 3?"
-        content={null}
-        confirmText="Yes"
-        cancelText="No"
-        onConfirm={handleHomeDialogConfirm}
-        onClose={() => setHomeDialogOpen(false)}
-      />
+
+          {/* Hidden dialog for home-by-3 */}
+          <ConfirmDialog
+            open={homeDialogOpen}
+            title="Auto-select home teams by 3?"
+            content={null}
+            confirmText="Yes"
+            cancelText="No"
+            onConfirm={handleHomeDialogConfirm}
+            onClose={() => setHomeDialogOpen(false)}
+          />
 
           {/* Submit button (right) */}
           <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
@@ -528,7 +530,6 @@ export default function EnterPicksPage() {
                 value={selectedPigeon ? String(selectedPigeon) : String(me.pigeon_number)}
                 onChange={(e) => handlePigeonChange(Number(e.target.value))}
                 options={allOptions}
-                sx={{ minWidth: 160 }}
               />
             );
           })()}
@@ -542,16 +543,15 @@ export default function EnterPicksPage() {
           <span> Your changes are not yet submitted</span>
         </Banner>
       )}
+      {/* Else show last submission time */}
+      {!hasUnsavedChanges && lastSubmission && (
+        <Banner severity="info" sx={{ mb: 2 }}>
+          Last submission: {formatSubmissionTime(lastSubmission)}
+        </Banner>
+      )}
 
       {/* Scrollable picks area below header and selector */}
       <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto', px: 0.5, pt: 2 }}>
-        {/* Last submission time */}
-        {lastSubmission && (
-          <Banner severity="info" sx={{ mb: 2 }}>
-            Last submission: {formatSubmissionTime(lastSubmission)}
-          </Banner>
-        )}
-
         <AppSnackbar
           open={snackbar.open}
           message={snackbar.message}
@@ -668,9 +668,6 @@ export default function EnterPicksPage() {
                             borderColor: (theme) => ((needPickTeam || isWarn) ? theme.palette.warning.main : undefined),
                           },
                         }}
-                        InputProps={{
-                          // Let MUI error state handle error border color
-                        }}
                         slotProps={{
                           input: {
                             inputProps: {
@@ -712,6 +709,6 @@ export default function EnterPicksPage() {
           </DialogActions>
         )}
       </Dialog>
-    </Box>
+    </PageFit>
   );
 }

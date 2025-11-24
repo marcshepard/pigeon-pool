@@ -1,9 +1,10 @@
 import { Typography, Box, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper } from "@mui/material";
 import { Link } from "react-router-dom";
+import { PageScroll } from "../components/Layout";
 
 export default function AboutPage() {
     return (
-        <Box maxWidth={700} mx="auto">
+        <PageScroll>
             <Typography variant="body1" gutterBottom align="center" fontWeight={700}>
                 Pigeon pool rules
             </Typography>
@@ -65,6 +66,6 @@ export default function AboutPage() {
                     </Table>
                 </TableContainer>
             </Box>
-        </Box>
+        </PageScroll>
     );
 }

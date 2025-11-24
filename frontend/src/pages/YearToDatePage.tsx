@@ -7,11 +7,10 @@ import { Box, Stack, Typography, Alert, Button } from "@mui/material";
 import {
   AppSnackbar,
   PrintArea,
+  type Severity
 } from "../components/CommonComponents";
-import type { Severity } from "../components/CommonComponents";
-
-import { DataGridLite } from "../components/DataGridLite";
-import type { ColumnDef } from "../components/DataGridLite";
+import { type ColumnDef, DataGridLite } from "../components/DataGridLite";
+import { PageFit, StackColumn } from "../components/Layout";
 
 import { useAuth } from "../auth/useAuth";
 import { useYtd } from "../hooks/useYtd";
@@ -98,29 +97,37 @@ export default function YtdPage() {
   }, [weeks, rows]);
 
   return (
-    <Box>
-      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
-        <Typography variant="body1" fontWeight="bold" sx={{ flex: 1, textAlign: "left" }}>Year to Date</Typography>
-        <Box sx={{ flex: 1 }} />
-        <Box sx={{ flex: 1, textAlign: "right" }}>
-          <Button variant="outlined" onClick={() => window.print()}>Print</Button>
-        </Box>
-      </Stack>
+    <PageFit
+      header={
+        <Box sx={{ px: 2 }}>
+          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+            <Typography variant="body1" fontWeight="bold" sx={{ flex: 1, textAlign: "left" }}>
+              Year to Date
+            </Typography>
+            <Box sx={{ flex: 1 }} />
+            <Box sx={{ flex: 1, textAlign: "right" }}>
+              <Button variant="outlined" onClick={() => window.print()}>Print</Button>
+            </Box>
+          </Stack>
 
-      {loading ? (
-        <Alert severity="info">Loading…</Alert>
-      ) : (
-        <PrintArea className="print-grid-area">
-          <DataGridLite<YtdRow>
-            rows={rows}
-            columns={columns}
-            defaultSort={{ key: "pigeon", dir: "asc" }}
-            printTitle="Pigeon Pool — Year to Date"
-            getRowId={(r) => r.pigeon_number}
-            highlightRowId={state.status === "signedIn" ? state.user.pigeon_number : undefined}
-            highlightExtraRowIds={state.status === "signedIn" ? state.user.alternates.map(a => a.pigeon_number) : undefined}
-          />
-        </PrintArea>
+          {loading && <Alert severity="info">Loading…</Alert>}
+        </Box>
+      }
+    >
+      {!loading && (
+        <StackColumn sx={{ px: 2 }}>
+          <PrintArea className="print-grid-area" sx={{ flex: 1, minHeight: 0 }}>
+            <DataGridLite<YtdRow>
+              rows={rows}
+              columns={columns}
+              defaultSort={{ key: "pigeon", dir: "asc" }}
+              printTitle="Pigeon Pool — Year to Date"
+              getRowId={(r) => r.pigeon_number}
+              highlightRowId={state.status === "signedIn" ? state.user.pigeon_number : undefined}
+              highlightExtraRowIds={state.status === "signedIn" ? state.user.alternates.map(a => a.pigeon_number) : undefined}
+            />
+          </PrintArea>
+        </StackColumn>
       )}
 
       <AppSnackbar
@@ -129,6 +136,6 @@ export default function YtdPage() {
         severity={snack.severity}
         onClose={() => setSnack(s => ({ ...s, open: false }))}
       />
-    </Box>
+    </PageFit>
   );
 }

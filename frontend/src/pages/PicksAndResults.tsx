@@ -8,11 +8,7 @@ import {
   Box,
   Button,
   Checkbox,
-  FormControl,
   FormControlLabel,
-  InputLabel,
-  MenuItem,
-  Select,
   Stack,
   Typography,
 } from "@mui/material";
@@ -20,6 +16,7 @@ import {
 import {
   AppSnackbar,
   InfoPopover,
+  LabeledSelect,
   PickCell,
   PointsText,
   PrintOnlyStyles,
@@ -32,6 +29,7 @@ import { useAuth } from "../auth/useAuth";
 import { useResults } from "../hooks/useResults";
 import { useSchedule } from "../hooks/useSchedule";
 import { type ResultsRow } from "../utils/resultsShaping";
+import { PageFit, StackColumn } from "../components/Layout";
 
 export default function PicksheetPage() {
   // Auto-scroll toggle state, persisted in localStorage
@@ -255,98 +253,100 @@ export default function PicksheetPage() {
     URL.revokeObjectURL(url);
   };
 
-  return (
-    <>
-      <PrintOnlyStyles areaClass="print-area" landscape margin="8mm" />
-      <PrintGridStyles />
-
-      <Box>
-        <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
-          {/* Week picker */}
-          <Box flex={1} display="flex" alignItems="center">
-            <FormControl size="small" disabled={lockedWeeks.length === 0}>
-              <InputLabel>Week</InputLabel>
-              <Select
+    return (
+      <PageFit
+        header={
+          <Box sx={{ p: 1 }}>
+            <PrintOnlyStyles areaClass="print-area" landscape margin="8mm" />
+            <PrintGridStyles />
+            
+            <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}>
+              {/* Week picker */}
+              <LabeledSelect
                 label="Week"
-                value={lockedWeeks.length === 0 ? "" : week ?? ""}
+                value={lockedWeeks.length === 0 || week == null ? "" : String(week)}
                 onChange={(e) => setWeek(Number(e.target.value))}
-              >
-                {lockedWeeks.map((w) => (
-                  <MenuItem key={w} value={w}>Week {w}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Box>
+                options={lockedWeeks.map((w) => ({
+                  value: String(w),
+                  label: `Week ${w}`,
+                }))}
+              />
 
-          {/* Title */}
-          <Box flex={1} display="flex" justifyContent="center" alignItems="center">
-            <Typography variant="body1" fontWeight="bold">
-              {week == null
-                ? "Loading results…"
-                : week == currentWeek?.week ? 
-                  (currentWeek?.status === "final"
-                    ? "Final results"
-                    : currentWeek?.status === "scheduled"
-                      ? "Picks"
-                      : "Partial results")
-                    : "Final results"
-              }
-            </Typography>
-          </Box>
+              {/* Title */}
+              <Box sx={{ flex: 1, textAlign: "center" }}>
+                <Typography variant="body1" fontWeight="bold">
+                  {week == null
+                    ? "Loading results…"
+                    : week == currentWeek?.week ? 
+                      (currentWeek?.status === "final"
+                        ? "Final results"
+                        : currentWeek?.status === "scheduled"
+                          ? "Picks"
+                          : "Partial results")
+                        : "Final results"
+                  }
+                </Typography>
+              </Box>
 
-          {/* Export & Print */}
-          <Box flex={1} display="flex" justifyContent="flex-end" alignItems="center" gap={1}>
-            <Button variant="outlined" size="small" onClick={handleExport}>
-              Export
-            </Button>
-            <Button variant="outlined" size="small" onClick={() => window.print()}>
-              Print
-            </Button>
-          </Box>
-        </Stack>
+              {/* Export & Print */}
+              <Box flex={1} display="flex" justifyContent="flex-end" alignItems="center" gap={1}>
+                <Button variant="outlined" size="small" onClick={handleExport}>
+                  Export
+                </Button>
+                <Button variant="outlined" size="small" onClick={() => window.print()}>
+                  Print
+                </Button>
+              </Box>
+            </Stack>
 
-        {loading ? (
-          <Alert severity="info">Loading…</Alert>
-        ) : (
-          <>
-            {/* If results columns are present, show auto-update info */}
-            {showResultsCols && (
+            {loading ? (
+              <Alert severity="info">Loading…</Alert>
+            ) : (
               <>
-                <Box sx={{ mb: 1, display: 'flex', alignItems: 'center' }}>
-                  <Typography variant="body1" sx={{ mr: 0.5 }}>
-                    Results include{' '}
-                    <Box
-                      component="span"
-                      sx={{ color: 'primary.main', textDecoration: 'underline', cursor: 'pointer', fontWeight: 500 }}
-                      onClick={e => setAutoUpdateAnchor(e.currentTarget as HTMLElement)}
-                      tabIndex={0}
-                      role="button"
-                      aria-label="About auto-updated scores"
-                    >
-                      in-progress game
+                {showResultsCols && (
+                  <>
+                    <Box sx={{ my: 1, display: 'flex', alignItems: 'center' }}>
+                      <Typography variant="body1" sx={{ mr: 0.5 }}>
+                        Results include{' '}
+                        <Box
+                          component="span"
+                          sx={{ color: 'primary.main', textDecoration: 'underline', cursor: 'pointer', fontWeight: 500 }}
+                          onClick={e => setAutoUpdateAnchor(e.currentTarget as HTMLElement)}
+                          tabIndex={0}
+                          role="button"
+                          aria-label="About auto-updated scores"
+                        >
+                          in-progress game
+                        </Box>
+                      </Typography>
                     </Box>
-                  </Typography>
-                </Box>
-                <InfoPopover
-                  anchorEl={autoUpdateAnchor}
-                  onClose={() => setAutoUpdateAnchor(null)}
-                >
-                  Scores and rank are auto-updated every {import.meta.env.VITE_AUTO_REFRESH_INTERVAL_MINUTES || 30} minutes and include in-progess games
-                </InfoPopover>
+                    <InfoPopover
+                      anchorEl={autoUpdateAnchor}
+                      onClose={() => setAutoUpdateAnchor(null)}
+                    >
+                      Scores and rank are auto-updated every {import.meta.env.VITE_AUTO_REFRESH_INTERVAL_MINUTES || 30} minutes and include in-progess games
+                    </InfoPopover>
+                  </>
+                )}
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={autoScroll}
+                      onChange={e => setAutoScroll(e.target.checked)}
+                      size="small"
+                    />
+                  }
+                  label={<Typography variant="body2">Auto-scroll to my picks</Typography>}
+                  sx={{ mr: 2, mb: 1 }}
+                />
               </>
             )}
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={autoScroll}
-                  onChange={e => setAutoScroll(e.target.checked)}
-                  size="small"
-                />
-              }
-              label={<Typography variant="body2">Auto-scroll to my picks</Typography>}
-              sx={{ mr: 2, mb: 0 }}
-            />
-            <PrintArea className="print-grid-area">
+          </Box>
+        }
+      >
+        {!loading && (
+          <StackColumn sx={{ px: 2 }}>
+            <PrintArea className="print-grid-area" sx={{ flex: 1, minHeight: 0 }}>
               <DataGridLite<ResultsRow>
                 key={`grid-${week}`}
                 rows={rows}
@@ -361,7 +361,7 @@ export default function PicksheetPage() {
                 autoScrollHighlightOnSort={autoScroll}
               />
             </PrintArea>
-          </>
+          </StackColumn>
         )}
 
         <AppSnackbar
@@ -370,7 +370,6 @@ export default function PicksheetPage() {
           severity={snack.severity}
           onClose={() => setSnack((s) => ({ ...s, open: false }))}
         />
-      </Box>
-    </>
-  );
+      </PageFit>
+    );
 }

@@ -25,6 +25,7 @@ import PasswordResetConfirmPage from "./pages/PasswordResetConfirmPage";
 import UserMenuAvatar from "./components/UserMenuAvatar";
 import type { NavItem } from "./components/ResponsiveNav";
 import ResponsiveNav from "./components/ResponsiveNav";
+import { Viewport, AppShell } from "./components/Layout";
 
 // pages
 import HomePage from "./pages/Home";
@@ -103,46 +104,50 @@ function PrivateShell() {
   ) : null;
 
   return (
-    <ResponsiveNav
-      title="Pigeon Pool"
-      brand={<Brand />}
-      navItems={getNavItems(me?.is_admin ?? false)}
-      userMenu={userMenu}
-    >
-      <Routes>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/enter-picks" element={<EnterPicksPage />} />
-        <Route path="/picks-and-results" element={<PicksheetPage />} />
-        <Route path="/analytics" element={<AnalyticsPage />} />
-        <Route path="/year-to-date" element={<YearToDatePage />} />
-        <Route path="/about" element={<AboutPage />} />
-        <Route path="/admin" element={me?.is_admin ? <AdminPage /> : <Box p={3}>Not authorized</Box>}>
-          <Route index element={<Navigate to="/admin/picks" replace />} />
-          <Route path="picks" element={<AdminLocksAndPicks />} />
-          <Route path="pigeons" element={<AdminRoster />} />
-        </Route>
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </ResponsiveNav>
+    <AppShell>
+      <ResponsiveNav
+        title="Pigeon Pool"
+        brand={<Brand />}
+        navItems={getNavItems(me?.is_admin ?? false)}
+        userMenu={userMenu}
+      >
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/enter-picks" element={<EnterPicksPage />} />
+          <Route path="/picks-and-results" element={<PicksheetPage />} />
+          <Route path="/analytics" element={<AnalyticsPage />} />
+          <Route path="/year-to-date" element={<YearToDatePage />} />
+          <Route path="/about" element={<AboutPage />} />
+          <Route path="/admin" element={me?.is_admin ? <AdminPage /> : <Box p={3}>Not authorized</Box>}>
+            <Route index element={<Navigate to="/admin/picks" replace />} />
+            <Route path="picks" element={<AdminLocksAndPicks />} />
+            <Route path="pigeons" element={<AdminRoster />} />
+          </Route>
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </ResponsiveNav>
+    </AppShell>
   );
 }
 
 export default function App() {
   useAutoRefreshManager();
   return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <AuthProvider>
-        <BrowserRouter>
-          <Routes>
-            {/* Public routes */}
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/reset-password" element={<PasswordResetConfirmPage />} />
-            {/* Private app */}
-            <Route path="/*" element={<PrivateShell />} />
-          </Routes>
-        </BrowserRouter>
-      </AuthProvider>
-    </ThemeProvider>
+    <Viewport>
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <AuthProvider>
+          <BrowserRouter>
+            <Routes>
+              {/* Public routes */}
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/reset-password" element={<PasswordResetConfirmPage />} />
+              {/* Private app */}
+              <Route path="/*" element={<PrivateShell />} />
+            </Routes>
+          </BrowserRouter>
+        </AuthProvider>
+      </ThemeProvider>
+    </Viewport>
   );
 }

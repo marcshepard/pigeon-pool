@@ -318,7 +318,7 @@ export function DataGridLite<T>({
         borderColor: "divider",
         borderRadius: 2,
         overflow: "auto",
-        maxHeight: "75vh",
+        height: "100%",
 
         "& .MuiTableRow-root": { height: "auto" },
         "& .MuiTableCell-root": { px: 0.5, py: 0.25, lineHeight: 1.1, fontSize: "0.85rem" },
@@ -371,5 +371,4 @@ export function DataGridLite<T>({
       </InfoPopover>
     </Box>
   );
-//
 }

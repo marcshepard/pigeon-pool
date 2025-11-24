@@ -22,6 +22,8 @@ import {
 } from "@mui/material";
 import MenuIcon from "@mui/icons-material/Menu";
 
+import { StackColumn } from "./Layout";
+
 
 // ---- Types ----
 export type NavItem = {
@@ -176,7 +178,7 @@ export default function ResponsiveNav({
       )}
 
       {/* Main column */}
-      <Box sx={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
+      <StackColumn sx={{ width: 0 }}>
         <AppBar
           position="sticky"
           elevation={0}
@@ -232,7 +234,7 @@ export default function ResponsiveNav({
         </AppBar>
 
         {/* Page content */}
-        <Box
+        <StackColumn
           component="main"
           sx={{
             width: "100%",
@@ -242,8 +244,8 @@ export default function ResponsiveNav({
           }}
         >
           {children}
-        </Box>
-      </Box>
+        </StackColumn>
+      </StackColumn>
     </Box>
   );
 }

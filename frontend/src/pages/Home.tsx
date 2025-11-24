@@ -10,6 +10,8 @@ import EmojiEventsIcon from "@mui/icons-material/EmojiEvents";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import BarChartIcon from "@mui/icons-material/BarChart";
 
+import { PageScroll } from "../components/Layout";
+
 const tiles = [
     {
         path: "/enter-picks",
@@ -45,34 +47,34 @@ const tiles = [
 
 export default function HomePage() {
     return (
-        <Box sx={{ maxWidth: 520, mx: "auto" }}>
+        <PageScroll sx={{ px:1, width:"100%", maxWidth: 600, mx: "auto" }}>
             <Typography variant="body1" align="center" fontWeight="bold">
                 Welcome to the Pigeon Pool
             </Typography>
-            <Stack spacing={3} mt={5}>
+            <Stack spacing={3} mt={5} mb={1}>
                 {tiles.map((tile) => (
-                                <Paper
-                                    key={tile.path}
-                                    elevation={4}
-                                    sx={{
-                                        display: "flex",
-                                        alignItems: "center",
-                                        p: 2.5,
-                                        borderRadius: 3,
-                                        boxShadow: 3,
-                                        transition: "box-shadow 0.2s, transform 0.2s",
-                                        cursor: "pointer",
-                                        '&:hover': {
-                                            boxShadow: 8,
-                                            transform: "translateY(-2px) scale(1.02)",
-                                            backgroundColor: (theme) => theme.palette.action.hover,
-                                        },
-                                        textDecoration: "none",
-                                        color: "inherit",
-                                    }}
-                                    component={RouterLink}
-                                    to={tile.path}
-                                >
+                    <Paper
+                        key={tile.path}
+                        elevation={4}
+                        sx={{
+                            display: "flex",
+                            alignItems: "center",
+                            p: 2.5,
+                            borderRadius: 3,
+                            boxShadow: 3,
+                            transition: "box-shadow 0.2s, transform 0.2s",
+                            cursor: "pointer",
+                            '&:hover': {
+                                boxShadow: 8,
+                                transform: "translateY(-2px) scale(1.02)",
+                                backgroundColor: (theme) => theme.palette.action.hover,
+                            },
+                            textDecoration: "none",
+                            color: "inherit",
+                        }}
+                        component={RouterLink}
+                        to={tile.path}
+                    >
                         <Box sx={{ mr: 2, flexShrink: 0 }}>{tile.icon}</Box>
                         <Box>
                             <Typography variant="h6" sx={{ fontWeight: 600, mb: 0.5 }}>
@@ -85,6 +87,6 @@ export default function HomePage() {
                     </Paper>
                 ))}
             </Stack>
-        </Box>
+        </PageScroll>
     );
 }
