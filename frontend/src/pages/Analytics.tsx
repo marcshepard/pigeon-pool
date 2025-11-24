@@ -3,7 +3,8 @@
  */
 
 import { useState, useEffect, useMemo } from "react";
-import { Box, Stack, Typography, Tabs, Tab, FormControl, InputLabel, Select, MenuItem, ListSubheader, Divider } from "@mui/material";
+import { Box, Stack, Typography, Tabs, Tab } from "@mui/material";
+import { LabeledSelect } from "../components/CommonComponents";
 
 import { useAuth } from "../auth/useAuth";
 import { useSchedule } from "../hooks/useSchedule";
@@ -110,59 +111,38 @@ export default function AnalyticsPage() {
     <Box sx={{ mx: "auto", mt: 3 }}>
       {/* Header: Week selector, Analytics, Pigeon selector */}
       <Stack direction="row" alignItems="center" spacing={2} justifyContent="center" sx={{ mb: 2 }}>
-        {/* Week selector */}
-        <FormControl size="small">
-          <InputLabel id="week-label">Week</InputLabel>
-          <Select
-            labelId="week-label"
-            value={week}
-            label="Week"
-            onChange={e => setWeek(Number(e.target.value))}
-          >
-            {lockedWeeks.map(w => (
-              <MenuItem key={w} value={w}>Week {w}</MenuItem>
-            ))}
-          </Select>
-        </FormControl>
+        {/* Week selector using LabeledSelect */}
+        <LabeledSelect
+          label="Week"
+          value={week === "" ? "" : String(week)}
+          onChange={e => setWeek(Number(e.target.value))}
+          options={lockedWeeks.map(w => ({ value: String(w), label: `Week ${w}` }))}
+          id="week-select"
+          labelId="week-label"
+          size="small"
+        />
         
         <Typography variant="h5" sx={{ flex: 1, textAlign: "center" }}>
           Analytics
         </Typography>
         
-        {/* Pigeon selector */}
-        <FormControl size="small" sx={{ minWidth: 140 }}>
-          <InputLabel id="pigeon-label">Pigeon</InputLabel>
-          <Select
-            labelId="pigeon-label"
-            value={pigeon}
-            label="Pigeon"
-            onChange={e => setPigeon(Number(e.target.value))}
-          >
-            {meOpt && (
-              <MenuItem key={meOpt.pigeon_number} value={meOpt.pigeon_number}>
-                {`${meOpt.pigeon_number} ${meOpt.pigeon_name ?? ""}`.trim()}
-              </MenuItem>
-            )}
-
-            {managedOpts.length > 0 && (
-              <ListSubheader>Managed</ListSubheader>
-            )}
-            {managedOpts.map(p => (
-              <MenuItem key={p.pigeon_number} value={p.pigeon_number}>
-                {`${p.pigeon_number} ${p.pigeon_name ?? ""}`.trim()}
-              </MenuItem>
-            ))}
-
-            {otherOpts.length > 0 && (
-              <Divider sx={{ my: 0.5 }} />
-            )}
-            {otherOpts.map(p => (
-              <MenuItem key={p.pigeon_number} value={p.pigeon_number}>
-                {p.pigeon_name ? `${p.pigeon_number} ${p.pigeon_name}` : String(p.pigeon_number)}
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
+        {/* Pigeon selector using LabeledSelect */}
+        <LabeledSelect
+          label="Pigeon"
+          value={pigeon === "" ? "" : String(pigeon)}
+          onChange={e => setPigeon(Number(e.target.value))}
+          options={[
+            ...(meOpt ? [{ value: String(meOpt.pigeon_number), label: `${meOpt.pigeon_number} ${meOpt.pigeon_name ?? ""}`.trim() }] : []),
+            ...(managedOpts.length > 0 ? [{ value: "", label: "--- Managed ---", isHeader: true }] : []),
+            ...managedOpts.map(p => ({ value: String(p.pigeon_number), label: `${p.pigeon_number} ${p.pigeon_name ?? ""}`.trim() })),
+            ...(otherOpts.length > 0 ? [{ value: "", label: "--- Others ---", isHeader: true }] : []),
+            ...otherOpts.map(p => ({ value: String(p.pigeon_number), label: p.pigeon_name ? `${p.pigeon_number} ${p.pigeon_name}` : String(p.pigeon_number) })),
+          ].filter(opt => !opt.isHeader)}
+          id="pigeon-select"
+          labelId="pigeon-label"
+          size="small"
+          sx={{ minWidth: 140 }}
+        />
       </Stack>
 
       {/* Tabs */}
