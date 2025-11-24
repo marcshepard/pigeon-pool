@@ -3,7 +3,7 @@
  */
 
 import { useState, useEffect, useMemo } from "react";
-import { Box, Stack, Typography, Tabs, Tab } from "@mui/material";
+import { Stack, Typography, Tabs, Tab } from "@mui/material";
 import { LabeledSelect } from "../components/CommonComponents";
 
 import { useAuth } from "../auth/useAuth";
@@ -154,7 +154,7 @@ export default function AnalyticsPage() {
       </Tabs>
 
       {/* Tab panels */}
-      <Box>
+      <PageFit.ScrollArea>
         {tab === 0 && week && pigeon && (
           <RemainingGames week={Number(week)} pigeon={Number(pigeon)} />
         )}
@@ -165,7 +165,7 @@ export default function AnalyticsPage() {
             <Top5Playground pigeon={Number(pigeon)} week={Number(week)} />
           )
         )}
-      </Box>
+      </PageFit.ScrollArea>
     </PageFit>
   );
 }
