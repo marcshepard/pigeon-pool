@@ -545,13 +545,13 @@ export default function EnterPicksPage() {
       )}
       {/* Else show last submission time */}
       {!hasUnsavedChanges && lastSubmission && (
-        <Banner severity="info" sx={{ mb: 2 }}>
+        <Banner severity="info" sx={{ mx: 0.5, mb: 1 }}>
           Last submission: {formatSubmissionTime(lastSubmission)}
         </Banner>
       )}
 
       {/* Scrollable picks area below header and selector */}
-      <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto', px: 0.5, pt: 2 }}>
+      <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto', px: 0.5 }}>
         <AppSnackbar
           open={snackbar.open}
           message={snackbar.message}
