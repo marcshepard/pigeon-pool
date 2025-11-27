@@ -6,12 +6,15 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Box,
-  Button,
   Checkbox,
   FormControlLabel,
+  IconButton,
   Stack,
+  Tooltip,
   Typography,
 } from "@mui/material";
+import PrintIcon from "@mui/icons-material/Print";
+import FileDownloadIcon from "@mui/icons-material/FileDownload";
 
 import {
   AppSnackbar,
@@ -256,7 +259,7 @@ export default function PicksheetPage() {
     return (
       <PageFit
         header={
-          <Box sx={{ p: 1 }}>
+          <Box sx={{ py: 1 }}>
             <PrintOnlyStyles areaClass="print-area" landscape margin="8mm" />
             <PrintGridStyles />
             
@@ -273,7 +276,12 @@ export default function PicksheetPage() {
               />
 
               {/* Title */}
-              <Typography variant="h6" fontWeight="bold">
+              <Typography
+                variant="h6"
+                fontWeight="bold"
+                sx={{ flex: 1, textAlign: 'center' }}
+                style={{ margin: 0 }}
+              >
                 {week == null
                   ? "Loading results…"
                   : week == currentWeek?.week ? 
@@ -288,12 +296,16 @@ export default function PicksheetPage() {
 
               {/* Export & Print */}
               <Box display="flex" justifyContent="flex-end" alignItems="center" gap={1}>
-                <Button variant="outlined" size="small" onClick={handleExport}>
-                  Export
-                </Button>
-                <Button variant="outlined" size="small" onClick={() => window.print()}>
-                  Print
-                </Button>
+                  <Tooltip title="Export">
+                    <IconButton color="primary" onClick={handleExport}>
+                      <FileDownloadIcon />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="Print">
+                    <IconButton color="primary" onClick={() => window.print()}>
+                      <PrintIcon />
+                    </IconButton>
+                  </Tooltip>
               </Box>
             </Stack>
 
@@ -343,7 +355,7 @@ export default function PicksheetPage() {
         }
       >
         {!loading && (
-          <StackColumn sx={{ px: 2 }}>
+          <StackColumn>
             <PrintArea className="print-grid-area" sx={{ flex: 1, minHeight: 0 }}>
               <DataGridLite<ResultsRow>
                 key={`grid-${week}`}

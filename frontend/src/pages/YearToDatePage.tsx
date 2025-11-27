@@ -3,7 +3,8 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { Box, Stack, Typography, Alert, Button } from "@mui/material";
+import { Box, Stack, Typography, Alert, IconButton, Tooltip } from "@mui/material";
+import PrintIcon from "@mui/icons-material/Print";
 import {
   AppSnackbar,
   PrintArea,
@@ -99,14 +100,18 @@ export default function YtdPage() {
   return (
     <PageFit
       header={
-        <Box sx={{ px: 2 }}>
+        <Box>
           <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
             <Typography variant="h6" fontWeight="bold" sx={{ flex: 1, textAlign: "left" }}>
-              Year to Date
+              Year-to-date
             </Typography>
             <Box sx={{ flex: 1 }} />
             <Box sx={{ flex: 1, textAlign: "right" }}>
-              <Button variant="outlined" onClick={() => window.print()}>Print</Button>
+              <Tooltip title="Print">
+                <IconButton color="primary" onClick={() => window.print()}>
+                  <PrintIcon />
+                </IconButton>
+              </Tooltip>
             </Box>
           </Stack>
 
@@ -115,7 +120,7 @@ export default function YtdPage() {
       }
     >
       {!loading && (
-        <StackColumn sx={{ px: 2 }}>
+        <StackColumn>
           <PrintArea className="print-grid-area" sx={{ flex: 1, minHeight: 0 }}>
             <DataGridLite<YtdRow>
               rows={rows}

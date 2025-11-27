@@ -31,7 +31,7 @@ export default function AboutPage() {
             <Typography variant="body1" sx={{ mb: 1 }}>
                 <b>5.</b> Payoffs are per the table below and are sent by US mail.
             </Typography>
-            <Box mt={4}>
+            <Box mt={1}>
                 <Typography variant="h6" gutterBottom align="center">Payoff Table</Typography>
                 <TableContainer component={Paper} sx={{ maxWidth: 500, mx: "auto" }}>
                     <Table size="small">
