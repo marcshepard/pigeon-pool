@@ -11,6 +11,7 @@ export type PickCell = {
   label: string; 
   home_abbr: string; 
   away_abbr: string; 
+  score?: number; // The calculated score for this game (if finished)
 };
 
 export type ResultsRow = {
@@ -55,12 +56,14 @@ export function shapeRowsAndGames(picks: WeekPicksRow[], lb: LeaderboardRow[]) {
     const signed = p.picked_home ? +p.predicted_margin : -p.predicted_margin;
     const team = p.picked_home ? p.home_abbr : p.away_abbr;
     let label = p.predicted_margin === 0 ? "" : `${team} ${p.predicted_margin}`;
+    let gameScore: number | undefined = undefined;
 
     if (label && p.home_score != null && p.away_score != null) {
       if (p.status === "final" || p.status === "in_progress") {
         const actualSigned = p.home_score - p.away_score;
         const sc = scoreForPick(signed, actualSigned);
         label = `${label} (${sc})`;
+        gameScore = sc;
       }
     }
 
@@ -71,12 +74,25 @@ export function shapeRowsAndGames(picks: WeekPicksRow[], lb: LeaderboardRow[]) {
         pigeon_number: p.pigeon_number,
         pigeon_name: p.pigeon_name,
         picks: {},
-        points: lbr?.score ?? null,
+        points: null, // Will be calculated below
         rank: lbr?.rank ?? null,
       };
       byPigeon.set(p.pigeon_number, row);
     }
-    row.picks[key] = { signed, label, home_abbr: p.home_abbr, away_abbr: p.away_abbr };
+    row.picks[key] = { signed, label, home_abbr: p.home_abbr, away_abbr: p.away_abbr, score: gameScore };
+  }
+
+  // Calculate aggregate points for each row by summing game scores
+  for (const row of byPigeon.values()) {
+    let total = 0;
+    let hasScores = false;
+    for (const pick of Object.values(row.picks)) {
+      if (pick.score !== undefined) {
+        total += pick.score;
+        hasScores = true;
+      }
+    }
+    row.points = hasScores ? total : null;
   }
 
   return { rows: [...byPigeon.values()], games };
