@@ -68,6 +68,18 @@ export default function Top5Playground({ pigeon, week }: { pigeon: number; week:
     }
     // Use all games with scores (final or entered)
     const relevantGames = games.filter(g => (g.status === 'final' && g.home_score != null && g.away_score != null) || enteredScores[g.game_id]);
+
+    // If no games are completed and no entered scores, show all players tied for first
+    if (relevantGames.length === 0) {
+      return rows.map(player => ({
+        ...player,
+        points: 0,
+        rank: 1,
+        tie: true,
+        validPickCount: 0,
+      }));
+    }
+
     // Calculate totalScore and validPickCount for each player
     const recalculated: (Player & { validPickCount: number })[] = rows.map(player => {
       let totalScore = 0;
@@ -121,19 +133,28 @@ export default function Top5Playground({ pigeon, week }: { pigeon: number; week:
 
   // Filter to show only top 5 ranked players, plus always include current pigeon if not in top 5
   const displayedTop5 = useMemo(() => {
+    // If all players are tied for first (all rank 1), show first 5 plus selected pigeon if not in first 5
+    const allRankOne = recalculatedPlayers.length > 0 && recalculatedPlayers.every(p => p.rank === 1);
+    if (allRankOne) {
+      const first5 = recalculatedPlayers.slice(0, 5);
+      const isPigeonInFirst5 = first5.some(p => p.pigeon_number === pigeon);
+      if (!isPigeonInFirst5 && pigeon) {
+        const currentPigeon = recalculatedPlayers.find(p => p.pigeon_number === pigeon);
+        if (currentPigeon) {
+          return [...first5, currentPigeon];
+        }
+      }
+      return first5;
+    }
+    // Otherwise, normal logic
     const top5 = recalculatedPlayers.slice(0, 5);
-    
-    // Check if current pigeon is already in top 5
     const isPigeonInTop5 = top5.some(p => p.pigeon_number === pigeon);
-    
-    // If current pigeon is not in top 5 but exists in recalculated list, add them
     if (!isPigeonInTop5 && pigeon) {
       const currentPigeon = recalculatedPlayers.find(p => p.pigeon_number === pigeon);
       if (currentPigeon) {
         return [...top5, currentPigeon];
       }
     }
-    
     return top5;
   }, [recalculatedPlayers, pigeon]);
 
@@ -196,17 +217,29 @@ export default function Top5Playground({ pigeon, week }: { pigeon: number; week:
         </Paper>
           {/* Show message if more than 5 players are tied at the 5th rank */}
           {(() => {
-            if (recalculatedPlayers.length > 5) {
+            // If all players are tied for first (all rank 1), show banner for the rest
+            const allRankOne = recalculatedPlayers.length > 0 && recalculatedPlayers.every(p => p.rank === 1);
+            if (allRankOne) {
+              let shown = 5;
+              const isPigeonInFirst5 = recalculatedPlayers.slice(0, 5).some(p => p.pigeon_number === pigeon);
+              if (!isPigeonInFirst5 && pigeon) shown += 1;
+              const others = recalculatedPlayers.length - shown;
+              if (others > 0) {
+                return (
+                  <Typography variant="body2" sx={{ mt: 2, color: 'text.secondary', textAlign: 'center' }}>
+                    {others} other player{others > 1 ? 's are' : ' is'} tied for first place
+                  </Typography>
+                );
+              }
+            } else if (recalculatedPlayers.length > 5) {
               // Get the top 5 players only (excluding current pigeon if added separately)
               const top5Only = recalculatedPlayers.slice(0, 5);
               const lastTop5Rank = top5Only.length ? top5Only[top5Only.length - 1].rank : null;
-              
               if (lastTop5Rank != null) {
                 // Count all players at that rank
                 const tiedPlayers = recalculatedPlayers.filter(p => p.rank === lastTop5Rank);
                 // Subtract the ones already shown in top 5
                 const extraTied = tiedPlayers.length - top5Only.filter(p => p.rank === lastTop5Rank).length;
-                
                 if (extraTied > 0) {
                   return (
                     <Typography variant="body2" sx={{ mt: 2, color: 'text.secondary', textAlign: 'center' }}>
