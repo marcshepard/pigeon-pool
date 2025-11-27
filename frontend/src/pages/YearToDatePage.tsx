@@ -101,7 +101,7 @@ export default function YtdPage() {
       header={
         <Box sx={{ px: 2 }}>
           <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
-            <Typography variant="body1" fontWeight="bold" sx={{ flex: 1, textAlign: "left" }}>
+            <Typography variant="h6" fontWeight="bold" sx={{ flex: 1, textAlign: "left" }}>
               Year to Date
             </Typography>
             <Box sx={{ flex: 1 }} />

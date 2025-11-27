@@ -273,23 +273,21 @@ export default function PicksheetPage() {
               />
 
               {/* Title */}
-              <Box sx={{ flex: 1, textAlign: "center" }}>
-                <Typography variant="body1" fontWeight="bold">
-                  {week == null
-                    ? "Loading results…"
-                    : week == currentWeek?.week ? 
-                      (currentWeek?.status === "final"
-                        ? "Final results"
-                        : currentWeek?.status === "scheduled"
-                          ? "Picks"
-                          : "Partial results")
-                        : "Final results"
-                  }
-                </Typography>
-              </Box>
+              <Typography variant="h6" fontWeight="bold">
+                {week == null
+                  ? "Loading results…"
+                  : week == currentWeek?.week ? 
+                    (currentWeek?.status === "final"
+                      ? "Final results"
+                      : currentWeek?.status === "scheduled"
+                        ? "Picks"
+                        : "Partial results")
+                      : "Final results"
+                }
+              </Typography>
 
               {/* Export & Print */}
-              <Box flex={1} display="flex" justifyContent="flex-end" alignItems="center" gap={1}>
+              <Box display="flex" justifyContent="flex-end" alignItems="center" gap={1}>
                 <Button variant="outlined" size="small" onClick={handleExport}>
                   Export
                 </Button>

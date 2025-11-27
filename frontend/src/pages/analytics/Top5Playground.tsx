@@ -157,8 +157,8 @@ export default function Top5Playground({ pigeon, week }: { pigeon: number; week:
 
   // --- Removed "Current rank" and "Best possible rank" display at the top ---
   return (
-    <Box sx={{ maxWidth: 800, mx: 'auto', mt: 4 }}>
-      <Box sx={{ mt: 4 }}>
+    <Box sx={{ maxWidth: 800, mx: 'auto' }}>
+      <Box>
         <Typography variant="body1" align="center" sx={{ mb: 1 }}>
           Your best possible rank: <strong>{bestPossibleRank}</strong>
         </Typography>

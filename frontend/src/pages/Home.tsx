@@ -48,10 +48,10 @@ const tiles = [
 export default function HomePage() {
     return (
         <PageScroll maxWidth={NORMAL_PAGE_MAX_WIDTH} sx={{ px: 1 }}>
-            <Typography variant="body1" align="center" fontWeight="bold">
+            <Typography variant="h6" fontWeight="bold" align="center">
                 Welcome to the Pigeon Pool
             </Typography>
-            <Stack spacing={3} mt={5} mb={1}>
+            <Stack spacing={3} mt={4} mb={1}>
                 {tiles.map((tile) => (
                     <Paper
                         key={tile.path}

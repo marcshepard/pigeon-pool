@@ -468,21 +468,20 @@ export default function EnterPicksPage() {
           />
 
           {/* Center: title w/ easter egg for fast "home team by 3" selection */}
-          <Box sx={{ flex: 1, textAlign: "center" }}>
-            <Typography
-              variant="body1"
-              fontWeight="bold"
-              sx={{ userSelect: "none", cursor: "default" }}
-              onDoubleClick={handleHomeDialog}
-              onTouchEnd={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                handleHomeDoubleTap();
-              }}
-            >
-              Enter picks
-            </Typography>
-          </Box>
+          <Typography
+            variant="h6"
+            fontWeight="bold"
+            align="center"
+            sx={{ userSelect: "none", cursor: "default" }}
+            onDoubleClick={handleHomeDialog}
+            onTouchEnd={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              handleHomeDoubleTap();
+            }}
+          >
+            Enter picks
+          </Typography>
 
           {/* Hidden dialog for home-by-3 */}
           <ConfirmDialog

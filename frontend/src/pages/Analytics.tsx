@@ -124,7 +124,7 @@ export default function AnalyticsPage() {
           size="small"
         />
         
-        <Typography variant="h5" sx={{ flex: 1, textAlign: "center" }}>
+        <Typography variant="h6" fontWeight="bold" sx={{ flex: 1, textAlign: "center" }}>
           Analytics
         </Typography>
         

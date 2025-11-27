@@ -5,7 +5,7 @@ import { PageScroll, NORMAL_PAGE_MAX_WIDTH } from "../components/Layout";
 export default function AboutPage() {
     return (
         <PageScroll maxWidth={NORMAL_PAGE_MAX_WIDTH}>
-            <Typography variant="body1" gutterBottom align="center" fontWeight={700}>
+            <Typography variant="h6" gutterBottom align="center" fontWeight={700}>
                 Pigeon pool rules
             </Typography>
             <Typography variant="body1" sx={{ mb: 1 }}>
