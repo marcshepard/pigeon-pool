@@ -315,7 +315,7 @@ export default function PicksheetPage() {
               <>
                 {showResultsCols && (
                   <>
-                    <Box sx={{ my: 1, display: 'flex', alignItems: 'center' }}>
+                    <Box sx={{ mt: 1, display: 'flex', alignItems: 'center' }}>
                       <Typography variant="body1" sx={{ mr: 0.5 }}>
                         Results include{' '}
                         <Box
