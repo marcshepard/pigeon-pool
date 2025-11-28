@@ -313,7 +313,7 @@ export default function PicksheetPage() {
               <Alert severity="info">Loading…</Alert>
             ) : (
               <>
-                {showResultsCols && (
+                {showResultsCols && games.some(g => g.status === "in_progress") && (
                   <>
                     <Box sx={{ mt: 1, display: 'flex', alignItems: 'center' }}>
                       <Typography variant="body1" sx={{ mr: 0.5 }}>
@@ -326,7 +326,7 @@ export default function PicksheetPage() {
                           role="button"
                           aria-label="About auto-updated scores"
                         >
-                          in-progress game
+                          in-progress games
                         </Box>
                       </Typography>
                     </Box>
@@ -347,7 +347,6 @@ export default function PicksheetPage() {
                     />
                   }
                   label={<Typography variant="body2">Auto-scroll to my picks</Typography>}
-                  sx={{ mr: 2, mb: 1 }}
                 />
               </>
             )}
