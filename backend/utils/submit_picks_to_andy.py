@@ -228,6 +228,7 @@ async def submit_to_andy(body: SubmitBody, deadline_sec: int = DEFAULT_DEADLINE_
                     # strip parentheticals, unify vs->at, collapse spaces, lowercase
                     s2 = parens_re.sub(" ", s)
                     s2 = re.sub(r"\bvs\b", "at", s2, flags=re.I)
+                    s2 = s2.replace("Clevelandi", "Cleveland")  # fix Andy's typo
                     s2 = re.sub(r"\s+", " ", s2).strip().lower()
                     return s2
 
