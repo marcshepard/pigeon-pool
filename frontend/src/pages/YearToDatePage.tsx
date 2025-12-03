@@ -58,8 +58,22 @@ export default function YtdPage() {
             const allPoints = weeks
               .map(ww => r.byWeek[ww]?.points)
               .filter((p): p is number => typeof p === "number");
-            const isExcluded = allPoints.length >= 2 && points === Math.max(...allPoints);
-            return `${points.toFixed(1)}${isExcluded ? "*" : ""}`;
+            const maxPoints = allPoints.length >= 2 ? Math.max(...allPoints) : null;
+            
+            // Only mark the first occurrence of the max with asterisk
+            let isExcluded = false;
+            if (maxPoints !== null && points === maxPoints) {
+              // Check if this is the first week with max points
+              const firstMaxWeek = weeks.find(ww => r.byWeek[ww]?.points === maxPoints);
+              isExcluded = w === firstMaxWeek;
+            }
+            
+            // Format: whole numbers without decimal, else one decimal
+            const formatted = Number.isInteger(points) ? String(points) : points.toFixed(1);
+            const text = `${formatted}${isExcluded ? "*" : ""}`;
+            
+            // Bold if points < 6
+            return points < 6 ? <strong><i>{text}</i></strong> : text;
           }
           return "—";
         },
@@ -69,7 +83,7 @@ export default function YtdPage() {
 
     cols.push(
       { key: "pointsAdj",  header: "POINTS", align: "left",
-        valueGetter: (r) => r.pointsAdj, renderCell: (r) => r.pointsAdj.toFixed(1),
+        valueGetter: (r) => r.pointsAdj, renderCell: (r) => Number.isInteger(r.pointsAdj) ? String(r.pointsAdj) : r.pointsAdj.toFixed(1),
         info: "Total weekly position points, excluding the worst week (*)" },
       { key: "yearRankPts", header: "YEAR",   align: "left",
         valueGetter: (r) => r.yearRankPts, renderCell: (r) => {
@@ -83,7 +97,7 @@ export default function YtdPage() {
         valueGetter: (r) => r.top5, renderCell: (r) => String(r.top5),
         info: "Number of weekly finishes in the top five" },
       { key: "returnTotal", header: "RETURN", align: "left",
-        valueGetter: (r) => r.returnTotal, renderCell: (r) => r.returnTotal.toFixed(2),
+        valueGetter: (r) => r.returnTotal, renderCell: (r) => Number.isInteger(r.returnTotal) ? String(r.returnTotal) : r.returnTotal.toFixed(2),
         info: "Total return, year-to-date" },
       { key: "yearRankRet", header: "RANK",   align: "left",
         valueGetter: (r) => r.yearRankRet, renderCell: (r) => {
