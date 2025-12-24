@@ -25,12 +25,12 @@ from playwright.async_api import async_playwright
 from backend.utils.logger import debug, info, warn
 
 # ---- Tunable timeouts (ms / s) ----
-DEFAULT_DEADLINE_SEC          = 60      # whole coroutine deadline (goto -> fill -> click -> confirm)
-SURVEY_JSON_READY_TIMEOUT_MS  = 8000    # wait for window.survey to be populated
-PLAYWRIGHT_ELEMENT_TIMEOUT_MS = 8000    # per-element waits (selectors, fill, check)
-PLAYWRIGHT_NAV_TIMEOUT_MS     = 30000   # navigation/goto
-FINISH_CLICK_TIMEOUT_MS       = 8000    # clicking the Finish button
-SUCCESS_WAIT_TIMEOUT_MS       = 30000   # wait for "Your picks have been recorded."
+DEFAULT_DEADLINE_SEC          = 90      # whole coroutine deadline
+SURVEY_JSON_READY_TIMEOUT_MS  = 25000   # wait for window.survey to be populated
+PLAYWRIGHT_ELEMENT_TIMEOUT_MS = 25000   # per-element waits (selectors, fill, check)
+PLAYWRIGHT_NAV_TIMEOUT_MS     = 45000   # navigation/goto (external site can be slow)
+FINISH_CLICK_TIMEOUT_MS       = 25000   # clicking the Finish button
+SUCCESS_WAIT_TIMEOUT_MS       = 45000   # wait for success text (server-side processing)
 
 # --- Helper functions for translating the game names on the form with the game names in the database ---"""
 def _dbg_log(msg: str) -> None:

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from typing import List, Iterable
 from datetime import datetime, timezone
+import asyncio
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field, field_validator
@@ -18,6 +19,7 @@ from backend.utils.logger import error
 from .auth import require_user
 
 router = APIRouter(prefix="/picks", tags=["picks"])
+submit_lock = asyncio.Lock()
 
 #pylint: disable=line-too-long
 
@@ -237,7 +239,14 @@ async def upsert_picks_bulk(
         body = await build_submit_body_from_db(
             session=db, week=payload.week_number, pigeon_number=acting_pn, pin=9182
         )
-        await submit_to_andy(body)
+        async with asyncio.timeout(120):
+            async with submit_lock:
+                await submit_to_andy(body)
+    except TimeoutError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Submission queue is busy, please retry shortly"
+        ) from exc
     except Exception as exc:  # pylint: disable=broad-except
         error(f"Failed to submit picks to Andy for pigeon {acting_pn}, week {payload.week_number}: {exc}")
         raise HTTPException(
