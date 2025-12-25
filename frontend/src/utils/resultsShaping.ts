@@ -95,5 +95,27 @@ export function shapeRowsAndGames(picks: WeekPicksRow[], lb: LeaderboardRow[]) {
     row.points = hasScores ? total : null;
   }
 
-  return { rows: [...byPigeon.values()], games };
+  //return { rows: [...byPigeon.values()], games };
+
+  // Calculate ranks based on points (lowest score = rank 1)
+  const rowsArray = [...byPigeon.values()];
+  
+  // Sort by points (null last, then ascending)
+  const sortedRows = rowsArray
+    .filter(r => r.points !== null)
+    .sort((a, b) => a.points! - b.points!);
+  
+  // Assign ranks (handle ties)
+  let currentRank = 1;
+  for (let i = 0; i < sortedRows.length; i++) {
+    if (i > 0 && sortedRows[i].points === sortedRows[i - 1].points) {
+      // Tie: use same rank as previous
+      sortedRows[i].rank = sortedRows[i - 1].rank;
+    } else {
+      sortedRows[i].rank = currentRank;
+    }
+    currentRank++;
+  }
+
+  return { rows: rowsArray, games };
 }
