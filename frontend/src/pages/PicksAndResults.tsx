@@ -102,6 +102,14 @@ export default function PicksheetPage() {
 
   // Columns ----------------------------------------------------------
   const columns: ColumnDef<ResultsRow>[] = useMemo(() => {
+    // Precompute tie counts for rank column
+    const rankCounts = new Map<number, number>();
+    for (const r of rows) {
+      if (r.rank !== null) {
+        rankCounts.set(r.rank, (rankCounts.get(r.rank) ?? 0) + 1);
+      }
+    }
+
     const cols: ColumnDef<ResultsRow>[] = [
       {
         key: "pigeon_name",
@@ -127,7 +135,11 @@ export default function PicksheetPage() {
         header: "Rank",
         align: "left",
         valueGetter: (r) => (r.rank ?? Number.POSITIVE_INFINITY),
-        renderCell: (r) => (r.rank ?? "—"),
+        renderCell: (r) => {
+          if (r.rank === null) return "—";
+          const tie = (rankCounts.get(r.rank) ?? 0) > 1;
+          return `${tie ? "T" : ""}${r.rank}`;
+        },
       });
     }
 
@@ -191,7 +203,7 @@ export default function PicksheetPage() {
     }
 
     return cols;
-  }, [games, selectedWeekHasStarted, showResultsCols]);
+  }, [games, rows, selectedWeekHasStarted, showResultsCols]);
 
   if (!user) return null; // Can't happen due to route protection
 
