@@ -10,7 +10,7 @@ import secrets
 import string
 import tempfile
 from typing import List, Optional
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import traceback
 
 from fastapi import APIRouter, Depends, HTTPException, status, Body, Response, UploadFile, File, Form
@@ -185,8 +185,9 @@ async def adjust_week_lock(
 
     # Calculate the Tuesday before the first kickoff
     tuesday_before = first_kickoff.astimezone(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-    # Go backwards to Tuesday
-    tuesday_before = tuesday_before.replace(day=tuesday_before.day - ((tuesday_before.weekday() - 1) % 7))
+    # Go backwards to Tuesday (weekday 1)
+    days_since_tuesday = (tuesday_before.weekday() - 1) % 7
+    tuesday_before = tuesday_before - timedelta(days=days_since_tuesday)
     # Enforce time window: tuesday_before <= lock_at <= first_kickoff
     if new_lock < tuesday_before:
         raise HTTPException(status_code=400, detail="Lock time must be no earlier than the Tuesday before the first scheduled kickoff for that week")
