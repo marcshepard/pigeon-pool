@@ -172,8 +172,14 @@ export default function EnterPicksPage() {
     // If already cached, use it
     if (currentWeek) {
       const defaultWeek = currentWeek.week + 1;
-      setWeek(defaultWeek ?? "");
-      console.log("EnterPicks: using cached current week, default picks week:", defaultWeek);
+      // Don't set week > 18 (season over)
+      if (defaultWeek <= 18) {
+        setWeek(defaultWeek ?? "");
+        console.log("EnterPicks: using cached current week, default picks week:", defaultWeek);
+      } else {
+        console.log("EnterPicks: season over, no picks available");
+        setWeek("");
+      }
       return;
     }
     
@@ -185,8 +191,14 @@ export default function EnterPicksPage() {
         if (cancelled) return;
         setCurrentWeekCache(cw);
         const defaultWeek = cw.week + 1;
-        setWeek(defaultWeek ?? "");
-        console.log("EnterPicks: setting default picks week:", defaultWeek);
+        // Don't set week > 18 (season over)
+        if (defaultWeek <= 18) {
+          setWeek(defaultWeek ?? "");
+          console.log("EnterPicks: setting default picks week:", defaultWeek);
+        } else {
+          console.log("EnterPicks: season over, no picks available");
+          setWeek("");
+        }
       } catch (e: unknown) {
         if (!cancelled) {
           setLoadingError(e instanceof Error ? e.message : "Failed to load schedule");
@@ -563,6 +575,12 @@ export default function EnterPicksPage() {
         {!loading && loadingError && (
           <Banner severity="error" sx={{ mb: 2 }}>
             {loadingError}
+          </Banner>
+        )}
+
+        {!loading && futureWeeks.length === 0 && (
+          <Banner severity="info" sx={{ mb: 2 }}>
+            The time to enter picks for this season has passed.
           </Banner>
         )}
 
