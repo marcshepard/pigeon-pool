@@ -14,6 +14,8 @@ from backend.routes.results import router as results_router
 from backend.routes.admin import router as admin_router
 from backend.utils.scheduler import start_scheduler, stop_scheduler
 
+DISABLE_SCHEDULER=True  # Set to False before the new season starts
+
 # Early initialization
 s = get_settings()          # forces env load/validation early
 configure_from_env()    # configure logging level after picking up LOGGING_LEVEL from env
@@ -21,6 +23,10 @@ configure_from_env()    # configure logging level after picking up LOGGING_LEVEL
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     """Application startup and shutdown lifecycle."""
+    if DISABLE_SCHEDULER:
+        yield
+        return
+
     # --- Startup ---
     start_scheduler()
     yield
