@@ -2,6 +2,10 @@
 
 This plan breaks the project into staged prompts so the app can move from a single-pool implementation to a general-purpose multi-tenant app without one giant migration.
 
+## How We're Working
+
+Each stage is implemented in its own Claude Code conversation thread. When a stage is done, completion notes are added to that stage's section in this file before starting the next thread. New threads should read `multi.md` first for context.
+
 ## Guiding Principles
 
 - Keep the current app working after each major stage.
@@ -11,7 +15,7 @@ This plan breaks the project into staged prompts so the app can move from a sing
 - Make tenant-specific data explicit: players, picks, user/player assignments, roles, admin access.
 - Preserve current user-facing behavior until the backend is safely tenant-scoped.
 
-## Stage 0: Safety Net
+## Stage 0: Safety Net ✅ COMPLETE
 
 Create a cloned database and verify the app can run against either original or experimental DB.
 
@@ -26,6 +30,14 @@ Deliverables:
 Suggested prompt:
 
 > Help me clone the current database for multi-tenant migration work and document how to switch between the original DB and clone.
+
+### Completion notes
+
+- `pigeon_pool_multi` created as an exact clone of `pigeon_pool` (272 games, 68 players, 17,946 picks).
+- Original `pigeon_pool` database is untouched.
+- `backend/.env` on the `multi` branch sets `POSTGRES_DB=pigeon_pool_multi`; checking out `main`/`dev` restores the original automatically.
+- `README.md` documents the branch/database mapping and commands to recreate or restore the clone.
+- No snapshot SQL file was committed; the clone itself is the safety net and the README documents how to recreate it.
 
 ## Stage 1: Baseline Backend Tests
 

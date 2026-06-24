@@ -17,12 +17,31 @@ Web app for the pigeon pool
 | ------ | ----------- | ------- |
 | dev    | development | localhost development |
 | main   | production  | azure hosted app, CI/CD using github actions |
+| multi  | development | multi-tenancy migration work (uses `pigeon_pool_multi` DB clone) |
 
 Environment configuration:
 * .env - default non-secret values for dev/localhost
 * .env.development.local - secrets for dev/localhost (or just use environment variables) - gitignore'd
 * .env.production - overrides of non-secrets in .env for main/production
 Note: there is no .env.production.local; production secrets are stored as Azure environment variables
+
+### Switching between databases (multi-tenancy development)
+
+The `multi` branch sets `POSTGRES_DB=pigeon_pool_multi` in `backend/.env`. Checking out that branch automatically points the app at the migration clone. Checking out `main` or `dev` restores `POSTGRES_DB=pigeon_pool`.
+
+To recreate the clone from scratch:
+```bash
+# Windows (PowerShell) — uses the password from backend/.env.development.local
+$env:PGPASSWORD = "LetMeIn!"
+createdb -U postgres pigeon_pool_multi
+pg_dump -U postgres pigeon_pool | psql -U postgres -d pigeon_pool_multi
+```
+
+A pre-migration snapshot is stored at `database/snapshot_pre_migration.sql`. To restore the original schema and data to the clone at any time:
+```bash
+$env:PGPASSWORD = "LetMeIn!"
+psql -U postgres -d pigeon_pool_multi -f database/snapshot_pre_migration.sql
+```
 
 ## Quick start (localhost deployment)
 

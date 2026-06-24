@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.utils.settings import get_settings
 from backend.utils.logger import configure_from_env
+import backend.utils.logger as logger
 from backend.routes.auth import router as auth_router
 from backend.routes.picks import router as picks_router
 from backend.routes.schedule import router as schedule_router
@@ -19,6 +20,7 @@ DISABLE_SCHEDULER=True  # Set to False before the new season starts
 # Early initialization
 s = get_settings()          # forces env load/validation early
 configure_from_env()    # configure logging level after picking up LOGGING_LEVEL from env
+logger.info(f"Database: {s.pg_host}:{s.pg_port}/{s.pg_db}")
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
