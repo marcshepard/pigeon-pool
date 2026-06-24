@@ -68,24 +68,24 @@ python -m backend.cli sync-scores 6
 ```bash
 uvicorn backend.main:app --reload --port 8000
 ```
-Note: You can also use the backend.cmd script on windows so you don't have to remember the syntax above
+Note: You can also run the `pigeon BE` VS Code task.
 
 ### 3. FE setup
 1. Install node.js from https://nodejs.org/en/download
 
 2. Install the frontend
 ```bash
-cd fronend
+cd frontend
 npm install
 npm audit fix
 ```
 
 3. start the front-end
 ```bash
-cd fronend
+cd frontend
 npm run dev
 ```
-Note: You can also use the frontend.cmd script on windows so you don't have to remember the syntax above
+Note: You can also run the `pigeon FE` VS Code task.
 
 Note: the first time you sign in, you will need to go through password reset. Emailing the reset URL is
 not currently implemented, but in the backend logs, yhou will see something like:
@@ -96,11 +96,8 @@ Type that link into a browser to complete the password reset
 
 
 ### 4. Subsequent runs
-From windows, you can run these two commands in separate terminals (or use the more verbose syntax above):
-```cmd
-backend.cmd
-frontend.cmd
-```
+From VS Code, run the `pigeon pool` task to start both the backend and frontend. You can also run
+`pigeon BE` and `pigeon FE` separately if you only need one side.
 Once those are running, point your browser to http://localhost:5173
 
 ## Implementation notes
