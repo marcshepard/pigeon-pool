@@ -141,3 +141,11 @@ we go standalone next year, the following changes should be made to the BE (or a
 * Requirements.txt: remove playwright. Also openpyxl unless we wind up using it for other features
 * Azure/yml: Rework startup to remove all the playwrite installation (which takes forever)
 * Code: remove import_picks_xlsx & utils/submit_picks_to_andy.py
+
+## Learn more
+
+| Document | Contents |
+|----------|----------|
+| [docs/contributing.md](docs/contributing.md) | Running the test suite, snapshot update workflow |
+| [docs/frontend.md](docs/frontend.md) | Frontend directory structure, key data flows, build commands |
+| [docs/multi.md](docs/multi.md) | Multi-tenant migration plan and per-stage completion notes |

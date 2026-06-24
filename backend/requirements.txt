@@ -32,3 +32,6 @@ psycopg2-binary>=2.9                # For sync DB connections during picks impor
 playwright>=1.47                    # For submitting picks to Andy's survey site
 httpx >=0.27.0,<1.0                 # For importing scores and game data from ESPN
 azure-communication-email >=1.0.0   # Azure Communication Services email client
+
+# --- Testing ---
+pytest >=8.0                        # Test runner

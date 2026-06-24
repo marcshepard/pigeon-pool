@@ -32,6 +32,20 @@
       "dependsOn": ["pigeon BE", "pigeon FE"],
       "dependsOrder": "parallel",
       "problemMatcher": []
+    },
+    {
+      "label": "pigeon tests",
+      "type": "shell",
+      "command": "cmd",
+      "args": [
+        "/d",
+        "/c",
+        "conda activate pigeon && pytest -v"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
     }
   ]
 }

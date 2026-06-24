@@ -39,7 +39,7 @@ Suggested prompt:
 - `README.md` documents the branch/database mapping and commands to recreate or restore the clone.
 - No snapshot SQL file was committed; the clone itself is the safety net and the README documents how to recreate it.
 
-## Stage 1: Baseline Backend Tests
+## Stage 1: Baseline Backend Tests ✅ COMPLETE
 
 Add tests around current single-pool behavior before changing schema.
 
@@ -59,6 +59,19 @@ Initial test targets:
 Suggested prompt:
 
 > Add a first backend test suite that captures current single-pool behavior before we start the tenant migration.
+
+### Completion notes
+
+Implemented as golden-file snapshot tests (simpler than the original plan, given all weeks are locked off-season and pick submission can't be tested against last year's data):
+
+- `tests/test_snapshots.py` — 5 pytest tests covering the three results endpoints
+- `tests/snapshots/` — 5 JSON golden files: `ytd_leaderboard.json`, `week_1_picks.json`, `week_1_leaderboard.json`, `week_10_picks.json`, `week_10_leaderboard.json`
+- `tests/conftest.py` — shared fixtures: `TestClient`, auth token minted via `make_session_token()` for the first admin user in the DB, `--update-snapshots` flag
+- `pytest.ini` at project root; `pytest` added to `backend/requirements.txt`
+
+Snapshot row counts: 68-row leaderboards per week, 952–1088 picks per week, 1224 YTD rows (68 pigeons × 18 weeks).
+
+Run tests: `pytest` (compare) or `pytest --update-snapshots` (regenerate after intentional data changes).
 
 ## Stage 2: Minimal Target Schema
 
