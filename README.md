@@ -7,7 +7,8 @@ Web app for the pigeon pool
 | --------- | ------------ |
 | Frontend  | React + Vite + MUI |
 | Backend   | Fast API + Python
-| Data      | PostgreSQL |
+| Database  | PostgreSQL |
+| Tests     | Python scripts in tests directory |
 | Hosting   | Azure |
 | Auth      | Name/PW w self-reset |
 | Monitoring | App insights implements a ping test, provides per API error and timing stats |
@@ -37,10 +38,18 @@ createdb -U postgres pigeon_pool_multi
 pg_dump -U postgres pigeon_pool | psql -U postgres -d pigeon_pool_multi
 ```
 
-A pre-migration snapshot is stored at `database/snapshot_pre_migration.sql`. To restore the original schema and data to the clone at any time:
+To run the multi-tenant migration against the clone:
 ```bash
 $env:PGPASSWORD = "LetMeIn!"
-psql -U postgres -d pigeon_pool_multi -f database/snapshot_pre_migration.sql
+psql -U postgres -d pigeon_pool_multi -f database/db_update.sql
+```
+
+To restore the clone to its pre-migration state (re-clone from the original):
+```bash
+$env:PGPASSWORD = "LetMeIn!"
+dropdb -U postgres pigeon_pool_multi
+createdb -U postgres pigeon_pool_multi
+pg_dump -U postgres pigeon_pool | psql -U postgres -d pigeon_pool_multi
 ```
 
 ## Quick start (localhost deployment)

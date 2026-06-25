@@ -73,7 +73,7 @@ Snapshot row counts: 68-row leaderboards per week, 952–1088 picks per week, 12
 
 Run tests: `pytest` (compare) or `pytest --update-snapshots` (regenerate after intentional data changes).
 
-## Stage 2: Minimal Target Schema
+## Stage 2: Minimal Target Schema ✅ COMPLETE
 
 Design and update the from-scratch schema for the minimal tenant model.
 
@@ -153,7 +153,24 @@ Suggested prompt:
 
 > Update the from-scratch database schema for the minimal multi-tenant model, but do not touch backend code yet.
 
-## Stage 3: Existing DB Migration
+### Completion notes
+
+Updated `database/schema.sql` with the full multi-tenant target schema. Key decisions made during design:
+
+- **`tenants`** — new table; `tenant_id BIGINT IDENTITY PRIMARY KEY`, `name TEXT`.
+- **`tenant_weeks`** — replaces `weeks.lock_at`; per-tenant lock times with `PRIMARY KEY (tenant_id, week_number)`. Both FKs use `ON DELETE CASCADE`.
+- **`weeks.default_lock_at`** — nullable template column for new tenant onboarding. Not used as trigger fallback; trigger always reads `tenant_weeks` (missing row → unlocked).
+- **`users.is_admin` dropped** — no global-admin features exist in the current codebase. Tenant management role is now `tenant_members.role = 'commissioner'`. If a global-admin concept is needed later, add `users.global_admin` at that time.
+- **`players`** — new stable `player_id BIGINT` PK (via sequence `players_player_id_seq`). `pigeon_number` stays as display column, unique per tenant (not globally). 68-player cap removed; CHECK now `>= 1`. Old global UNIQUE on `pigeon_name` replaced with `UNIQUE (tenant_id, pigeon_name)`.
+- **`user_players`** — `pigeon_number` FK replaced by `player_id` FK. `is_primary` column dropped; "active player per tenant" moved to `tenant_members.primary_player_id`.
+- **`tenant_members`** — new table; `PRIMARY KEY (tenant_id, user_id)`, `role IN ('commissioner','member')`, `primary_player_id BIGINT NOT NULL`. Every member must have a player (no nullable primary; revisit if non-player admins are needed in a future season). Creation order for a new member: `users → players → user_players → tenant_members` (atomic transaction).
+- **`picks`** — `pigeon_number` FK replaced by `player_id` FK.
+- **Lock trigger** — `deny_picks_after_lock()` now joins `players → tenant_weeks` via `player_id`. Missing `tenant_weeks` row treated as unlocked.
+- **Views** — all five views updated: carry `player_id` and `tenant_id`; leaderboard partitions by `(tenant_id, week_number)`; `v_week_picks_with_names` joins `tenant_weeks` for per-tenant lock check. Backend (Stage 4) must filter by `tenant_id` when querying views.
+
+## Stage 3: Existing DB Migration ✅ COMPLETE
+
+Write a migration script that converts the current single-pool database into the new tenant-aware shape.
 
 Write a migration script that converts the current single-pool database into the new tenant-aware shape.
 
@@ -171,6 +188,29 @@ Migration behavior:
 Suggested prompt:
 
 > Write the migration script to convert the existing DB clone into the new tenant-aware schema and backfill all current data into one tenant.
+
+### Completion notes
+
+`database/db_update.sql` is the migration script. It runs as a single transaction against `pigeon_pool_multi` (never against `pigeon_pool`). Steps in order:
+
+1. Create `tenants`; insert `'The Pigeon Pool'` → `tenant_id = 1`.
+2. Add `weeks.default_lock_at`; backfill from `weeks.lock_at`.
+3. Create `tenant_weeks`; backfill 18 rows from `weeks.lock_at` for tenant 1.
+4. Drop `weeks.lock_at`.
+5. Drop `user_players` and `picks` FKs referencing `players(pigeon_number)`.
+6. Add `player_id` and `tenant_id` to `players`; backfill `player_id = pigeon_number` (values 1–68 map 1:1, so no mapping table needed).
+7. Create sequence `players_player_id_seq` starting at 69; set as `player_id` default.
+8. Drop old `players` PK/constraints; add new PK on `player_id`, per-tenant UNIQUEs, relaxed CHECK.
+9. Add `player_id` to `user_players`; backfill via `pigeon_number` join.
+10. Create `tenant_members`; backfill all users-with-players: `is_admin=TRUE` → `role='commissioner'`, others → `role='member'`; `primary_player_id` from `is_primary=TRUE` row or lowest `player_id`.
+11. Drop `users.is_admin`.
+12. Drop old `user_players` indexes (`uniq_pigeon_single_owner`, `uniq_user_single_primary`), PK, `is_primary` column, `pigeon_number` column; rebuild with new PK and `uniq_player_single_owner`.
+13. Add `player_id` to `picks`; backfill via `pigeon_number` join.
+14. Drop old `picks` triggers, indexes, PK, `pigeon_number` column; rebuild.
+15. Replace `deny_picks_after_lock()` function with tenant-aware version.
+16. Recreate all triggers and five views.
+
+Run: `psql -U postgres -d pigeon_pool_multi -f database/db_update.sql`
 
 ## Stage 4: Backend Single-Tenant Compatibility
 
