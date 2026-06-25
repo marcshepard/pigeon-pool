@@ -15,6 +15,7 @@ import {
   Typography,
 } from "@mui/material";
 import { useSchedule } from "../../hooks/useSchedule";
+import { useAuth } from "../../auth/useAuth";
 import {
   getGamesForWeek,
   adminGetWeeksLocks,
@@ -153,6 +154,7 @@ function ViewPicks({ week }: { week: number }) {
 }
 
 export default function AdminLocksAndPicks() {
+  const { me } = useAuth();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogValue, setDialogValue] = useState<Date | null>(null);
   const { currentWeek } = useSchedule();
@@ -226,8 +228,8 @@ export default function AdminLocksAndPicks() {
 
   return (
     <Box sx={{ mt: 4 }}>
-      {/* Bulk Import Picks xlsx for the current week */}
-      <Box sx={{ mb: 3, textAlign: "left" }}>
+      {/* Bulk Import Picks xlsx — only available for the original tenant */}
+      {me?.tenant_id === 1 && <Box sx={{ mb: 3, textAlign: "left" }}>
         <Button
           variant="contained"
           color="secondary"
@@ -281,7 +283,7 @@ export default function AdminLocksAndPicks() {
             )}
           </DialogActions>
         </Dialog>
-      </Box>
+      </Box>}
       {/* Text + Week selector on one line */}
       <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 2, my: 1 }}>
         <Typography variant="body1">Picks for</Typography>

@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Get-Command pytest -ErrorAction SilentlyContinue)",
+      "PowerShell(py -m pytest --version 2>&1)"
+    ]
+  }
+}

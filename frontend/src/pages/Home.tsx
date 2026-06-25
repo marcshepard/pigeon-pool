@@ -11,6 +11,7 @@ import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import BarChartIcon from "@mui/icons-material/BarChart";
 
 import { NORMAL_PAGE_MAX_WIDTH, PageScroll } from "../components/Layout";
+import { useAuth } from "../auth/useAuth";
 
 const tiles = [
     {
@@ -46,10 +47,12 @@ const tiles = [
 ];
 
 export default function HomePage() {
+    const { me } = useAuth();
+    const tenantName = me?.activeTenant?.name ?? "Pigeon Pool";
     return (
         <PageScroll maxWidth={NORMAL_PAGE_MAX_WIDTH} sx={{ px: 1 }}>
             <Typography variant="h6" fontWeight="bold" align="center">
-                Welcome to the Pigeon Pool
+                Welcome to {tenantName}
             </Typography>
             <Stack spacing={3} mt={4} mb={1}>
                 {tiles.map((tile) => (

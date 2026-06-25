@@ -234,24 +234,25 @@ async def upsert_picks_bulk(
         )
     await db.commit()
 
-    # Also submit to Andy's system using the acting player's pigeon_number (== player_id for stage 4)
-    try:
-        body = await build_submit_body_from_db(
-            session=db, week=payload.week_number, pigeon_number=acting_player_id, pin=9182
-        )
-        async with asyncio.timeout(120):
-            async with submit_lock:
-                await submit_to_andy(body)
-    except TimeoutError as exc:
-        raise HTTPException(
-            status_code=503,
-            detail="Submission queue is busy, please retry shortly"
-        ) from exc
-    except Exception as exc:  # pylint: disable=broad-except
-        error(f"Failed to submit picks to Andy for player {acting_player_id}, week {payload.week_number}: {exc}")
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to submit to Andy's form (so you'll have to do that yourself)"
-        ) from exc
+    # Andy's external survey only applies to the original tenant (tenant 1)
+    if me.tenant_id == 1:
+        try:
+            body = await build_submit_body_from_db(
+                session=db, week=payload.week_number, pigeon_number=acting_player_id, pin=9182
+            )
+            async with asyncio.timeout(120):
+                async with submit_lock:
+                    await submit_to_andy(body)
+        except TimeoutError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="Submission queue is busy, please retry shortly"
+            ) from exc
+        except Exception as exc:  # pylint: disable=broad-except
+            error(f"Failed to submit picks to Andy for player {acting_player_id}, week {payload.week_number}: {exc}")
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to submit to Andy's form (so you'll have to do that yourself)"
+            ) from exc
 
     return out

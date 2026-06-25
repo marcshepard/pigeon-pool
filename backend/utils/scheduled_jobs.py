@@ -11,7 +11,8 @@ from __future__ import annotations
 
 import asyncio
 from typing import Any
-from datetime import datetime
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import bindparam, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,19 +24,28 @@ from .settings import get_settings
 
 #pylint: disable=line-too-long
 
+PT = ZoneInfo("America/Los_Angeles")
+
+def _format_lock_pt(lock_utc: datetime) -> str:
+    """Format a UTC lock datetime in Pacific Time, e.g. 'Wednesday, Sep 10 at 11:59 PM PDT'."""
+    lock_pt = lock_utc.astimezone(PT)
+    hour = lock_pt.hour % 12 or 12
+    ampm = "AM" if lock_pt.hour < 12 else "PM"
+    return f"{lock_pt.strftime('%A, %b')} {lock_pt.day} at {hour}:{lock_pt.minute:02d} {ampm} {lock_pt.strftime('%Z')}"
+
 
 # ---------------------------------------------------------------------
 # Helper to get all emails (primary + secondary)
 # ---------------------------------------------------------------------
 async def get_all_player_emails(
     session: AsyncSession,
-    pigeon_numbers: list[int] | None = None,
+    player_ids: list[int] | None = None,
     include_viewers: bool = True,   # optional filter
 ) -> list[str]:
     """
-    Return distinct emails for users mapped to pigeons.
-    - If pigeon_numbers is None: all mapped users.
-    - If provided: only users mapped to those pigeons.
+    Return distinct emails for users mapped to players.
+    - If player_ids is None: all mapped users.
+    - If provided: only users mapped to those players.
     - include_viewers=False will exclude viewer-only accounts.
     """
     base_sql = """
@@ -47,10 +57,10 @@ async def get_all_player_emails(
     params = {}
     filters = []
 
-    if pigeon_numbers:
+    if player_ids:
         # Use expanding bind param for portability
-        filters.append("up.pigeon_number IN :nums")
-        params["nums"] = tuple(set(int(n) for n in pigeon_numbers))
+        filters.append("up.player_id IN :nums")
+        params["nums"] = tuple(set(int(n) for n in player_ids))
     if not include_viewers:
         filters.append("up.role IN ('owner','manager')")
 
@@ -75,7 +85,7 @@ async def run_kickoff_sync(session: AsyncSession) -> dict[str, Any]:
     Returns: {"weeks": [w, w+1?], "kickoffs_updated": n}
     """
     res = await session.execute(
-        text("SELECT MIN(week_number) FROM weeks WHERE lock_at > now()")
+        text("SELECT MIN(week_number) FROM tenant_weeks WHERE lock_at > now()")
     )
     row = res.first()
     current_week = row[0] if row and row[0] is not None else None
@@ -121,7 +131,7 @@ async def run_poll_scores(session: AsyncSession) -> dict[str, Any]:
     Uses AsyncSession only to fetch the current week; ScoreSync runs in a thread.
     """
     res = await session.execute(text(
-        "SELECT MAX(week_number) FROM weeks WHERE lock_at <= now()"
+        "SELECT MAX(week_number) FROM tenant_weeks WHERE lock_at <= now()"
     ))
     row = res.first()
     if not row or row[0] is None:
@@ -166,7 +176,7 @@ async def run_email_sun(session: AsyncSession) -> dict[str, Any]:
         await asyncio.sleep(delay_minutes * 60)
 
     # current week = latest week already locked
-    res = await session.execute(text("SELECT MAX(week_number) FROM weeks WHERE lock_at <= now()"))
+    res = await session.execute(text("SELECT MAX(week_number) FROM tenant_weeks WHERE lock_at <= now()"))
     row = res.first()
     week = int(row[0]) if row and row[0] is not None else None
 
@@ -176,13 +186,13 @@ async def run_email_sun(session: AsyncSession) -> dict[str, Any]:
         "To ALL Pigeons --\n\n"
         f"The Week {week} Interim Results through Sunday are available at https://www.pigeonpool.com/picks-and-results.\n"
         "Outcomes for various MNF scores are available at https://www.pigeonpool.com/analytics?tab=1.\n\n"
-        "--Andy (not really, as this email is automated from the pigeonpool app)"
+        "--Pigeon Pool"
     )
     html = (
         "<p>To ALL Pigeons --</p>"
         f"<p>The Week {week} Interim Results through Sunday are available at https://www.pigeonpool.com/picks-and-results.</p>"
         "<p>Outcomes for various MNF scores are available at https://www.pigeonpool.com/analytics?tab=1.</p>"
-        "<p>--Andy (not really, as this email is automated from the pigeonpool app)</p>"
+        "<p>--Pigeon Pool</p>"
     )
 
     ok = await asyncio.to_thread(send_bulk_email_bcc, emails, subject, plain, html)
@@ -216,17 +226,16 @@ async def run_email_mon(session: AsyncSession) -> dict[str, Any]:
         await asyncio.sleep(delay_minutes * 60)
 
     # current week = latest week already locked
-    res = await session.execute(text("SELECT MAX(week_number) FROM weeks WHERE lock_at <= now()"))
+    res = await session.execute(text("SELECT MAX(week_number) FROM tenant_weeks WHERE lock_at <= now()"))
     row = res.first()
     week = int(row[0]) if row and row[0] is not None else None
 
-    # winners
     # fetch winners (one or many if tie)
-    winners = await session.execute(text("""
+    winners_res = await session.execute(text("""
         WITH w AS (
-        SELECT MAX(week_number) AS w
-        FROM weeks
-        WHERE lock_at <= now()
+            SELECT MAX(week_number) AS w
+            FROM tenant_weeks
+            WHERE lock_at <= now()
         )
         SELECT pigeon_name, score
         FROM v_weekly_leaderboard
@@ -234,25 +243,32 @@ async def run_email_mon(session: AsyncSession) -> dict[str, Any]:
         AND rank = 1
         ORDER BY score, pigeon_name
     """))
-    winners = [r[0] for r in winners.all()]
+    winners = [r[0] for r in winners_res.all()]
+
+    # next week deadline
+    next_lock_res = await session.execute(text(
+        "SELECT lock_at FROM tenant_weeks WHERE lock_at > now() ORDER BY lock_at LIMIT 1"
+    ))
+    next_lock_row = next_lock_res.first()
+    deadline_str = _format_lock_pt(next_lock_row[0].replace(tzinfo=timezone.utc) if next_lock_row[0].tzinfo is None else next_lock_row[0]) if next_lock_row else "the upcoming deadline"
 
     emails = await get_all_player_emails(session)
-    subject = f"Weekly {week} Results"
+    subject = f"Week {week} Results"
     plain = (
         "To ALL Pigeons --\n\n"
         f"Congratulations to {' and '.join(winners)} for the first place finish in Week {week}!\n"
         "The final results are available at https://www.pigeonpool.com/picks-and-results.\n"
-        "The year-to-date cummulative scores are available at  https://www.pigeonpool.com/year-to-date.\n\n"
-        "Don't forget to enter your picks in before the Tuesday's 5PM PST deadline at https://www.pigeonpool.com/enter-picks!\n\n"
-        "--Andy (not really, as this email is automated from the pigeonpool app)"
+        "The year-to-date cumulative scores are available at https://www.pigeonpool.com/year-to-date.\n\n"
+        f"Don't forget to enter your picks before the deadline: {deadline_str}.\n\n"
+        "--Pigeon Pool"
     )
     html = (
         "<p>To ALL Pigeons --</p>"
         f"<p>Congratulations to <b>{' and '.join(winners)}</b> for the first place finish in Week {week}!</p>"
         "<p>The final results are available at <a href='https://www.pigeonpool.com/picks-and-results'>https://www.pigeonpool.com/picks-and-results</a>.</p>"
-        "<p>The year-to-date cummulative scores are available at https://www.pigeonpool.com/year-to-date.</p>"
-        "<p>Don't forget to enter your picks in before Tuesday's 5PM PST deadline at https://www.pigeonpool.com/enter-picks.</p>"
-        "<p>--Andy (not really, as this email is automated from the pigeonpool app)</p>"
+        "<p>The year-to-date cumulative scores are available at https://www.pigeonpool.com/year-to-date.</p>"
+        f"<p>Don't forget to enter your picks before the deadline: {deadline_str}.</p>"
+        "<p>--Pigeon Pool</p>"
     )
 
     ok = await asyncio.to_thread(send_bulk_email_bcc, emails, subject, plain, html)
@@ -276,18 +292,21 @@ async def run_email_tue_warn(session: AsyncSession) -> dict[str, Any]:
     for the upcoming (next unlocked) week.
     """
     q = text("""
-WITH next_week AS (SELECT MIN(week_number) AS w FROM weeks WHERE lock_at > now())
-SELECT DISTINCT pl.pigeon_number
+WITH next_week AS (SELECT MIN(week_number) AS w, MIN(lock_at) AS lock_at FROM tenant_weeks WHERE lock_at > now())
+SELECT DISTINCT f.player_id, (SELECT lock_at FROM next_week) AS lock_at
 FROM v_picks_filled f
-JOIN players pl ON pl.pigeon_number = f.pigeon_number
 JOIN games g ON g.game_id = f.game_id
 WHERE f.is_made = FALSE
   AND g.week_number = (SELECT w FROM next_week)
-ORDER BY pl.pigeon_number
+ORDER BY f.player_id
 """)
     rows = await session.execute(q)
-    pigeon_numbers = [r[0] for r in rows]
-    emails = await get_all_player_emails(session, pigeon_numbers)
+    rows_list = rows.all()
+    player_ids = [r[0] for r in rows_list]
+    lock_at_raw = rows_list[0][1] if rows_list else None
+    deadline_str = _format_lock_pt(lock_at_raw.replace(tzinfo=timezone.utc) if lock_at_raw and lock_at_raw.tzinfo is None else lock_at_raw) if lock_at_raw else "the upcoming deadline"
+
+    emails = await get_all_player_emails(session, player_ids)
 
     if not emails:
         info(
@@ -300,21 +319,20 @@ ORDER BY pl.pigeon_number
         )
         return {"recipients": 0, "sent": True, "note": "no missing picks"}
 
-    subject = "Pigeon Pool Reminder: Enter Your Picks"
+    subject = "Reminder: Enter Your Picks"
     plain = (
-        "Friendly Reminder"
-        "It looks like you haven’t submitted all your picks for this week.\n"
-        "I will leave the entry form open for another couple hours at https://www.pigeonpool.com/enter-picks.\n\n"
-        "Good luck!"
-        "--Andy (not really, as this email is automated from the pigeonpool app)"
+        "Friendly Reminder\n\n"
+        "It looks like you haven’t submitted your picks for this week. "
+        f"Please make sure to get them in before the pick entry deadline: {deadline_str}.\n\n"
+        "Good luck!\n"
+        "--Pigeon Pool"
     )
     html = (
-        "<p>Friendly Reminder</p>"
-        "<p>It looks like you haven’t submitted all your picks for this week.</p>"
-        "<p>I will leave the entry form open for another couple hours at https://www.pigeonpool.com/enter-picks.</p>"
-        "<p/>"
+        "<p><b>Friendly Reminder</b></p>"
+        "<p>It looks like you haven’t submitted your picks for this week. "
+        f"Please make sure to get them in before the pick entry deadline: {deadline_str}.</p>"
         "<p>Good luck!</p>"
-        "<p>--Andy (not really, as this email is automated from the pigeonpool app)</p>"
+        "<p>--Pigeon Pool</p>"
     )
 
     ok = await asyncio.to_thread(send_bulk_email_bcc, emails, subject, plain, html)

@@ -1,0 +1,7 @@
+{
+  "python.defaultInterpreterPath": "C:\\Users\\marcs\\anaconda3\\envs\\pigeon\\python.exe",
+  "pylint.interpreter": [
+    "C:\\Users\\marcs\\anaconda3\\envs\\pigeon\\python.exe"
+  ],
+  "pylint.importStrategy": "fromEnvironment"
+}

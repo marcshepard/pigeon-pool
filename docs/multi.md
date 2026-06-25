@@ -423,7 +423,44 @@ the commissioner picks view.
 > player identity uses `player_id` throughout. Remove the auto-refresh polling hook and
 > the duplicate scoring logic, replacing auto-refresh with a manual refresh button.
 
-## Stage 8: Frontend and Integration Tests
+## Stage 8: Product Decoupling
+
+Move current-pool-specific behavior out of the core product path.
+
+Deliverables:
+
+- Make Andy survey submission optional per tenant.
+- Disable external submission by default for new tenants.
+- Keep it enabled only for the current tenant if still needed.
+- Rename or configure app branding where appropriate.
+- Remove hard-coded current-pool assumptions from docs and UI over time.
+
+Suggested prompt:
+
+> Move Andy-specific submission and current-pool branding behind optional tenant configuration.
+
+## Stage 9: Tenant Creation and Onboarding
+
+Add product-level flows for creating and managing new tenants. There is no global-admin
+role; tenant creation is a server-side / SQL operation for now (see
+`database/seed_test_tenant.sql`). This stage adds a self-service or operator-assisted
+path.
+
+Deliverables:
+
+- Operator or server-side flow to create a new tenant (API endpoint or admin CLI).
+- Commissioner can invite or create users within their tenant.
+- Commissioner can create/edit players (already implemented in Stage 6).
+- New-user password reset/onboarding works end-to-end.
+- New tenants can start without Andy-specific integrations enabled.
+
+Suggested prompt:
+
+> Add a tenant-creation flow (operator endpoint or CLI) and verify the end-to-end
+> commissioner onboarding path: create tenant → create players → create users →
+> password reset → first login.
+
+## Stage 10: Frontend and Integration Tests
 
 Add tests around the high-mode UI pages and tenant scoping.
 
@@ -462,43 +499,6 @@ Admin cases:
 Suggested prompt:
 
 > Add frontend and integration tests for picks/results, enter-picks, analytics, and admin tenant-scoping behavior.
-
-## Stage 9: Tenant Creation and Onboarding
-
-Add product-level flows for creating and managing new tenants. There is no global-admin
-role; tenant creation is a server-side / SQL operation for now (see
-`database/seed_test_tenant.sql`). This stage adds a self-service or operator-assisted
-path.
-
-Deliverables:
-
-- Operator or server-side flow to create a new tenant (API endpoint or admin CLI).
-- Commissioner can invite or create users within their tenant.
-- Commissioner can create/edit players (already implemented in Stage 6).
-- New-user password reset/onboarding works end-to-end.
-- New tenants can start without Andy-specific integrations enabled.
-
-Suggested prompt:
-
-> Add a tenant-creation flow (operator endpoint or CLI) and verify the end-to-end
-> commissioner onboarding path: create tenant → create players → create users →
-> password reset → first login.
-
-## Stage 10: Product Decoupling
-
-Move current-pool-specific behavior out of the core product path.
-
-Deliverables:
-
-- Make Andy survey submission optional per tenant.
-- Disable external submission by default for new tenants.
-- Keep it enabled only for the current tenant if still needed.
-- Rename or configure app branding where appropriate.
-- Remove hard-coded current-pool assumptions from docs and UI over time.
-
-Suggested prompt:
-
-> Move Andy-specific submission and current-pool branding behind optional tenant configuration.
 
 ## Stage 11: Production Migration and Rollback
 
