@@ -8,14 +8,13 @@ Endpoints (all require authentication):
     Return leaderboard (score + rank + pigeon_name) for a locked week.
 - GET /results/leaderboard
     Return leaderboard rows for all locked weeks.
-- GET /results/ytd
-    Return year-to-date aggregates per player across locked weeks (+ pigeon_name).
 
 Notes:
-- "Locked" means weeks.lock_at <= now(); we never reveal picks for unlocked weeks.
+- "Locked" means tenant_weeks.lock_at <= now(); we never reveal picks for unlocked weeks.
 - v_picks_filled supplies default (home, 0) rows for missing picks.
 - v_weekly_leaderboard already ignores not-started games and includes pigeon_name.
 - v_week_picks_with_names already filters to locked weeks (belt-and-suspenders privacy).
+- All views and queries are filtered by tenant_id (from the authenticated user).
 """
 # pylint: disable=line-too-long
 
@@ -83,19 +82,16 @@ class YtdRow(BaseModel):
 # SQL
 # =============================================================================
 
-# Keep a cheap guard to ensure the requested week is locked;
-# even though v_week_picks_with_names already filters locked weeks,
-# we want a clear 409 for /weeks/{week} endpoints.
+# Cheap guard: ensure the requested week is locked for this tenant.
 WEEK_LOCKED_SQL = text("""
     SELECT 1
-    FROM weeks
-    WHERE week_number = :week
+    FROM tenant_weeks
+    WHERE tenant_id = :tenant_id
+      AND week_number = :week
       AND lock_at <= now()
     LIMIT 1
 """)
 
-# Now that we have a convenience view with names + privacy,
-# use it directly for weekly picks.
 WEEK_PICKS_SQL = text("""
     SELECT
       pigeon_number,
@@ -112,10 +108,10 @@ WEEK_PICKS_SQL = text("""
       away_score
     FROM v_week_picks_with_names
     WHERE week_number = :week
+      AND tenant_id = :tenant_id
     ORDER BY pigeon_number, kickoff_at, game_id
 """)
 
-# Leaderboard rows for a single week:
 WEEK_LEADERBOARD_SQL = text("""
     SELECT
       pigeon_number,
@@ -126,10 +122,10 @@ WEEK_LEADERBOARD_SQL = text("""
       points
     FROM v_weekly_leaderboard
     WHERE week_number = :week
+      AND tenant_id = :tenant_id
     ORDER BY rank ASC, score ASC, pigeon_number ASC
 """)
 
-# Leaderboard rows for all locked weeks (concatenated):
 ALL_LOCKED_LEADERBOARD_SQL = text("""
     SELECT
       v.pigeon_number,
@@ -139,8 +135,9 @@ ALL_LOCKED_LEADERBOARD_SQL = text("""
       v.rank,
       v.points
     FROM v_weekly_leaderboard v
-    JOIN weeks w ON w.week_number = v.week_number
-    WHERE w.lock_at <= now()
+    JOIN tenant_weeks tw ON tw.tenant_id = v.tenant_id AND tw.week_number = v.week_number
+    WHERE v.tenant_id = :tenant_id
+      AND tw.lock_at <= now()
     ORDER BY v.week_number ASC, v.rank ASC, v.score ASC, v.pigeon_number ASC
 """)
 
@@ -149,11 +146,11 @@ ALL_LOCKED_LEADERBOARD_SQL = text("""
 # Helpers
 # =============================================================================
 
-async def _ensure_week_locked(db: AsyncSession, week: int) -> None:
-    """Raise 409 if the target week is not locked yet."""
-    res = await db.execute(WEEK_LOCKED_SQL, {"week": week})
+async def _ensure_week_locked(db: AsyncSession, week: int, tenant_id: int) -> None:
+    """Raise 409 if the target week is not locked yet for this tenant."""
+    res = await db.execute(WEEK_LOCKED_SQL, {"week": week, "tenant_id": tenant_id})
     if not res.first():
-        warn("results: week not locked", week=week)
+        warn("results: week not locked", week=week, tenant_id=tenant_id)
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Week {week} is not locked yet",
@@ -176,9 +173,9 @@ async def get_week_picks(
 ):
     """Return all players' picks for the given locked week, plus game info (includes pigeon_name)."""
     debug("results: get_week_picks called", user=me.pigeon_number, week=week)
-    await _ensure_week_locked(db, week)
+    await _ensure_week_locked(db, week, me.tenant_id)
 
-    rows = (await db.execute(WEEK_PICKS_SQL, {"week": week})).fetchall()
+    rows = (await db.execute(WEEK_PICKS_SQL, {"week": week, "tenant_id": me.tenant_id})).fetchall()
     info("results: week picks rows", week=week, count=len(rows))
 
     out: List[WeekPicksRow] = []
@@ -217,9 +214,9 @@ async def get_week_leaderboard(
     The view already excludes not-started games, so this works mid-week as a live board.
     """
     debug("results: get_week_leaderboard called", user=me.pigeon_number, week=week)
-    await _ensure_week_locked(db, week)
+    await _ensure_week_locked(db, week, me.tenant_id)
 
-    rows = (await db.execute(WEEK_LEADERBOARD_SQL, {"week": week})).fetchall()
+    rows = (await db.execute(WEEK_LEADERBOARD_SQL, {"week": week, "tenant_id": me.tenant_id})).fetchall()
     info("results: week leaderboard rows", week=week, count=len(rows))
 
     return [
@@ -247,7 +244,7 @@ async def get_all_locked_leaderboards(
     """Return concatenated leaderboard rows for all locked weeks (pigeon_name included)."""
     debug("results: get_all_locked_leaderboards called", user=me.pigeon_number)
 
-    rows = (await db.execute(ALL_LOCKED_LEADERBOARD_SQL)).fetchall()
+    rows = (await db.execute(ALL_LOCKED_LEADERBOARD_SQL, {"tenant_id": me.tenant_id})).fetchall()
     info("results: all locked leaderboard rows", count=len(rows))
 
     return [

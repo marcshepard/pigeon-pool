@@ -62,8 +62,8 @@ class PicksBulkIn(BaseModel):
 # =========================
 CHECK_WEEK_SQL = text("""
     SELECT lock_at
-    FROM weeks
-    WHERE week_number = :week_number
+    FROM tenant_weeks
+    WHERE tenant_id = :tenant_id AND week_number = :week_number
 """)
 
 GAMES_FOR_WEEK_SQL = text("""
@@ -72,29 +72,28 @@ GAMES_FOR_WEEK_SQL = text("""
     WHERE week_number = :week_number
 """)
 
-GAME_WITH_WEEK_SQL = text("""
-    SELECT g.week_number, w.lock_at
-    FROM games g
-    JOIN weeks w ON w.week_number = g.week_number
-    WHERE g.game_id = :game_id
-""")
-
 UPSERT_PICK_SQL = text("""
-    INSERT INTO picks (pigeon_number, game_id, picked_home, predicted_margin)
-    VALUES (:pigeon_number, :game_id, :picked_home, :predicted_margin)
-    ON CONFLICT (pigeon_number, game_id)
-    DO UPDATE SET
-        picked_home = EXCLUDED.picked_home,
-        predicted_margin = EXCLUDED.predicted_margin,
-        created_at = now()
-    RETURNING pigeon_number, game_id, picked_home, predicted_margin, created_at
+    WITH ins AS (
+        INSERT INTO picks (player_id, game_id, picked_home, predicted_margin)
+        VALUES (:player_id, :game_id, :picked_home, :predicted_margin)
+        ON CONFLICT (player_id, game_id)
+        DO UPDATE SET
+            picked_home = EXCLUDED.picked_home,
+            predicted_margin = EXCLUDED.predicted_margin,
+            created_at = now()
+        RETURNING player_id, game_id, picked_home, predicted_margin, created_at
+    )
+    SELECT pl.pigeon_number, ins.game_id, ins.picked_home, ins.predicted_margin, ins.created_at
+    FROM ins
+    JOIN players pl ON pl.player_id = ins.player_id
 """)
 
 GET_PICKS_FOR_WEEK_SQL = text("""
     SELECT p.pigeon_number, p.game_id, p.picked_home, p.predicted_margin, p.created_at
     FROM v_picks_filled p
     JOIN games g ON g.game_id = p.game_id
-    WHERE p.pigeon_number = :pigeon_number
+    WHERE p.player_id = :player_id
+      AND p.tenant_id = :tenant_id
       AND g.week_number = :week_number
     ORDER BY p.game_id
 """)
@@ -104,7 +103,7 @@ AUTHZ_SQL = text("""
       FROM user_players up
       JOIN users u ON u.user_id = up.user_id
      WHERE lower(u.email) = lower(:email)
-       AND up.pigeon_number = :pn
+       AND up.player_id = :player_id
        AND up.role IN ('owner','manager')
      LIMIT 1
 """)
@@ -112,8 +111,8 @@ AUTHZ_SQL = text("""
 # =========================
 # Utilities
 # =========================
-async def _ensure_week_unlocked(db: AsyncSession, week_number: int) -> None:
-    row = (await db.execute(CHECK_WEEK_SQL, {"week_number": week_number})).first()
+async def _ensure_week_unlocked(db: AsyncSession, week_number: int, tenant_id: int) -> None:
+    row = (await db.execute(CHECK_WEEK_SQL, {"week_number": week_number, "tenant_id": tenant_id})).first()
     if not row:
         raise HTTPException(status_code=404, detail=f"Week {week_number} not found")
     (lock_at,) = row
@@ -135,26 +134,27 @@ async def _ensure_all_games_in_week(
             detail=f"These game_id(s) are not in week {week_number}: {sorted(missing)}"
         )
 
-async def _resolve_acting_pigeon(
+async def _resolve_acting_player(
     db: AsyncSession,
-    me,                          # MeOut (has email, is_admin, pigeon_number)
-    requested_pn: int | None,
+    me,                          # AuthUser (has email, is_admin, player_id, pigeon_number)
+    requested_pn: int | None,    # pigeon_number query param from the API
 ) -> int:
     """
-    Decide which pigeon_number this request should act as.
-    - Admins: may act for ANY existing pigeon (if requested); else use current.
-    - Non-admins: may act for their current pigeon, or another mapped pigeon where role in (owner, manager).
+    Decide which player_id this request should act as.
+    For stage 4, player_id == pigeon_number, so the pigeon_number param is treated as player_id.
+    - Admins: may act for ANY existing player (if requested); else use current.
+    - Non-admins: may act for their current player, or another mapped player where role in (owner, manager).
     """
-    current_pn = me.pigeon_number
-    if requested_pn is None or requested_pn == current_pn:
-        return current_pn
+    current_player_id = me.player_id
+    if requested_pn is None or requested_pn == me.pigeon_number:
+        return current_player_id
 
-    # Admins can act for any existing pigeon
+    # Admins can act for any existing player (pigeon_number == player_id for stage 4)
     if me.is_admin:
         return requested_pn
 
-    # Non-admins must be owner/manager for that pigeon
-    row = (await db.execute(AUTHZ_SQL, {"email": me.email, "pn": requested_pn})).first()
+    # Non-admins must be owner/manager for that player
+    row = (await db.execute(AUTHZ_SQL, {"email": me.email, "player_id": requested_pn})).first()
     if not row:
         raise HTTPException(status_code=403, detail=f"Not allowed for pigeon {requested_pn}")
     return requested_pn
@@ -169,16 +169,16 @@ async def _resolve_acting_pigeon(
 )
 async def get_my_picks_for_week(
     week_number: int,
-    pigeon_number: int | None = None,               # NEW: optional query param
+    pigeon_number: int | None = None,               # optional: act for another managed pigeon
     db: AsyncSession = Depends(get_db),
     me=Depends(require_user),
 ):
     """ Return existing picks regardless of lock status (read-only after lock) """
-    acting_pn = await _resolve_acting_pigeon(db, me, pigeon_number)
+    acting_player_id = await _resolve_acting_player(db, me, pigeon_number)
 
     result = await db.execute(
         GET_PICKS_FOR_WEEK_SQL,
-        {"pigeon_number": acting_pn, "week_number": week_number},
+        {"player_id": acting_player_id, "tenant_id": me.tenant_id, "week_number": week_number},
     )
     rows = result.fetchall()
     return [
@@ -201,14 +201,14 @@ async def get_my_picks_for_week(
 )
 async def upsert_picks_bulk(
     payload: PicksBulkIn,
-    pigeon_number: int | None = None,               # NEW: optional query param
+    pigeon_number: int | None = None,               # optional: act for another managed pigeon
     db: AsyncSession = Depends(get_db),
     me=Depends(require_user),
 ):
     """ App-layer guard (DB trigger will also enforce) """
-    acting_pn = await _resolve_acting_pigeon(db, me, pigeon_number)
+    acting_player_id = await _resolve_acting_player(db, me, pigeon_number)
 
-    await _ensure_week_unlocked(db, payload.week_number)
+    await _ensure_week_unlocked(db, payload.week_number, me.tenant_id)
     await _ensure_all_games_in_week(db, payload.week_number, (p.game_id for p in payload.picks))
 
     out: List[PickOut] = []
@@ -216,7 +216,7 @@ async def upsert_picks_bulk(
         res = await db.execute(
             UPSERT_PICK_SQL,
             {
-                "pigeon_number": acting_pn,
+                "player_id": acting_player_id,
                 "game_id": p.game_id,
                 "picked_home": p.picked_home,
                 "predicted_margin": p.predicted_margin,
@@ -234,10 +234,10 @@ async def upsert_picks_bulk(
         )
     await db.commit()
 
-    # Also submit to Andy's system using the acting pigeon
+    # Also submit to Andy's system using the acting player's pigeon_number (== player_id for stage 4)
     try:
         body = await build_submit_body_from_db(
-            session=db, week=payload.week_number, pigeon_number=acting_pn, pin=9182
+            session=db, week=payload.week_number, pigeon_number=acting_player_id, pin=9182
         )
         async with asyncio.timeout(120):
             async with submit_lock:
@@ -248,7 +248,7 @@ async def upsert_picks_bulk(
             detail="Submission queue is busy, please retry shortly"
         ) from exc
     except Exception as exc:  # pylint: disable=broad-except
-        error(f"Failed to submit picks to Andy for pigeon {acting_pn}, week {payload.week_number}: {exc}")
+        error(f"Failed to submit picks to Andy for player {acting_player_id}, week {payload.week_number}: {exc}")
         raise HTTPException(
             status_code=500,
             detail="Failed to submit to Andy's form (so you'll have to do that yourself)"

@@ -13,6 +13,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.utils.db import get_db
+from .auth import require_user
 
 #pylint: disable=line-too-long
 
@@ -50,20 +51,6 @@ class CurrentWeek(BaseModel):
 
 # ---------- SQL ----------
 
-CURRENT_WEEK_SQL = text("""
-    SELECT week_number, lock_at
-    FROM weeks
-    WHERE lock_at > now()
-    ORDER BY lock_at ASC
-    LIMIT 1
-""")
-
-WEEK_BY_NUMBER_SQL = text("""
-    SELECT week_number, lock_at
-    FROM weeks
-    WHERE week_number = :week_number
-""")
-
 GAMES_FOR_WEEK_SQL = text("""
     SELECT game_id, week_number, kickoff_at, home_abbr, away_abbr, status, home_score, away_score
     FROM games
@@ -71,28 +58,25 @@ GAMES_FOR_WEEK_SQL = text("""
     ORDER BY kickoff_at, game_id
 """)
 
-MY_PICKS_FOR_WEEK_SQL = text("""
-    SELECT p.game_id, p.picked_home, p.predicted_margin
-    FROM picks p
-    JOIN games g ON g.game_id = p.game_id
-    WHERE p.pigeon_number = :pigeon_number
-      AND g.week_number = :week_number
-""")
-
-
 # ---------- Endpoints ----------
 
 
-@router.get("/current_week", response_model=CurrentWeek, summary="Get current live and next-picks week numbers")
-async def get_current_week(db: AsyncSession = Depends(get_db)):
-    """ Next unlocked week (for entering picks) """
+@router.get("/current_week", response_model=CurrentWeek, summary="Get current live week number")
+async def get_current_week(
+    db: AsyncSession = Depends(get_db),
+    me=Depends(require_user),
+):
+    """
+    Returns the most recently locked week for the authenticated user's tenant.
+    Lock times are per-tenant (tenant_weeks), so auth is required.
+    """
     next_row = (await db.execute(text("""
         SELECT week_number
-        FROM weeks
-        WHERE lock_at < now()
+        FROM tenant_weeks
+        WHERE lock_at < now() AND tenant_id = :tenant_id
         ORDER BY lock_at DESC
         LIMIT 1
-    """))).first()
+    """), {"tenant_id": me.tenant_id})).first()
 
     current_week = next_row[0] if (next_row and next_row[0] > 1) else 1
 
@@ -103,17 +87,17 @@ async def get_current_week(db: AsyncSession = Depends(get_db)):
     game_statuses = [row[0] for row in games_result.fetchall()]
 
     if not game_statuses:
-        status = "scheduled"
+        week_status = "scheduled"
     elif all(s == "final" for s in game_statuses):
-        status = "final"
+        week_status = "final"
     elif all(s == "scheduled" for s in game_statuses):
-        status = "scheduled"
+        week_status = "scheduled"
     else:
-        status = "in_progress"
+        week_status = "in_progress"
 
     return CurrentWeek(
         week=current_week,
-        status=status,
+        status=week_status,
     )
 
 

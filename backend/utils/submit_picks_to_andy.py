@@ -125,7 +125,8 @@ async def build_submit_body_from_db(
                    g.home_abbr, g.away_abbr
             FROM picks p
             JOIN games g ON g.game_id = p.game_id
-            WHERE p.pigeon_number=:pn AND g.week_number=:wk
+            JOIN players pl ON pl.player_id = p.player_id
+            WHERE pl.pigeon_number=:pn AND g.week_number=:wk
             ORDER BY g.kickoff_at ASC, p.game_id ASC
             """
         ),

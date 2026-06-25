@@ -212,7 +212,7 @@ Suggested prompt:
 
 Run: `psql -U postgres -d pigeon_pool_multi -f database/db_update.sql`
 
-## Stage 4: Backend Single-Tenant Compatibility
+## Stage 4: Backend Single-Tenant Compatibility ✅ COMPLETE
 
 Update backend queries to use the tenant-aware schema while still auto-selecting the only existing tenant.
 
@@ -230,6 +230,22 @@ Deliverables:
 Suggested prompt:
 
 > Update the backend to use tenant-aware tables in single-tenant compatibility mode, keeping the current frontend behavior unchanged.
+
+### Completion notes
+
+Updated five files to use the tenant-aware schema:
+
+- **`backend/routes/auth.py`** — `find_user` no longer selects `is_admin` (dropped). `select_primary_pigeon` replaced by `select_primary_player` using `tenant_members.primary_player_id`. `current_user` validates via `user_players(user_id, player_id)` and joins `tenant_members` for `role`/`tenant_id`. `MeOut` and `AuthUser` gain `player_id` and `tenant_id`. `is_admin` is now derived from `tenant_members.role = 'commissioner'`. JWT token format is unchanged (`sub = pigeon_number`, which equals `player_id` for the single backfilled tenant).
+- **`backend/routes/picks.py`** — Lock check uses `tenant_weeks(tenant_id, week_number)`. Upsert uses `player_id` FK; RETURNING joins `players` to surface `pigeon_number` for the unchanged `PickOut` response. GET query filters by `player_id` and `tenant_id` via `v_picks_filled`.
+- **`backend/routes/results.py`** — `WEEK_LOCKED_SQL` queries `tenant_weeks`. All view queries add `tenant_id = :tenant_id` filter. `ALL_LOCKED_LEADERBOARD_SQL` joins `tenant_weeks` instead of `weeks.lock_at`.
+- **`backend/routes/schedule.py`** — `GET /schedule/current_week` now requires auth (lock times are per-tenant). Query uses `tenant_weeks` with `me.tenant_id`. `GET /{week}/games` remains unauthenticated (games are global).
+- **`backend/utils/submit_picks_to_andy.py`** — Picks query now joins `players` to resolve `pigeon_number → player_id` since `picks.pigeon_number` was dropped.
+- **`tests/conftest.py`** — Auth fixture updated to use `tenant_members` + `players` instead of dropped `users.is_admin` and `user_players.pigeon_number`.
+
+**Deferred to Stage 5/6:**
+- `backend/routes/admin.py` — All admin/commissioner endpoints remain broken (use dropped columns: `weeks.lock_at`, `user_players.pigeon_number`, `user_players.is_primary`, `users.is_admin`). Fix in Stage 5.
+- `backend/utils/score_sync.py` — Still inserts into `weeks.lock_at` (dropped); will fail if scheduler is re-enabled. The scheduler is currently disabled (`DISABLE_SCHEDULER=True` in `main.py`). Fix before re-enabling.
+- `backend/utils/import_picks_xlsx.py` — Uses `pigeon_number` as player identifier. Fix in Stage 5/6.
 
 ## Stage 5: Role Separation
 

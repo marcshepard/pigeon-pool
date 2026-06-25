@@ -52,16 +52,18 @@ class LoginIn(BaseModel):
     password: str
 
 class AltPigeon(BaseModel):
-    """ Alternative pigeons a given user can manage (beyong primary) """
+    """ Alternative pigeons a given user can manage (beyond primary) """
     pigeon_number: int
     pigeon_name: str
 
 class MeOut(BaseModel):
     """ Current user output """
+    player_id: int
     pigeon_number: int
     pigeon_name: str
     email: EmailStr
     is_admin: bool
+    tenant_id: int
     session: dict
     alt_pigeons: List[AltPigeon] = []
 
@@ -89,8 +91,8 @@ def make_session_token(pigeon_number: int, email: str, uid: int, is_admin: bool)
     exp = now + timedelta(minutes=SESSION_MINUTES)
     exp_epoch = int(exp.timestamp())
     payload = {
-        "sub": str(pigeon_number),        # keep for minimal FE/BE change
-        "uid": uid,                       # NEW: user_id for joins/verification
+        "sub": str(pigeon_number),        # pigeon_number; equals player_id for stage-4 single tenant
+        "uid": uid,                       # user_id for joins/verification
         "email": email,
         "adm": bool(is_admin),            # optional convenience
         "typ": "session",
@@ -115,40 +117,25 @@ def parse_session_token(token: str) -> dict:
 def find_user(cur, email: str) -> Optional[Tuple]:
     """
     Find a user by email (case-insensitive).
-    Returns (user_id, email, password_hash, is_admin) or None.
+    Returns (user_id, email, password_hash) or None.
     """
     cur.execute(
-        "SELECT user_id, email, password_hash, is_admin FROM users WHERE lower(email) = lower(%s)",
+        "SELECT user_id, email, password_hash FROM users WHERE lower(email) = lower(%s)",
         (email.strip(),)
     )
     return cur.fetchone()
 
-def select_primary_pigeon(cur, user_id: int) -> Optional[Tuple[int, str]]:
+def select_primary_player(cur, user_id: int) -> Optional[Tuple]:
     """
-    Pick the active pigeon for a user.
-    Preference: is_primary = TRUE; otherwise lowest pigeon_number.
-    Returns (pigeon_number, pigeon_name) or None if no mapping.
+    Pick the active player for a user via tenant_members.primary_player_id.
+    Returns (player_id, pigeon_number, pigeon_name, tenant_id, is_admin) or None.
     """
-    # Try explicit primary
     cur.execute("""
-        SELECT p.pigeon_number, p.pigeon_name
-          FROM user_players up
-          JOIN players p ON p.pigeon_number = up.pigeon_number
-         WHERE up.user_id = %s AND up.is_primary = TRUE
-         ORDER BY p.pigeon_number
-         LIMIT 1
-    """, (user_id,))
-    row = cur.fetchone()
-    if row:
-        return row
-
-    # Fallback: any mapping (lowest pigeon_number)
-    cur.execute("""
-        SELECT p.pigeon_number, p.pigeon_name
-          FROM user_players up
-          JOIN players p ON p.pigeon_number = up.pigeon_number
-         WHERE up.user_id = %s
-         ORDER BY p.pigeon_number
+        SELECT p.player_id, p.pigeon_number, p.pigeon_name,
+               tm.tenant_id, (tm.role = 'commissioner') AS is_admin
+          FROM tenant_members tm
+          JOIN players p ON p.player_id = tm.primary_player_id
+         WHERE tm.user_id = %s
          LIMIT 1
     """, (user_id,))
     return cur.fetchone()
@@ -239,7 +226,8 @@ def sent_password_reset_email(to_email: str, token: str) -> None:
 def current_user(creds: HTTPAuthorizationCredentials = Depends(bearer)) -> MeOut:
     """
     Validate Authorization: Bearer <token> and return MeOut.
-    Token now encodes: uid (user_id) + sub (active pigeon_number).
+    Token encodes: uid (user_id) + sub (pigeon_number, equals player_id for stage-4 single tenant).
+    Tenant membership and commissioner role are resolved from the DB on each request.
     """
     if not creds:
         raise HTTPException(status_code=401, detail="Missing Authorization header")
@@ -248,7 +236,8 @@ def current_user(creds: HTTPAuthorizationCredentials = Depends(bearer)) -> MeOut
 
     data = parse_session_token(creds.credentials)
     try:
-        pn = int(data["sub"])
+        # sub = pigeon_number; equals player_id for the single existing tenant (stage 4)
+        player_id = int(data["sub"])
         uid = int(data["uid"])
         exp_ts = int(data["exp"])
     except (KeyError, ValueError, TypeError) as exc:
@@ -256,24 +245,29 @@ def current_user(creds: HTTPAuthorizationCredentials = Depends(bearer)) -> MeOut
         raise HTTPException(status_code=401, detail="Malformed session token") from None
 
     with db() as conn, conn.cursor() as cur:
-        # Verify that this user is actually mapped to this pigeon (defense-in-depth)
         cur.execute("""
-            SELECT p.pigeon_number, p.pigeon_name, u.email, u.is_admin
+            SELECT p.player_id, p.pigeon_number, p.pigeon_name, u.email,
+                   (tm.role = 'commissioner') AS is_admin, tm.tenant_id
               FROM user_players up
-              JOIN users u ON u.user_id = up.user_id
-              JOIN players p ON p.pigeon_number = up.pigeon_number
-             WHERE up.user_id = %s AND up.pigeon_number = %s
+              JOIN players p  ON p.player_id  = up.player_id
+              JOIN users u    ON u.user_id    = up.user_id
+              JOIN tenant_members tm
+                ON tm.user_id   = up.user_id
+               AND tm.tenant_id = p.tenant_id
+             WHERE up.user_id = %s AND up.player_id = %s
              LIMIT 1
-        """, (uid, pn))
+        """, (uid, player_id))
         row = cur.fetchone()
         if not row:
-            raise HTTPException(status_code=401, detail="User/pigeon mapping not found")
+            raise HTTPException(status_code=401, detail="User/player mapping not found")
 
         return MeOut(
-            pigeon_number=row[0],
-            pigeon_name=row[1],
-            email=row[2],
-            is_admin=row[3],
+            player_id=row[0],
+            pigeon_number=row[1],
+            pigeon_name=row[2],
+            email=row[3],
+            is_admin=row[4],
+            tenant_id=row[5],
             session={"expires_at": datetime.fromtimestamp(exp_ts, tz=timezone.utc).isoformat()},
         )
 
@@ -290,7 +284,7 @@ def login(payload: LoginIn):
         if not user_row:
             raise HTTPException(status_code=401, detail="Invalid credentials")
 
-        uid, email, stored_hash, is_admin = user_row
+        uid, email, stored_hash = user_row
 
         # Verify password (bcrypt digest vs temporary plain)
         ok = False
@@ -305,20 +299,20 @@ def login(payload: LoginIn):
         if not ok:
             raise HTTPException(status_code=401, detail="Invalid credentials")
 
-        # Choose active pigeon for this user
-        sel = select_primary_pigeon(cur, uid)
+        sel = select_primary_player(cur, uid)
         if not sel:
-            # You can soften this to 200 + a special flag if you want to support "no-pigeon yet".
-            raise HTTPException(status_code=403, detail="No pigeon assigned to this user")
+            raise HTTPException(status_code=403, detail="No player assigned to this user")
 
-        pn, name = sel
+        player_id, pn, name, tenant_id, is_admin = sel
 
         token, exp_ts = make_session_token(pn, email, uid=uid, is_admin=is_admin)
         me_out = MeOut(
+            player_id=player_id,
             pigeon_number=pn,
             pigeon_name=name,
             email=email,
             is_admin=is_admin,
+            tenant_id=tenant_id,
             session={"expires_at": datetime.fromtimestamp(exp_ts, tz=timezone.utc).isoformat()},
         )
         return {
@@ -334,28 +328,27 @@ def me(user: MeOut = Depends(current_user)):
     """ Get current user info """
     debug("In me")
 
-    # Look up other pigeons this user can manage (owner/manager), excluding active
+    # Look up other players this user can manage (owner/manager), excluding active
     with db() as conn, conn.cursor() as cur:
         cur.execute("""
-            SELECT p.pigeon_number, p.pigeon_name
+            SELECT p.player_id, p.pigeon_number, p.pigeon_name
               FROM user_players up
-              JOIN users u   ON u.user_id = up.user_id
-              JOIN players p ON p.pigeon_number = up.pigeon_number
+              JOIN users u   ON u.user_id   = up.user_id
+              JOIN players p ON p.player_id = up.player_id
              WHERE lower(u.email) = lower(%s)
-               AND up.pigeon_number <> %s
+               AND up.player_id <> %s
                AND up.role IN ('owner','manager')
              ORDER BY p.pigeon_number
-        """, (user.email, user.pigeon_number))
+        """, (user.email, user.player_id))
         alt_rows = cur.fetchall()
 
     alt_pigeons = [
-        AltPigeon(pigeon_number=r[0], pigeon_name=r[1])
+        AltPigeon(pigeon_number=r[1], pigeon_name=r[2])
         for r in alt_rows
     ]
 
-    debug(f"User alternates for {user.email} {user.pigeon_number}: alt_pigeons={alt_pigeons}")
+    debug(f"User alternates for {user.email} player {user.player_id}: alt_pigeons={alt_pigeons}")
 
-    # Avoid duplicate kwarg by excluding the existing field, then overriding
     return MeOut(
         **user.model_dump(exclude={"alt_pigeons"}),
         alt_pigeons=alt_pigeons,
@@ -399,7 +392,7 @@ def request_password_reset(payload: PasswordResetRequestIn):
 def confirm_password_reset(payload: PasswordResetConfirmIn):
     """
     Finalize the reset using the token and set a new password.
-    Returns a fresh session bearer token (for the user's primary pigeon).
+    Returns a fresh session bearer token (for the user's primary player).
     """
     debug("In confirm_password_reset")
 
@@ -420,12 +413,19 @@ def confirm_password_reset(payload: PasswordResetConfirmIn):
                     warn("password-reset: token jti already used", uid=uid, jti=jti)
                     raise HTTPException(status_code=401, detail="Reset link already used")
 
-                # fetch email (for token + email reply) and update password
-                cur.execute("SELECT email, is_admin FROM users WHERE user_id = %s", (uid,))
+                cur.execute("SELECT email FROM users WHERE user_id = %s", (uid,))
                 row = cur.fetchone()
                 if not row:
                     raise HTTPException(status_code=401, detail="Invalid reset token")
-                email, is_admin = row
+                email = row[0]
+
+                # Derive admin status from tenant_members
+                cur.execute("""
+                    SELECT COALESCE(bool_or(role = 'commissioner'), FALSE)
+                    FROM tenant_members WHERE user_id = %s
+                """, (uid,))
+                adm_row = cur.fetchone()
+                is_admin = bool(adm_row[0]) if adm_row else False
 
                 new_hash = bcrypt.hash(payload.new_password)
                 cur.execute("UPDATE users SET password_hash = %s WHERE user_id = %s", (new_hash, uid))
@@ -433,15 +433,12 @@ def confirm_password_reset(payload: PasswordResetConfirmIn):
                     warn("password-reset: couldn't update user", uid=uid, jti=jti)
                     raise HTTPException(status_code=401, detail="Invalid reset token")
 
-                # mark jti as used
                 mark_jti_used(cur, jti, uid)
 
-                # choose active pigeon for fresh session
-                sel = select_primary_pigeon(cur, uid)
+                sel = select_primary_player(cur, uid)
                 if not sel:
-                    # If you prefer, return 200 without session token here.
-                    raise HTTPException(status_code=403, detail="No pigeon assigned to this user")
-                pn, _ = sel
+                    raise HTTPException(status_code=403, detail="No player assigned to this user")
+                _, pn, _, _, _ = sel
 
             conn.commit()
 
@@ -460,7 +457,9 @@ def confirm_password_reset(payload: PasswordResetConfirmIn):
 # --- Lightweight dependencies for other routers ---
 class AuthUser(BaseModel):
     """ Minimal user info for auth dependencies """
+    player_id: int
     pigeon_number: int
+    tenant_id: int
     email: Optional[EmailStr] = None
     is_admin: bool = False
 
@@ -469,17 +468,21 @@ def require_user(user: MeOut = Depends(current_user)) -> AuthUser:
     Minimal auth dependency for feature routers.
     """
     return AuthUser(
+        player_id=user.player_id,
         pigeon_number=user.pigeon_number,
         email=user.email,
         is_admin=user.is_admin,
+        tenant_id=user.tenant_id,
     )
 
 def require_admin(user: MeOut = Depends(current_user)) -> AuthUser:
-    """ Restrict endpoints to admins. """
+    """ Restrict endpoints to admins (tenant commissioners). """
     if not user.is_admin:
         raise HTTPException(status_code=403, detail="Admin only")
     return AuthUser(
+        player_id=user.player_id,
         pigeon_number=user.pigeon_number,
         email=user.email,
         is_admin=True,
+        tenant_id=user.tenant_id,
     )
