@@ -55,6 +55,7 @@ class LoginIn(BaseModel):
     password: str
 
 class AltPigeon(BaseModel):
+    player_id: int
     pigeon_number: int
     pigeon_name: str
 
@@ -410,7 +411,7 @@ def me(user: MeOut = Depends(current_user)):
              ORDER BY p.pigeon_number
         """, (user.email, user.tenant_id, user.player_id))
         alt_rows = cur.fetchall()
-        alt_pigeons = [AltPigeon(pigeon_number=r[1], pigeon_name=r[2]) for r in alt_rows]
+        alt_pigeons = [AltPigeon(player_id=r[0], pigeon_number=r[1], pigeon_name=r[2]) for r in alt_rows]
 
         # All tenants this user belongs to
         uid_row = cur.execute(

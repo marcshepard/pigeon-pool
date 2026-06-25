@@ -14,6 +14,10 @@ import {
   DialogContent,
   DialogTitle,
   Divider,
+  FormControl,
+  InputLabel,
+  MenuItem,
+  Select,
   Stack,
   TextField,
   Typography,
@@ -256,6 +260,7 @@ function PigeonsPanel({
   onSnackbar: (message: string, severity?: "success" | "error" | "info" | "warning") => void;
 }) {
   const [name, setName] = useState<string>(selected?.pigeon_name ?? "");
+  const [seasonStatus, setSeasonStatus] = useState<"pending" | "active" | "out">(selected?.season_status ?? "pending");
   const [saving, setSaving] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [newName, setNewName] = useState("");
@@ -264,6 +269,7 @@ function PigeonsPanel({
 
   useEffect(() => {
     setName(selected?.pigeon_name ?? "");
+    setSeasonStatus(selected?.season_status ?? "pending");
   }, [selected]);
 
   const options = useMemo(() => pigeons.map((p) => ({ label: `${p.pigeon_number} – ${p.pigeon_name}`, pn: p.pigeon_number })), [pigeons]);
@@ -322,6 +328,19 @@ function PigeonsPanel({
             onChange={(e) => setName(e.target.value)}
           />
 
+          <FormControl size="small">
+            <InputLabel>Season status</InputLabel>
+            <Select
+              label="Season status"
+              value={seasonStatus}
+              onChange={(e) => setSeasonStatus(e.target.value as "pending" | "active" | "out")}
+            >
+              <MenuItem value="pending">Pending</MenuItem>
+              <MenuItem value="active">Active</MenuItem>
+              <MenuItem value="out">Out</MenuItem>
+            </Select>
+          </FormControl>
+
           <Stack direction="row" spacing={1}>
             <Button
               variant="contained"
@@ -332,12 +351,14 @@ function PigeonsPanel({
                 try {
                   await adminUpdatePigeon(selected.player_id, {
                     pigeon_name: name === selected.pigeon_name ? undefined : name,
+                    season_status: seasonStatus === selected.season_status ? undefined : seasonStatus,
                   });
                   const updated: AdminPigeon = {
                     player_id: selected.player_id,
                     pigeon_number: selected.pigeon_number,
                     pigeon_name: name,
                     owner_email: selected.owner_email ?? null,
+                    season_status: seasonStatus,
                   };
                   onPigeonChanged(updated);
                   onSnackbar("Saved changes.", "success");

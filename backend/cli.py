@@ -5,6 +5,7 @@ Commands:
 - sync-schedule  : Populate the current season's NFL schedule (weeks 1–18), called once
 - sync-scores    : Update scores & status for a specific week, called while games are live
 - sync-kickoffs  : Refresh kickoff times for a specific week, called infrequently
+- reset-season   : Archive picks, wipe games/picks, reset season status, sync new schedule
 - list-leagues   : Show all tenants with member/player counts
 - create-league  : Create a new league/tenant and assign a commissioner
 - delete-league  : Permanently delete a league and its data
@@ -16,6 +17,7 @@ Example usage:
 - python -m backend.cli sync-kickoffs 6
 - python -m backend.cli import-picks-xlsx C:/path/to/picks.xlsx --week 6
 - python -m backend.cli import-picks-xlsx C:/path/to/picks.xlsx --max-week 6
+- python -m backend.cli reset-season --year 2024
 - python -m backend.cli list-leagues
 - python -m backend.cli create-league --name "My Pool" --commissioner-email admin@example.com
 - python -m backend.cli delete-league 2 --yes
@@ -25,6 +27,7 @@ Example usage:
 from __future__ import annotations
 
 import argparse
+import csv
 import os
 from typing import Any, Dict, Callable, Awaitable
 import asyncio
@@ -109,6 +112,117 @@ async def cmd_sync_kickoffs(args: argparse.Namespace) -> int:
         updates = await sync.refresh_kickoffs(week)
         print(f"[cli] sync-kickoffs: updated kickoff_at for {updates} game rows.")
     return 0
+
+async def cmd_reset_season(args: argparse.Namespace) -> int:
+    """
+    Prepare for a new league year:
+      1. Archive all picks to CSV per tenant → archive/<tid>_<year>_picks.csv
+      2. Delete all games (cascades picks) and tenant_weeks
+      3. Reset players.season_status = 'pending'
+      4. Sync the new season's schedule
+      5. Re-seed tenant_weeks lock times from weeks.default_lock_at
+    """
+    settings = get_settings()
+    cfg = settings.psycopg_kwargs()
+
+    with get_connection(cfg) as conn:
+        with conn.cursor() as cur:
+            year = getattr(args, "year", None) or None
+            if not year:
+                cur.execute("SELECT EXTRACT(YEAR FROM MIN(kickoff_at))::int FROM games")
+                row = cur.fetchone()
+                year = row[0] if row and row[0] else 2024
+
+            cur.execute("SELECT COUNT(*) FROM games")
+            game_count = cur.fetchone()[0]
+            cur.execute("SELECT COUNT(*) FROM picks p JOIN players pl ON pl.player_id = p.player_id")
+            pick_count = cur.fetchone()[0]
+            cur.execute("SELECT tenant_id, name FROM tenants ORDER BY tenant_id")
+            tenants = cur.fetchall()
+
+    print(f"[cli] reset-season: archiving season year {year}")
+    print(f"[cli]   {game_count} games and {pick_count} picks will be deleted")
+    print(f"[cli]   {len(tenants)} tenant(s) will have picks archived")
+
+    if not args.yes:
+        try:
+            confirm = input("\nType 'yes' to proceed: ")
+        except EOFError:
+            print("\n[cli] Aborted (no TTY — use --yes to skip confirmation).")
+            return 0
+        if confirm.strip().lower() != "yes":
+            print("[cli] Aborted.")
+            return 0
+
+    # Step 1: Archive picks per tenant
+    os.makedirs("archive", exist_ok=True)
+    with get_connection(cfg) as conn:
+        for tenant_id, tenant_name in tenants:
+            archive_path = os.path.join("archive", f"{tenant_id}_{year}_picks.csv")
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT p.pigeon_number, p.pigeon_name,
+                           g.week_number, g.home_abbr, g.away_abbr,
+                           pk.picked_home, pk.predicted_margin, pk.created_at,
+                           g.home_score, g.away_score, g.status
+                      FROM picks pk
+                      JOIN players p ON p.player_id = pk.player_id
+                      JOIN games g ON g.game_id = pk.game_id
+                     WHERE p.tenant_id = %s
+                     ORDER BY p.pigeon_number, g.week_number, pk.game_id
+                """, (tenant_id,))
+                rows = cur.fetchall()
+
+            with open(archive_path, "w", newline="", encoding="utf-8") as f:
+                writer = csv.writer(f)
+                writer.writerow([
+                    "pigeon_number", "pigeon_name", "week_number",
+                    "home_abbr", "away_abbr", "picked_home",
+                    "predicted_margin", "created_at",
+                    "home_score", "away_score", "status",
+                ])
+                writer.writerows(rows)
+            print(f"[cli]   Archived {len(rows)} picks for '{tenant_name}' → {archive_path}")
+
+        # Step 2: Wipe games (cascades picks) and tenant_weeks
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM games")
+            games_deleted = cur.rowcount
+            cur.execute("DELETE FROM tenant_weeks")
+            weeks_deleted = cur.rowcount
+            # Step 3: Reset season_status for all players
+            cur.execute("UPDATE players SET season_status = 'pending'")
+            players_reset = cur.rowcount
+        conn.commit()
+
+    print(f"[cli] Deleted {games_deleted} games (picks cascade), {weeks_deleted} tenant_weeks")
+    print(f"[cli] Reset season_status='pending' for {players_reset} players")
+
+    # Step 4: Sync new schedule (weeks + games)
+    print("[cli] Syncing new season schedule...")
+    async with AsyncSessionLocal() as session:
+        sync = ScoreSync(session)
+        changed = await sync.load_schedule()
+        print(f"[cli] sync-schedule: upserted {changed} game rows")
+
+    # Step 5: Re-seed tenant_weeks lock times for all tenants
+    with get_connection(cfg) as conn:
+        with conn.cursor() as cur:
+            for tenant_id, tenant_name in tenants:
+                cur.execute("""
+                    INSERT INTO tenant_weeks (tenant_id, week_number, lock_at)
+                    SELECT %s, week_number, default_lock_at
+                      FROM weeks
+                     WHERE default_lock_at IS NOT NULL
+                    ON CONFLICT DO NOTHING
+                """, (tenant_id,))
+                seeded = cur.rowcount
+                print(f"[cli]   Seeded {seeded} lock times for '{tenant_name}'")
+        conn.commit()
+
+    print("[cli] ✅ Season reset complete. Review lock times in the admin UI before the season starts.")
+    return 0
+
 
 def cmd_import_picks_xlsx(args: argparse.Namespace) -> int:
     """Import historical picks from a pivoted XLSX workbook ('picks wk N' sheets)."""
@@ -274,6 +388,12 @@ def cmd_create_league(args: argparse.Namespace) -> int:
                 VALUES (%s, %s, 'commissioner', %s)
             """, (tenant_id, user_id, player_id))
 
+            for place, points in enumerate([5, 4, 3, 2, 1], start=1):
+                cur.execute(
+                    "INSERT INTO tenant_payouts (tenant_id, place, points) VALUES (%s, %s, %s)",
+                    (tenant_id, place, points),
+                )
+
         conn.commit()
 
     print(f"[cli] ✅ League created: tenant_id={tenant_id}, name='{name}'")
@@ -374,36 +494,58 @@ def cmd_delete_league(args: argparse.Namespace) -> int:
 
 async def cmd_show_email_recipients(args: argparse.Namespace) -> int:
     """
-    Show who would receive emails for a given email job path.
-    For Tue warn we show the targeted subset; for Sun/Mon we show all mapped users.
+    Show who would receive emails for a given email job, broken down per tenant.
+    Sun/Mon: all tenant members. Tue: only members with missing picks for the next week.
     """
     which = args.which
-    async with AsyncSessionLocal() as session:
-        emails: list[str] = []
-        if which in ("sun", "mon"):
-            emails = await get_all_player_emails(session)
-        elif which == "tue":
-            # Reuse the same selection logic as the job itself
-            q = text("""
-            WITH next_week AS (SELECT MIN(week_number) AS w FROM weeks WHERE lock_at > now())
-            SELECT DISTINCT pl.pigeon_number
-            FROM v_picks_filled f
-            JOIN players pl ON pl.pigeon_number = f.pigeon_number
-            JOIN games g ON g.game_id = f.game_id
-            WHERE f.is_made = FALSE
-              AND g.week_number = (SELECT w FROM next_week)
-            ORDER BY pl.pigeon_number
-            """)
-            rows = await session.execute(q)
-            pigeon_numbers = [r[0] for r in rows]
-            emails = await get_all_player_emails(session, pigeon_numbers)
-        else:
-            print("error: --which must be one of: sun | mon | tue")
-            return 2
+    if which not in ("sun", "mon", "tue"):
+        print("error: --which must be one of: sun | mon | tue")
+        return 2
 
-        print(f"[cli] {which} recipients: {len(emails)}")
-        for e in emails:
-            print(f"  - {e}")
+    async with AsyncSessionLocal() as session:
+        tenants_res = await session.execute(
+            text("SELECT tenant_id, name FROM tenants ORDER BY tenant_id")
+        )
+        tenants = [(r[0], r[1]) for r in tenants_res.fetchall()]
+        grand_total = 0
+
+        for tenant_id, tenant_name in tenants:
+            print(f"\n[{tenant_name}] (tenant_id={tenant_id})")
+            emails: list[str] = []
+
+            if which in ("sun", "mon"):
+                rows = await session.execute(text("""
+                    SELECT DISTINCT lower(u.email)
+                      FROM tenant_members tm
+                      JOIN users u ON u.user_id = tm.user_id
+                     WHERE tm.tenant_id = :tid
+                       AND u.email IS NOT NULL AND u.email != ''
+                     ORDER BY 1
+                """), {"tid": tenant_id})
+                emails = [r[0] for r in rows.fetchall() if r[0]]
+            else:  # tue
+                rows = await session.execute(text("""
+                    WITH next_week AS (
+                        SELECT MIN(week_number) AS w
+                          FROM tenant_weeks
+                         WHERE tenant_id = :tid AND lock_at > now()
+                    )
+                    SELECT DISTINCT f.player_id
+                      FROM v_picks_filled f
+                      JOIN games g ON g.game_id = f.game_id
+                     WHERE f.is_made = FALSE
+                       AND f.tenant_id = :tid
+                       AND g.week_number = (SELECT w FROM next_week)
+                """), {"tid": tenant_id})
+                player_ids = [r[0] for r in rows.fetchall()]
+                emails = await get_all_player_emails(session, player_ids)
+
+            for e in emails:
+                print(f"  - {e}")
+            print(f"  Subtotal: {len(emails)}")
+            grand_total += len(emails)
+
+        print(f"\n[cli] {which} total recipients across all tenants: {grand_total}")
     return 0
 
 # -----------------------------------------------------------------------------
@@ -451,6 +593,21 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_kickoffs.add_argument("week", type=int, help="Week number (1–18)")
     p_kickoffs.set_defaults(func=cmd_sync_kickoffs)
+
+    # reset-season
+    p_reset = sub.add_parser(
+        "reset-season",
+        help="Archive picks, wipe games/picks, reset season status, sync new schedule.",
+        description=(
+            "Archives all picks to CSV (archive/<tid>_<year>_picks.csv), deletes all games "
+            "(cascading picks) and tenant_weeks, resets players.season_status to 'pending', "
+            "then syncs the new season's schedule and re-seeds lock times."
+        ),
+    )
+    p_reset.add_argument("--year", type=int, default=None,
+                         help="Season year to embed in archive filenames (auto-detected if omitted)")
+    p_reset.add_argument("--yes", action="store_true", help="Skip interactive confirmation")
+    p_reset.set_defaults(func=cmd_reset_season)
 
     # import-picks-xlsx
     p_imp_pivot = sub.add_parser(

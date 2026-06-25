@@ -102,13 +102,26 @@ Note: You can also run the `pigeon BE` VS Code task.
 
 All commands are run from the repo root with the conda environment active.
 
-### Season setup
+### Initial season setup
 ```bash
 python -m backend.cli sync-schedule          # import NFL schedule for the season
 python -m backend.cli sync-scores 6          # sync scores for week 6
 python -m backend.cli sync-kickoffs 6        # refresh kickoff times for week 6
 python -m backend.cli import-picks-xlsx picks.xlsx --week 6   # import picks from XLSX
 ```
+
+### New season setup (each subsequent summer)
+Run once before the new NFL season starts. Archives all picks, wipes last season's games and
+lock times, resets player season status, syncs the new schedule, and reseeds lock times.
+```bash
+# Archive, wipe, and re-sync (prompts for confirmation; add --yes to skip)
+python -m backend.cli reset-season
+
+# Then in the admin UI:
+# - Review and adjust per-tenant lock times (League Settings → Weeks)
+# - Set player season_status (pending/active/out) (League Settings → Roster)
+```
+Archives are written to `archive/<tenant_id>_<year>_picks.csv` in the repo root.
 
 ### League (tenant) management
 ```bash

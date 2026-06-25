@@ -108,6 +108,10 @@ AUTHZ_SQL = text("""
      LIMIT 1
 """)
 
+PLAYER_IN_TENANT_SQL = text("""
+    SELECT 1 FROM players WHERE player_id = :player_id AND tenant_id = :tenant_id
+""")
+
 # =========================
 # Utilities
 # =========================
@@ -136,28 +140,28 @@ async def _ensure_all_games_in_week(
 
 async def _resolve_acting_player(
     db: AsyncSession,
-    me,                          # AuthUser (has email, is_admin, player_id, pigeon_number)
-    requested_pn: int | None,    # pigeon_number query param from the API
+    me,                              # AuthUser (has email, is_admin, player_id, pigeon_number)
+    requested_player_id: int | None, # player_id query param from the API
 ) -> int:
     """
     Decide which player_id this request should act as.
-    For stage 4, player_id == pigeon_number, so the pigeon_number param is treated as player_id.
-    - Admins: may act for ANY existing player (if requested); else use current.
-    - Non-admins: may act for their current player, or another mapped player where role in (owner, manager).
+    - Admins: may act for any player in their tenant.
+    - Non-admins: may act for their current player, or another mapped player (owner/manager).
     """
-    current_player_id = me.player_id
-    if requested_pn is None or requested_pn == me.pigeon_number:
-        return current_player_id
+    if requested_player_id is None or requested_player_id == me.player_id:
+        return me.player_id
 
-    # Admins can act for any existing player (pigeon_number == player_id for stage 4)
     if me.is_admin:
-        return requested_pn
+        row = (await db.execute(PLAYER_IN_TENANT_SQL, {"player_id": requested_player_id, "tenant_id": me.tenant_id})).first()
+        if not row:
+            raise HTTPException(status_code=404, detail=f"Player {requested_player_id} not found in this tenant")
+        return requested_player_id
 
     # Non-admins must be owner/manager for that player
-    row = (await db.execute(AUTHZ_SQL, {"email": me.email, "player_id": requested_pn})).first()
+    row = (await db.execute(AUTHZ_SQL, {"email": me.email, "player_id": requested_player_id})).first()
     if not row:
-        raise HTTPException(status_code=403, detail=f"Not allowed for pigeon {requested_pn}")
-    return requested_pn
+        raise HTTPException(status_code=403, detail=f"Not allowed for player {requested_player_id}")
+    return requested_player_id
 
 # =========================
 # Endpoints
@@ -169,12 +173,12 @@ async def _resolve_acting_player(
 )
 async def get_my_picks_for_week(
     week_number: int,
-    pigeon_number: int | None = None,               # optional: act for another managed pigeon
+    player_id: int | None = None,                  # optional: act for another managed player
     db: AsyncSession = Depends(get_db),
     me=Depends(require_user),
 ):
     """ Return existing picks regardless of lock status (read-only after lock) """
-    acting_player_id = await _resolve_acting_player(db, me, pigeon_number)
+    acting_player_id = await _resolve_acting_player(db, me, player_id)
 
     result = await db.execute(
         GET_PICKS_FOR_WEEK_SQL,
@@ -201,12 +205,12 @@ async def get_my_picks_for_week(
 )
 async def upsert_picks_bulk(
     payload: PicksBulkIn,
-    pigeon_number: int | None = None,               # optional: act for another managed pigeon
+    player_id: int | None = None,                  # optional: act for another managed player
     db: AsyncSession = Depends(get_db),
     me=Depends(require_user),
 ):
     """ App-layer guard (DB trigger will also enforce) """
-    acting_player_id = await _resolve_acting_player(db, me, pigeon_number)
+    acting_player_id = await _resolve_acting_player(db, me, player_id)
 
     await _ensure_week_unlocked(db, payload.week_number, me.tenant_id)
     await _ensure_all_games_in_week(db, payload.week_number, (p.game_id for p in payload.picks))

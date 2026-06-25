@@ -1,2 +1,3 @@
 -- delete from users where email='marcshep123@gmail.com'
-select * from users
+SELECT COUNT(*) FROM games;
+SELECT MIN(kickoff_at), MAX(kickoff_at) FROM games;

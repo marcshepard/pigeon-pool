@@ -20,7 +20,8 @@ import {
   PickOut,
   PicksBulkIn,
   WeekPicksRow,
-  type AdminBulkEmailRequest
+  type AdminBulkEmailRequest,
+  type PayoutRow,
 } from "./types";
 import type { AdminPigeonCreateIn } from "./types";
 
@@ -226,24 +227,21 @@ export function getGamesForWeek(weekNumber: number): Promise<Game[]> {
 // Picks fetch wrappers
 // =============================
 /** Helpers to construct optional query-string for submitting a pick for an alternative pigeon */
-function withPigeon(qs: string, pigeonNumber?: number | null): string {
-  if (pigeonNumber == null) return qs;
-  if (!Number.isInteger(pigeonNumber) || pigeonNumber < 1 || pigeonNumber > 68) {
-    throw new Error(`Invalid pigeonNumber: ${pigeonNumber}`);
-  }
-  return `${qs}${qs.includes("?") ? "&" : "?"}pigeon_number=${pigeonNumber}`;
+function withPigeon(qs: string, playerId?: number | null): string {
+  if (playerId == null) return qs;
+  return `${qs}${qs.includes("?") ? "&" : "?"}player_id=${playerId}`;
 }
 
-/** Get picks for a week; optionally act as another managed pigeon */
+/** Get picks for a week; optionally act as another managed pigeon (identified by player_id) */
 export function getMyPicksForWeek(
   weekNumber: number,
-  pigeonNumber?: number
+  playerId?: number
 ): Promise<PickOut[]> {
   if (!Number.isInteger(weekNumber) || weekNumber < 1 || weekNumber > 18) {
     return Promise.reject(new Error(`Invalid weekNumber: ${weekNumber}`));
   }
 
-  const path = withPigeon(`/picks/${weekNumber}`, pigeonNumber);
+  const path = withPigeon(`/picks/${weekNumber}`, playerId);
 
   return apiFetch(path, {
     method: "GET",
@@ -254,12 +252,12 @@ export function getMyPicksForWeek(
   });
 }
 
-/** Create/update picks for a week; optionally act as another managed pigeon */
+/** Create/update picks for a week; optionally act as another managed pigeon (identified by player_id) */
 export function setMyPicks(
   payload: PicksBulkIn,
-  pigeonNumber?: number
+  playerId?: number
 ): Promise<PickOut[]> {
-  const path = withPigeon(`/picks`, pigeonNumber);
+  const path = withPigeon(`/picks`, playerId);
 
   return apiFetch(path, {
     method: "POST",
@@ -386,7 +384,7 @@ export function adminCreatePigeon(input: AdminPigeonCreateIn): Promise<AdminPige
  */
 export function adminUpdatePigeon(
   playerId: number,
-  patch: AdminPigeonUpdateIn | { pigeon_name?: string; owner_email?: string | null }
+  patch: AdminPigeonUpdateIn | { pigeon_name?: string; owner_email?: string | null; season_status?: string }
 ): Promise<void> {
   const body =
     patch instanceof AdminPigeonUpdateIn ? patch : new AdminPigeonUpdateIn(patch);
@@ -499,5 +497,38 @@ export function adminBulkImportPicks(
         ? Number((data as { processed: unknown }).processed)
         : Number(data);
     },
+  });
+}
+
+// =============================
+// Payouts (any member GET, admin PUT)
+// =============================
+
+/** Fetch the payout table for the current tenant (any logged-in member). */
+export function getPayouts(): Promise<PayoutRow[]> {
+  return apiFetch("/admin/payouts", {
+    method: "GET",
+    factory: (data: unknown) => {
+      if (!Array.isArray(data)) throw new Error("Expected array");
+      return data.map((row) => {
+        if (
+          typeof row !== "object" || row === null ||
+          typeof (row as Record<string, unknown>).place !== "number" ||
+          typeof (row as Record<string, unknown>).points !== "number"
+        ) {
+          throw new Error("Invalid payout row");
+        }
+        return row as PayoutRow;
+      });
+    },
+  });
+}
+
+/** Update the full payout table (admin only). Replaces all existing rows. */
+export function adminPutPayouts(rows: PayoutRow[]): Promise<void> {
+  return apiFetch("/admin/payouts", {
+    method: "PUT",
+    body: JSON.stringify(rows),
+    factory: () => undefined,
   });
 }

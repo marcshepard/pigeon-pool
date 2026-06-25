@@ -287,7 +287,8 @@ GET_PLAYERS_SQL = text("""
         p.player_id,
         p.pigeon_number,
         p.pigeon_name,
-        u.email AS owner_email
+        u.email AS owner_email,
+        p.season_status
     FROM players p
     LEFT JOIN user_players up ON up.player_id = p.player_id AND up.role = 'owner'
     LEFT JOIN users u ON u.user_id = up.user_id
@@ -298,6 +299,12 @@ GET_PLAYERS_SQL = text("""
 UPDATE_PLAYER_NAME_SQL = text("""
     UPDATE players
     SET pigeon_name = :pigeon_name
+    WHERE player_id = :player_id AND tenant_id = :tenant_id
+""")
+
+UPDATE_PLAYER_STATUS_SQL = text("""
+    UPDATE players
+    SET season_status = :season_status
     WHERE player_id = :player_id AND tenant_id = :tenant_id
 """)
 
@@ -337,6 +344,7 @@ class PigeonRow(BaseModel):
     pigeon_number: int
     pigeon_name: str
     owner_email: Optional[str]
+    season_status: str = "pending"
 
 
 class PigeonCreate(BaseModel):
@@ -347,6 +355,7 @@ class PigeonCreate(BaseModel):
 class PigeonUpdate(BaseModel):
     pigeon_name: Optional[str] = None
     owner_email: Optional[str] = None
+    season_status: Optional[str] = None
 
 
 @router.post(
@@ -381,7 +390,7 @@ async def create_pigeon(
         raise HTTPException(status_code=409, detail=f"Pigeon #{pn} already exists in this tenant") from exc
     player_id = result[0]
     info("admin: pigeon created", tenant_id=me.tenant_id, player_id=player_id, pigeon_number=pn)
-    return PigeonRow(player_id=player_id, pigeon_number=pn, pigeon_name=pigeon.pigeon_name, owner_email=None)
+    return PigeonRow(player_id=player_id, pigeon_number=pn, pigeon_name=pigeon.pigeon_name, owner_email=None, season_status="pending")
 
 
 @router.get(
@@ -397,7 +406,7 @@ async def get_pigeons(
     rows = (await db.execute(GET_PLAYERS_SQL, {"tenant_id": me.tenant_id})).fetchall()
     info("admin: pigeons retrieved", count=len(rows))
     return [
-        PigeonRow(player_id=r[0], pigeon_number=r[1], pigeon_name=r[2], owner_email=r[3])
+        PigeonRow(player_id=r[0], pigeon_number=r[1], pigeon_name=r[2], owner_email=r[3], season_status=r[4])
         for r in rows
     ]
 
@@ -427,6 +436,16 @@ async def update_pigeon(
         })
         info("admin: player name updated", player_id=player_id, name=update.pigeon_name)
 
+    if update.season_status is not None:
+        if update.season_status not in ("pending", "active", "out"):
+            raise HTTPException(status_code=400, detail="season_status must be pending, active, or out")
+        await db.execute(UPDATE_PLAYER_STATUS_SQL, {
+            "season_status": update.season_status,
+            "player_id": player_id,
+            "tenant_id": me.tenant_id,
+        })
+        info("admin: player season_status updated", player_id=player_id, season_status=update.season_status)
+
     if "owner_email" in (update.model_fields_set or set()):
         await db.execute(DELETE_PLAYER_OWNER_SQL, {"player_id": player_id})
         if update.owner_email:
@@ -441,6 +460,67 @@ async def update_pigeon(
 
     await db.commit()
     return Response(status_code=200)
+
+
+# ---------------------------------------------------------------------------
+# Payout configuration
+# ---------------------------------------------------------------------------
+
+GET_PAYOUTS_SQL = text("""
+    SELECT place, points FROM tenant_payouts
+    WHERE tenant_id = :tenant_id
+    ORDER BY place
+""")
+
+DELETE_PAYOUTS_SQL = text("DELETE FROM tenant_payouts WHERE tenant_id = :tenant_id")
+
+UPSERT_PAYOUT_SQL = text("""
+    INSERT INTO tenant_payouts (tenant_id, place, points)
+    VALUES (:tenant_id, :place, :points)
+    ON CONFLICT (tenant_id, place) DO UPDATE SET points = EXCLUDED.points
+""")
+
+
+class PayoutRow(BaseModel):
+    place: int
+    points: int
+
+
+@router.get(
+    "/payouts",
+    response_model=List[PayoutRow],
+    summary="Get payout amounts for this tenant (any member)",
+)
+async def get_payouts(
+    db: AsyncSession = Depends(get_db),
+    me=Depends(require_user),
+):
+    rows = (await db.execute(GET_PAYOUTS_SQL, {"tenant_id": me.tenant_id})).fetchall()
+    return [PayoutRow(place=r[0], points=r[1]) for r in rows]
+
+
+@router.put(
+    "/payouts",
+    status_code=204,
+    summary="Replace payout table for this tenant (commissioner only)",
+)
+async def put_payouts(
+    payouts: List[PayoutRow],
+    db: AsyncSession = Depends(get_db),
+    me=Depends(require_admin),
+):
+    if not payouts:
+        raise HTTPException(status_code=400, detail="Payout list cannot be empty")
+    await db.execute(DELETE_PAYOUTS_SQL, {"tenant_id": me.tenant_id})
+    for row in payouts:
+        await db.execute(UPSERT_PAYOUT_SQL, {
+            "tenant_id": me.tenant_id,
+            "place": row.place,
+            "points": row.points,
+        })
+    await db.commit()
+    info("admin: payouts updated", tenant_id=me.tenant_id, places=len(payouts))
+    return Response(status_code=204)
 
 
 # ---------------------------------------------------------------------------
@@ -758,11 +838,31 @@ async def import_picks_xlsx_api(
     _=Depends(require_admin),
 ):
     """
-    TEMPORARILY DISABLED. The XLSX importer uses pigeon_number as the player
-    identifier, but picks now references player_id. Fix deferred to Stage 8
-    (requires new-season data to test end-to-end).
+    Import picks from an XLSX workbook. Only available for the original league (tenant 1);
+    this is the legacy interface for Andy's external pick-entry system.
     """
-    raise HTTPException(
-        status_code=501,
-        detail="XLSX import is temporarily disabled pending update for the player_id schema. See Stage 8.",
-    )
+    if me.tenant_id != 1:
+        raise HTTPException(
+            status_code=403,
+            detail="XLSX import is only available for the original league.",
+        )
+
+    contents = await file.read()
+    with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
+        tmp.write(contents)
+        tmp_path = tmp.name
+
+    import asyncio as _asyncio
+    try:
+        processed = await _asyncio.to_thread(
+            import_picks_pivot_xlsx_with_engine,
+            tmp_path,
+            week,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Import failed: {exc}") from exc
+    finally:
+        os.unlink(tmp_path)
+
+    info("admin: xlsx picks imported", tenant_id=me.tenant_id, week=week, processed=processed)
+    return {"processed": processed}

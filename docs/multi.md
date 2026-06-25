@@ -595,6 +595,32 @@ Suggested prompt:
 > tenant payout structure, and the deferred code fixes (AltPigeon/player_id, withPigeon
 > cap, import_picks_xlsx, multi-tenant email jobs).
 
+### Completion notes
+
+All deliverables implemented:
+
+**Database (`database/migration_stage10.sql`)**
+- `players.season_status TEXT NOT NULL DEFAULT 'pending' CHECK (IN ('pending','active','out'))`
+- `tenant_payouts` table `(tenant_id, place, points)` with `PRIMARY KEY (tenant_id, place)`
+- Tenant 1 seeded with 530/270/160/100/70 for places 1–5
+
+**Backend code fixes:**
+- `backend/routes/auth.py` — `AltPigeon` now includes `player_id`; `/auth/me` returns it
+- `backend/routes/picks.py` — `withPigeon` param renamed to `player_id`; `_resolve_acting_player` verifies tenant membership for admin path
+- `backend/utils/scheduled_jobs.py` — all three email jobs (`run_email_sun/mon/tue_warn`) loop per tenant, use `_get_tenant_emails`, subject/signature include tenant name
+- `backend/utils/import_picks_xlsx.py` — rewritten to use `player_id` (via `pigeon_to_player` lookup dict); no longer creates players; 403 on non-tenant-1 call from the API
+
+**New features:**
+- `backend/routes/admin.py` — `GET /admin/payouts` (any member) and `PUT /admin/payouts` (admin); pigeon rows include `season_status`; `PATCH /admin/pigeons/{id}` accepts `season_status`
+- `backend/cli.py` — `reset-season` command (archive CSV per tenant → delete games → delete tenant_weeks → reset season_status → sync schedule → reseed lock times); payout seeding added to `create-league`; `show-email-recipients` fixed (broken `weeks.lock_at` and `f.pigeon_number` references removed, now per-tenant)
+- Frontend `types.ts` — `player_id` added to `AltPigeon` and `Me`; `season_status` added to `AdminPigeon`; `AdminPigeonUpdateIn` accepts `season_status`; `PayoutRow` interface added
+- Frontend `fetch.ts` — `withPigeon()` uses `player_id` param (removed `> 68` guard); `getPayouts()` and `adminPutPayouts()` added
+- Frontend `useAppCache.ts` — `payouts: TimeStamped<PayoutRow[]>` cache entry with 1-hour TTL
+- Frontend `EnterPicks.tsx` — pigeon selector keyed by `player_id`; all picks API calls use `player_id`
+- Frontend `AdminRoster.tsx` — season status selector (pending/active/out) added to PigeonsPanel
+- Frontend `AdminSettings.tsx` — `PayoutsEditor` section added below league name (editable table, prize pool calculator, save button)
+- Frontend `AboutPage.tsx` — payout table replaced with dynamic data from `GET /admin/payouts` via Zustand cache
+
 ## Stage 11: Integration Tests
 
 Build a durable automated test suite so future changes have less chance to break things.

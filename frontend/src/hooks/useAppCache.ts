@@ -4,7 +4,7 @@
 
 
 import { create } from "zustand";
-import { LeaderboardRow, WeekPicksRow, CurrentWeek } from "../backend/types";
+import { LeaderboardRow, WeekPicksRow, CurrentWeek, type PayoutRow } from "../backend/types";
 
 export type GameMeta = {
   game_id: number;
@@ -41,6 +41,7 @@ type AppCacheState = {
   currentWeek: TimeStamped<CurrentWeek> | null;
   resultsByWeek: Record<number, TimeStamped<ResultsWeekCache> | undefined>;
   ytd: TimeStamped<YtdCache> | null;
+  payouts: TimeStamped<PayoutRow[]> | null;
 
   // actions
   setTTL: (ms: number) => void;
@@ -53,6 +54,9 @@ type AppCacheState = {
 
   setYtd: (payload: YtdCache) => void;
   getYtd: () => YtdCache | null;
+
+  setPayouts: (rows: PayoutRow[]) => void;
+  getPayouts: () => PayoutRow[] | null;
 
   invalidateAll: () => void;
   sweep: () => void;
@@ -67,6 +71,7 @@ export const useAppCache = create<AppCacheState>()(
       currentWeek: null,
       resultsByWeek: {},
       ytd: null,
+      payouts: null,
 
       setTTL: (ms) => set({ ttlMs: ms }),
 
@@ -124,7 +129,17 @@ export const useAppCache = create<AppCacheState>()(
         return Date.now() - entry.at > get().ttlMs ? null : entry.data;
       },
 
-      invalidateAll: () => set({ resultsByWeek: {}, ytd: null }),
+      setPayouts: (rows) => {
+        set({ payouts: { at: Date.now(), data: rows } });
+      },
+
+      getPayouts: () => {
+        const entry = get().payouts;
+        if (!entry) return null;
+        return Date.now() - entry.at > get().ttlMs ? null : entry.data;
+      },
+
+      invalidateAll: () => set({ resultsByWeek: {}, ytd: null, payouts: null }),
 
       sweep: () => {
         const now = Date.now();
@@ -136,9 +151,11 @@ export const useAppCache = create<AppCacheState>()(
           if (v && now - v.at <= ttlMs) freshWeeks[Number(k)] = v;
         }
         const ytd = get().ytd;
+        const payouts = get().payouts;
         set({
           resultsByWeek: freshWeeks,
           ytd: ytd && now - ytd.at <= ttlMs ? ytd : null,
+          payouts: payouts && now - payouts.at <= ttlMs ? payouts : null,
           _lastSweepAt: now,
         });
       },

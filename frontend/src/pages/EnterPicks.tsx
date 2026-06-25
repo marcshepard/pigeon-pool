@@ -242,7 +242,7 @@ export default function EnterPicksPage() {
 
         const [gs, picks] = await Promise.all([
           getGamesForWeek(week),
-          getMyPicksForWeek(week, selectedPigeon ?? me?.pigeon_number),
+          getMyPicksForWeek(week, selectedPigeon ?? me?.player_id),
         ]);
         // Find latest created_at
         const maxCreated = picks
@@ -280,7 +280,7 @@ export default function EnterPicksPage() {
     })();
 
     return () => { cancelled = true; };
-  }, [week, selectedPigeon, me?.pigeon_number]);
+  }, [week, selectedPigeon, me?.player_id]);
 
   // — handlers —
   const handleWeekChange = (newWeek: number) => {
@@ -391,7 +391,7 @@ export default function EnterPicksPage() {
       // Show submitting dialog
       setSubmitDialog({ open: true, error: null });
       // Always pass selected pigeon (falls back to primary)
-      await setMyPicks({ week_number: week, picks }, selectedPigeon ?? me?.pigeon_number);
+      await setMyPicks({ week_number: week, picks }, selectedPigeon ?? me?.player_id);
       // Update lastSubmission to now
       setLastSubmission(new Date().toISOString());
       // Close dialog immediately once submission succeeds
@@ -407,7 +407,7 @@ export default function EnterPicksPage() {
 
     // Re-fetch picks to reflect server-side normalization, if any (best-effort)
     try {
-      const newPicks = await getMyPicksForWeek(week, selectedPigeon ?? me?.pigeon_number);
+      const newPicks = await getMyPicksForWeek(week, selectedPigeon ?? me?.player_id);
       const byGame: Record<number, PickDraft> = {};
       for (const p of newPicks) byGame[p.game_id] = { picked_home: p.picked_home, predicted_margin: p.predicted_margin };
       setDraft((prev) => {
@@ -527,24 +527,24 @@ export default function EnterPicksPage() {
     {me && (me.is_admin || (me.alternates && me.alternates.length > 0)) && (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 1 }}>
           {(() => {
-            // Known pigeons: primary + alternates
-            const knownNumbers = new Set([me.pigeon_number, ...me.alternates.map(a => a.pigeon_number)]);
+            // Known pigeons by player_id: primary + alternates
+            const knownIds = new Set([me.player_id, ...me.alternates.map(a => a.player_id)]);
             const knownOptions = [
-              { value: String(me.pigeon_number), label: `${me.pigeon_number} ${me.pigeon_name}` },
-              ...me.alternates.map(a => ({ value: String(a.pigeon_number), label: `${a.pigeon_number} ${a.pigeon_name}` }))
+              { value: String(me.player_id), label: `${me.pigeon_number} ${me.pigeon_name}` },
+              ...me.alternates.map(a => ({ value: String(a.player_id), label: `${a.pigeon_number} ${a.pigeon_name}` }))
             ];
             const allOptions = [...knownOptions];
             if (me.is_admin) {
               for (const p of allPigeons) {
-                if (!knownNumbers.has(p.pigeon_number)) {
-                  allOptions.push({ value: String(p.pigeon_number), label: `${p.pigeon_number} ${p.pigeon_name}` });
+                if (!knownIds.has(p.player_id)) {
+                  allOptions.push({ value: String(p.player_id), label: `${p.pigeon_number} ${p.pigeon_name}` });
                 }
               }
             }
             return (
               <LabeledSelect
                 label="Pigeon"
-                value={selectedPigeon ? String(selectedPigeon) : String(me.pigeon_number)}
+                value={selectedPigeon ? String(selectedPigeon) : String(me.player_id)}
                 onChange={(e) => handlePigeonChange(Number(e.target.value))}
                 options={allOptions}
               />

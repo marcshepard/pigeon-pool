@@ -67,6 +67,7 @@ export class SessionInfo {
 
 // ---- Me (result of /auth/me or /auth/login) ----
 export interface AltPigeon {
+  player_id: number;
   pigeon_number: number;
   pigeon_name: string;
 }
@@ -79,6 +80,7 @@ export interface TenantInfo {
 
 // ---- Me (result of /auth/me or /auth/login) ----
 export class Me {
+  player_id: number;
   pigeon_number: number;
   pigeon_name: string;
   email: string;
@@ -95,8 +97,9 @@ export class Me {
   constructor(data: unknown) {
     if (!isRecord(data)) throw new DataValidationError("Invalid Me payload (not an object)");
 
-    const { pigeon_number, pigeon_name, email, is_admin, tenant_id, session, alt_pigeons, available_tenants } = data;
+    const { player_id, pigeon_number, pigeon_name, email, is_admin, tenant_id, session, alt_pigeons, available_tenants } = data;
 
+    if (!isNumber(player_id)) throw new DataValidationError("player_id must be number");
     if (!isNumber(pigeon_number)) throw new DataValidationError("pigeon_number must be number");
     if (!isString(pigeon_name)) throw new DataValidationError("pigeon_name must be string");
     if (!isString(email)) throw new DataValidationError("email must be string");
@@ -104,6 +107,7 @@ export class Me {
     if (!isNumber(tenant_id)) throw new DataValidationError("tenant_id must be number");
     if (!isRecord(session)) throw new DataValidationError("session must be object");
 
+    this.player_id = player_id;
     this.pigeon_number = pigeon_number;
     this.pigeon_name = pigeon_name;
     this.email = email;
@@ -120,10 +124,11 @@ export class Me {
       const parsed: AltPigeon[] = [];
       for (const a of alt_pigeons) {
         if (!isRecord(a)) throw new DataValidationError("alternate must be an object");
-        const { pigeon_number: apn, pigeon_name: apname } = a;
+        const { player_id: apid, pigeon_number: apn, pigeon_name: apname } = a;
+        if (!isNumber(apid)) throw new DataValidationError("alternate.player_id must be number");
         if (!isNumber(apn)) throw new DataValidationError("alternate.pigeon_number must be number");
         if (!isString(apname)) throw new DataValidationError("alternate.pigeon_name must be string");
-        parsed.push({ pigeon_number: apn, pigeon_name: apname });
+        parsed.push({ player_id: apid, pigeon_number: apn, pigeon_name: apname });
       }
       this.alternates = parsed;
     }
@@ -458,10 +463,11 @@ export class AdminPigeon {
   pigeon_name: string;
   /** May be null/undefined if unassigned */
   owner_email: string | null;
+  season_status: "pending" | "active" | "out";
 
   constructor(data: unknown) {
     if (!isRecord(data)) throw new DataValidationError("Invalid AdminPigeon (not an object)");
-    const { player_id, pigeon_number, pigeon_name, owner_email } = data;
+    const { player_id, pigeon_number, pigeon_name, owner_email, season_status } = data;
 
     if (!isNumber(player_id)) throw new DataValidationError("player_id must be number");
     if (!isNumber(pigeon_number)) throw new DataValidationError("pigeon_number must be number");
@@ -469,12 +475,22 @@ export class AdminPigeon {
     if (!(owner_email === null || owner_email === undefined || isString(owner_email))) {
       throw new DataValidationError("owner_email must be string|null|undefined");
     }
+    const ss = (season_status as string) ?? "pending";
+    if (!["pending", "active", "out"].includes(ss)) {
+      throw new DataValidationError("season_status must be pending|active|out");
+    }
 
     this.player_id = player_id;
     this.pigeon_number = pigeon_number;
     this.pigeon_name = pigeon_name;
     this.owner_email = (owner_email ?? null) as string | null;
+    this.season_status = ss as "pending" | "active" | "out";
   }
+}
+
+export interface PayoutRow {
+  place: number;
+  points: number;
 }
 
 /** Payload for POST /admin/pigeons */
@@ -491,10 +507,11 @@ export interface AdminPigeonCreateIn {
 export class AdminPigeonUpdateIn {
   pigeon_name?: string;
   owner_email?: string | null;
+  season_status?: string;
 
   constructor(data: unknown) {
     if (!isRecord(data)) throw new DataValidationError("Invalid AdminPigeonUpdateIn (not an object)");
-    const { pigeon_name, owner_email } = data;
+    const { pigeon_name, owner_email, season_status } = data;
 
     if (pigeon_name !== undefined && !isString(pigeon_name)) {
       throw new DataValidationError("pigeon_name must be string if provided");
@@ -502,9 +519,13 @@ export class AdminPigeonUpdateIn {
     if (owner_email !== undefined && !(owner_email === null || isString(owner_email))) {
       throw new DataValidationError("owner_email must be string|null if provided");
     }
+    if (season_status !== undefined && !isString(season_status)) {
+      throw new DataValidationError("season_status must be string if provided");
+    }
 
     this.pigeon_name = pigeon_name as string | undefined;
     this.owner_email = (owner_email as string | null | undefined);
+    this.season_status = season_status as string | undefined;
   }
 }
 

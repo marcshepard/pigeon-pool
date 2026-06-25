@@ -1,8 +1,22 @@
+import { useEffect } from "react";
 import { Typography, Box, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper } from "@mui/material";
 import { Link } from "react-router-dom";
 import { PageScroll, NORMAL_PAGE_MAX_WIDTH } from "../components/Layout";
+import { useAppCache } from "../hooks/useAppCache";
+import { getPayouts } from "../backend/fetch";
 
 export default function AboutPage() {
+    const cacheGetPayouts = useAppCache((s) => s.getPayouts);
+    const cacheSetPayouts = useAppCache((s) => s.setPayouts);
+    const payouts = useAppCache((s) => s.payouts?.data ?? null);
+
+    useEffect(() => {
+        if (cacheGetPayouts()) return;
+        getPayouts()
+            .then((data) => cacheSetPayouts(data))
+            .catch(() => {/* non-fatal — table stays hidden */});
+    }, [cacheGetPayouts, cacheSetPayouts]);
+
     return (
         <PageScroll maxWidth={NORMAL_PAGE_MAX_WIDTH}>
             <Typography variant="h6" gutterBottom align="center" fontWeight={700}>
@@ -20,7 +34,7 @@ export default function AboutPage() {
             </Typography>
             <Typography variant="body1" sx={{ mb: 1 }}>
                 <b>3.</b> Your score for the week is the total of the DIFFERENCES between your picked spreads and the actual spreads,
-                plus a seven point “penalty” for each game where you did not pick the winning team. The lower your weekly score, the better.
+                plus a seven point "penalty" for each game where you did not pick the winning team. The lower your weekly score, the better.
                 Partial and final scores will also be available on the <Link to="/picks-and-results">Picks and Results</Link> once the first game has started.
             </Typography>
             <Typography variant="body1" sx={{ mb: 1 }}>
@@ -31,41 +45,43 @@ export default function AboutPage() {
             <Typography variant="body1" sx={{ mb: 1 }}>
                 <b>5.</b> Payoffs are per the table below and are sent by US mail.
             </Typography>
-            <Box mt={1}>
-                <Typography variant="h6" gutterBottom align="center">Payoff Table</Typography>
-                <TableContainer component={Paper} sx={{ maxWidth: 500, mx: "auto" }}>
-                    <Table size="small">
-                        <TableHead>
-                            <TableRow>
-                                <TableCell align="center"></TableCell>
-                                <TableCell align="center">1st</TableCell>
-                                <TableCell align="center">2nd</TableCell>
-                                <TableCell align="center">3rd</TableCell>
-                                <TableCell align="center">4th</TableCell>
-                                <TableCell align="center">5th</TableCell>
-                            </TableRow>
-                        </TableHead>
-                        <TableBody>
-                            <TableRow>
-                                <TableCell component="th" scope="row" align="center">Weekly</TableCell>
-                                <TableCell align="center">530</TableCell>
-                                <TableCell align="center">270</TableCell>
-                                <TableCell align="center">160</TableCell>
-                                <TableCell align="center">100</TableCell>
-                                <TableCell align="center">70</TableCell>
-                            </TableRow>
-                            <TableRow>
-                                <TableCell component="th" scope="row" align="center">Cummulative</TableCell>
-                                <TableCell align="center">530</TableCell>
-                                <TableCell align="center">270</TableCell>
-                                <TableCell align="center">160</TableCell>
-                                <TableCell align="center">100</TableCell>
-                                <TableCell align="center">70</TableCell>
-                            </TableRow>
-                        </TableBody>
-                    </Table>
-                </TableContainer>
-            </Box>
+            {payouts && payouts.length > 0 && (
+                <Box mt={1}>
+                    <Typography variant="h6" gutterBottom align="center">Payoff Table</Typography>
+                    <TableContainer component={Paper} sx={{ maxWidth: 500, mx: "auto" }}>
+                        <Table size="small">
+                            <TableHead>
+                                <TableRow>
+                                    <TableCell align="center"></TableCell>
+                                    {payouts.map((r) => (
+                                        <TableCell key={r.place} align="center">{ordinal(r.place)}</TableCell>
+                                    ))}
+                                </TableRow>
+                            </TableHead>
+                            <TableBody>
+                                <TableRow>
+                                    <TableCell component="th" scope="row" align="center">Weekly</TableCell>
+                                    {payouts.map((r) => (
+                                        <TableCell key={r.place} align="center">{r.points}</TableCell>
+                                    ))}
+                                </TableRow>
+                                <TableRow>
+                                    <TableCell component="th" scope="row" align="center">Cumulative</TableCell>
+                                    {payouts.map((r) => (
+                                        <TableCell key={r.place} align="center">{r.points}</TableCell>
+                                    ))}
+                                </TableRow>
+                            </TableBody>
+                        </Table>
+                    </TableContainer>
+                </Box>
+            )}
         </PageScroll>
     );
+}
+
+function ordinal(n: number): string {
+    const s = ["th", "st", "nd", "rd"];
+    const v = n % 100;
+    return n + (s[(v - 20) % 10] ?? s[v] ?? s[0]);
 }

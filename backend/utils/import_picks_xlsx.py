@@ -38,14 +38,28 @@ logging.basicConfig(level=getattr(logging, LOG_LEVEL, logging.INFO),
                     format="%(levelname)s %(message)s")
 log = logging.getLogger("picks_import")
 
-# DISABLED: this importer uses pigeon_number as the player identifier, but picks now
-# references player_id. A full rewrite is deferred to Stage 8 (needs next-season data
-# to test end-to-end). The admin API endpoint returns HTTP 501 until this is fixed.
-def import_picks_pivot_xlsx_with_engine(xlsx_path: str, only_week: int = None) -> int:
-    raise NotImplementedError(
-        "XLSX import is disabled: importer must be updated to use player_id "
-        "instead of pigeon_number. See Stage 8 of the multi-tenant migration plan."
-    )
+def import_picks_pivot_xlsx_with_engine(xlsx_path: str, only_week: int = None, tenant_id: int = 1) -> int:
+    """
+    Open a fresh psycopg connection and import picks from the given XLSX.
+    Scoped to tenant_id (default 1, the legacy Andy pool). The bypass_lock session
+    variable is set so the pick-lock trigger is skipped for historical imports.
+    """
+    import psycopg as _psycopg  # pylint: disable=import-outside-toplevel
+    cfg = get_settings().psycopg_kwargs()
+    with _psycopg.connect(**cfg) as conn:  # pylint: disable=no-member
+        with conn.cursor() as cur:
+            cur.execute("SET app.bypass_lock = 'on';")
+        try:
+            result = import_picks_pivot_xlsx(
+                xlsx_path=xlsx_path,
+                conn=conn,
+                tenant_id=tenant_id,
+                only_week=only_week,
+            )
+        finally:
+            with conn.cursor() as cur:
+                cur.execute("RESET app.bypass_lock;")
+    return result
 
 # ---------------------------
 # Spreadsheet → ESPN aliases
@@ -186,36 +200,33 @@ def _find_game_id(cur, week: int, t1: str, t2: str) -> Optional[Tuple[int, str, 
     return int(row[0]), row[1], row[2]
 
 
-def _upsert_player(cur, pigeon_number: int, pigeon_name: str) -> None:
+def _upsert_pick(cur, player_id: int, game_id: int, picked_home: bool, margin: int) -> None:
     cur.execute(
         """
-        INSERT INTO players (pigeon_number, pigeon_name)
-        VALUES (%s, %s)
-        ON CONFLICT (pigeon_number) DO UPDATE SET pigeon_name = EXCLUDED.pigeon_name
-        """,
-        (pigeon_number, pigeon_name),
-    )
-
-
-def _upsert_pick(cur, pigeon_number: int, game_id: int, picked_home: bool, margin: int) -> None:
-    cur.execute(
-        """
-        INSERT INTO picks (pigeon_number, game_id, picked_home, predicted_margin)
+        INSERT INTO picks (player_id, game_id, picked_home, predicted_margin)
         VALUES (%s, %s, %s, %s)
-        ON CONFLICT (pigeon_number, game_id)
+        ON CONFLICT (player_id, game_id)
         DO UPDATE SET picked_home = EXCLUDED.picked_home,
                       predicted_margin = EXCLUDED.predicted_margin,
                       created_at = now()
         """,
-        (pigeon_number, game_id, picked_home, margin),
+        (player_id, game_id, picked_home, margin),
     )
 
 
-def import_picks_pivot_xlsx(*, xlsx_path: str, conn, max_week: Optional[int] = None, only_week: Optional[int] = None) -> int:
+def import_picks_pivot_xlsx(*, xlsx_path: str, conn, max_week: Optional[int] = None, only_week: Optional[int] = None, tenant_id: int = 1) -> int:
     """
     Import a pivoted XLSX with one sheet per week (title like 'picks wk N').
     Uses alias normalization for team codes and logs detailed skip reasons.
+    Players must already exist in the DB for the given tenant; unknown pigeon_numbers
+    are skipped with a warning rather than created.
     """
+    # Build pigeon_number -> player_id map for this tenant
+    with conn.cursor() as cur:
+        cur.execute("SELECT pigeon_number, player_id FROM players WHERE tenant_id = %s", (tenant_id,))
+        pigeon_to_player: Dict[int, int] = {row[0]: row[1] for row in cur.fetchall()}
+    log.info("[xlsx] Loaded %d player mappings for tenant %d", len(pigeon_to_player), tenant_id)
+
     wb = load_workbook(xlsx_path, data_only=True)
     processed = 0
 
@@ -244,11 +255,6 @@ def import_picks_pivot_xlsx(*, xlsx_path: str, conn, max_week: Optional[int] = N
         if not players:
             log.warning("[warn] No player columns with numbers detected on sheet '%s'", ws.title)
             continue
-
-        cur = conn.cursor()
-        for p in players:
-            _upsert_player(cur, p.pigeon_number, p.pigeon_name)
-        conn.commit()
 
         # Team rows (normalized)
         team_labels = _iter_team_rows(ws, number_row + 1, label_col=3)
@@ -329,7 +335,12 @@ def import_picks_pivot_xlsx(*, xlsx_path: str, conn, max_week: Optional[int] = N
                 team_with_pick = t_top if top_int is not None else t_bot
                 picked_home = team_with_pick == home_abbr
 
-                _upsert_pick(cur, p.pigeon_number, game_id, picked_home, margin)
+                player_id = pigeon_to_player.get(p.pigeon_number)
+                if player_id is None:
+                    log.warning("[xlsx] pigeon_number=%s not found in tenant %d, skipping pick",
+                                p.pigeon_number, tenant_id)
+                    continue
+                _upsert_pick(cur, player_id, game_id, picked_home, margin)
                 sheet_count += 1
 
             conn.commit()
