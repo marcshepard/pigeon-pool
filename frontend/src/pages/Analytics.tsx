@@ -58,8 +58,6 @@ export default function AnalyticsPage() {
     window.history.replaceState(null, '', `${window.location.pathname}?${params.toString()}`);
   }, [tab]);
 
-  // Results for the selected week (to discover all pigeons + names)
-  // Auto-refresh is now handled globally by useAutoRefreshManager in App.tsx
   const { rows, games } = useResults(week === "" ? null : Number(week));
 
   // Build selector sections: Me, Managed, Others

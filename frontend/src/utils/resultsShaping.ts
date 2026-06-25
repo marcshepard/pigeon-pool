@@ -1,8 +1,3 @@
-/**
- * Shared utility for shaping results data.
- * Used by both useResults and useAutoRefreshManager.
- */
-
 import { LeaderboardRow, WeekPicksRow } from "../backend/types";
 import type { GameMeta } from "../hooks/useAppCache";
 

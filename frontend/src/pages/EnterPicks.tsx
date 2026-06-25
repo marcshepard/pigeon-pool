@@ -9,8 +9,8 @@ import { Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, FormCon
 import WarningAmberOutlinedIcon from '@mui/icons-material/WarningAmberOutlined';
 import { alpha } from "@mui/material/styles";
 import { AppSnackbar, Loading, Banner, ConfirmDialog, LabeledSelect } from "../components/CommonComponents";
-import { getCurrentWeek, getGamesForWeek, getMyPicksForWeek, setMyPicks } from "../backend/fetch";
-import type { Game } from "../backend/types";
+import { adminGetPigeons, getCurrentWeek, getGamesForWeek, getMyPicksForWeek, setMyPicks } from "../backend/fetch";
+import type { AdminPigeon, Game } from "../backend/types";
 import { useAppCache } from "../hooks/useAppCache";
 import { PageFit, NORMAL_PAGE_MAX_WIDTH } from "../components/Layout";
 
@@ -51,7 +51,8 @@ export default function EnterPicksPage() {
   const [lastSubmission, setLastSubmission] = useState<string | null>(null);
   const { me } = useAuth();
   const [selectedPigeon, setSelectedPigeon] = useState<number | null>(null);
-  
+  const [allPigeons, setAllPigeons] = useState<AdminPigeon[]>([]);
+
   // Subscribe to currentWeek from Zustand for reactivity
   const currentWeek = useAppCache((s) => s.currentWeek?.data ?? null);
   const setCurrentWeekCache = useAppCache((s) => s.setCurrentWeek);
@@ -89,6 +90,12 @@ export default function EnterPicksPage() {
     ),
     { capture: true }
   );
+
+  // Fetch all tenant pigeons once for commissioners (replaces hard-coded 1-68 range)
+  useEffect(() => {
+    if (!me?.is_admin) return;
+    adminGetPigeons().then(setAllPigeons).catch(() => {/* non-fatal */});
+  }, [me?.is_admin]);
 
   // Intercept navigation attempts when there are unsaved changes
   useEffect(() => {
@@ -521,17 +528,16 @@ export default function EnterPicksPage() {
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 1 }}>
           {(() => {
             // Known pigeons: primary + alternates
-            const knownNumbers = [me.pigeon_number, ...me.alternates.map(a => a.pigeon_number)];
+            const knownNumbers = new Set([me.pigeon_number, ...me.alternates.map(a => a.pigeon_number)]);
             const knownOptions = [
               { value: String(me.pigeon_number), label: `${me.pigeon_number} ${me.pigeon_name}` },
               ...me.alternates.map(a => ({ value: String(a.pigeon_number), label: `${a.pigeon_number} ${a.pigeon_name}` }))
             ];
             const allOptions = [...knownOptions];
             if (me.is_admin) {
-              // Add all numbers 1-68 not in knownNumbers
-              for (let i = 1; i <= 68; ++i) {
-                if (!knownNumbers.includes(i)) {
-                  allOptions.push({ value: String(i), label: String(i) });
+              for (const p of allPigeons) {
+                if (!knownNumbers.has(p.pigeon_number)) {
+                  allOptions.push({ value: String(p.pigeon_number), label: `${p.pigeon_number} ${p.pigeon_name}` });
                 }
               }
             }

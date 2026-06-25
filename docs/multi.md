@@ -385,34 +385,39 @@ touching the API directly.
 - The `import type` fix for interfaces avoids a browser ES-module error where Vite emits
   the bare `import { InterfaceName }` and the browser can't find it as a runtime export.
 
-## Stage 7: Frontend Data Model Cleanup
+## Stage 7: Frontend Cleanup ✅ COMPLETE
 
-Update frontend types and pages so player identity and display pigeon number are distinct
-in the remaining pages (picks, results, analytics, YTD). Some of this work was done in
-Stage 6 for the admin roster; what remains is the player-facing pages.
+Removed the buggy auto-refresh polling hook and fixed the hard-coded player range in
+the commissioner picks view.
 
-**Already done (Stage 6):**
-- `AdminPigeon` uses `player_id` for identity, `pigeon_number` for display.
-- `Me` carries `tenant_id` and `available_tenants`.
-- Commissioner PATCH/POST routes use `player_id` in URLs.
+**Scope actually implemented (narrower than original plan — see notes):**
 
-**Remaining in this stage:**
-- `EnterPicks` — verify player selection uses `player_id`, not `pigeon_number`, when
-  managing alternates.
-- `PicksAndResults` — verify tenant-scoped data and remove duplicate scoring logic.
-- `YearToDatePage` — verify tenant filtering.
-- `Analytics` — verify tenant filtering.
-- Remove `scoreForPick` and the rank-derivation logic from `resultsShaping.ts`. The
-  frontend has been duplicating the scoring formula and the two implementations have
-  already drifted (frontend is missing the missed-pick penalty). Trust pre-computed
-  scores and ranks from the backend.
-- Remove `useAutoRefreshManager` (the polling hook). It has been a source of bugs — two
-  overlapping timers, a >2-day stale-data heuristic, and a week-transition detector —
-  and it is the primary consumer of the duplicate scoring logic. Replace with a manual
-  refresh button on PicksAndResults. The backend already keeps scores current on its
-  own schedule; the frontend does not need to poll.
+- Deleted `frontend/src/hooks/useAutoRefreshManager.ts` (~200 lines). The hook had two
+  overlapping timers, a >2-day stale-data heuristic, and a kickoff-transition detector.
+  Browser refresh is sufficient; users are not watching a live dashboard.
+- Removed the import and call site from `App.tsx`.
+- Removed stale "handled by useAutoRefreshManager" comments from `PicksAndResults.tsx`,
+  `Analytics.tsx`, and the docblock in `resultsShaping.ts`.
+- Fixed `EnterPicks`: the commissioner pigeon selector was hard-coded to numbers 1–68.
+  Now fetches the tenant's actual player list via `adminGetPigeons()` on mount and uses
+  that to populate the extra options.
 
-Suggested prompt:
+**Deliberately left unchanged:**
+
+- `scoreForPick` and the rank/points aggregation in `shapeRowsAndGames` — the original
+  plan suggested removing these and trusting backend leaderboard ranks, but this was
+  incorrect. `Top5Playground` and `bestPossibleRank` both import `scoreForPick` directly;
+  removing it would break both. The frontend scoring logic has been battle-tested through
+  a full season. `useYtd` already uses the backend leaderboard independently. Fixing the
+  divergence between the two scoring paths (frontend missing the missed-pick penalty,
+  backend capping at 800) is deferred to a future stage when the season is running and
+  the numbers can be verified end-to-end.
+- `player_id` vs `pigeon_number` in picks/results/analytics — since `player_id ==
+  pigeon_number` for all migrated rows, there is no functional bug today. The deeper
+  type cleanup (adding `player_id` to `AltPigeon`, switching row identity keys) is also
+  deferred until a second tenant exists and can be tested.
+
+### Suggested prompt
 
 > Update the remaining frontend pages (EnterPicks, PicksAndResults, YTD, Analytics) so
 > player identity uses `player_id` throughout. Remove the auto-refresh polling hook and

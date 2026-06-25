@@ -38,9 +38,6 @@ import AnalyticsPage from "./pages/Analytics";
 import AdminLocksAndPicks from "./pages/admin/AdminLocksAndPicks";
 import AdminRoster from "./pages/admin/AdminRoster";
 
-// Auto-refresh manager
-import { useAutoRefreshManager } from "./hooks/useAutoRefreshManager";
-
 // ---- optional theme ----
 const theme = createTheme({
   palette: {
@@ -131,7 +128,6 @@ function PrivateShell() {
 }
 
 export default function App() {
-  useAutoRefreshManager();
   return (
     <Viewport>
       <ThemeProvider theme={theme}>

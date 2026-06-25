@@ -59,8 +59,6 @@ export default function PicksheetPage() {
     }
   }, [lockedWeeks, week]);
 
-  // Cache-backed data for the selected week
-  // Auto-refresh is now handled globally by useAutoRefreshManager in App.tsx
   const { rows, games, currentWeek, consensusRow, loading, error } = useResults(week);
 
   // Popover for auto-update info
