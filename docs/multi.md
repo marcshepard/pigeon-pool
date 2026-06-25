@@ -439,85 +439,219 @@ Suggested prompt:
 
 > Move Andy-specific submission and current-pool branding behind optional tenant configuration.
 
-## Stage 9: Tenant Creation and Onboarding
+## Stage 9: Tenant Creation and Onboarding ✅ COMPLETE
 
-Add product-level flows for creating and managing new tenants. There is no global-admin
-role; tenant creation is a server-side / SQL operation for now (see
-`database/seed_test_tenant.sql`). This stage adds a self-service or operator-assisted
-path.
+Add operator-level CLI commands for tenant lifecycle management and a commissioner-facing
+"League Settings" page for renaming the league.
 
-Deliverables:
+**Design decisions made during this stage:**
 
-- Operator or server-side flow to create a new tenant (API endpoint or admin CLI).
-- Commissioner can invite or create users within their tenant.
-- Commissioner can create/edit players (already implemented in Stage 6).
-- New-user password reset/onboarding works end-to-end.
-- New tenants can start without Andy-specific integrations enabled.
+- **Model A (curated pools)** — users are always created by a commissioner; no
+  self-registration. A user with no tenant is a setup error, not a UX state (403).
+- **No invite email** — commissioners handle new-user communication out-of-band. New users
+  go to the site and use "Forgot Password" to set their password before first login. This
+  avoids spam-folder issues with transactional email from new domains.
+- **Tenant creation via CLI only** — no API endpoint. The CLI is safer (no auth surface to
+  protect, runs only on the server) and sufficient for the curated-pool model.
+
+### Completion notes
+
+**`backend/cli.py` — three new commands:**
+
+- `list-leagues` — tabular view of all tenants with member and player counts.
+- `create-league --name "X" --commissioner-email user@example.com` — creates tenant,
+  placeholder player "Commissioner" (pigeon_number=1), links the user as commissioner,
+  copies `weeks.default_lock_at` into `tenant_weeks`. Commissioner must already have a
+  user account. Rename the placeholder via League Settings after first login.
+- `delete-league <tenant_id> [--yes]` — shows what will be deleted (members, players,
+  picks), prompts for confirmation unless `--yes` is passed. Deletes in order:
+  `tenant_members` → orphaned `users` → `players` (cascades picks/user_players) →
+  `tenants` (cascades tenant_weeks). Users who belong only to the deleted league are also
+  deleted; users in multiple leagues keep their accounts.
+
+**`backend/routes/admin.py` — one new endpoint:**
+
+- `PATCH /admin/league` — commissioner renames their active tenant. Body: `{name: str}`.
+  Returns 204. Empty name returns 400.
+
+**Frontend:**
+
+- Nav label `"Admin"` → `"League Settings"` (`App.tsx`).
+- Admin tab `"Pigeons"` → `"Roster"` (same route `/admin/pigeons`, label only).
+- New tab `"Settings"` → `/admin/settings` → `AdminSettings.tsx`. Shows the current
+  league name in a text field; Save calls `PATCH /admin/league` then `refresh()` so the
+  app-bar title updates immediately.
+- `frontend/src/backend/fetch.ts`: `adminUpdateLeague(name)` added.
+
+**Onboarding flow (end-to-end):**
+
+1. Operator: `python -m backend.cli create-league --name "…" --commissioner-email …`
+2. Commissioner logs in (existing account), sees their new league in the tenant switcher.
+3. Commissioner: League Settings → create players → create users.
+4. New users visit the site, click "Forgot Password", set their password, log in.
+
+## Stage 10: New League Year
+
+Last development milestone. Implements everything needed to transition from one NFL season
+to the next, plus two new commissioner features (player season status and configurable
+payouts). Manually verified end-to-end on localhost with live 2025 season data.
+
+### Season transition
+
+**`reset-season` CLI command** (`backend/cli.py`):
+
+1. Archive: for each tenant, write a CSV of all picks joined with game/result data to
+   a local file (e.g. `archive/<tenant_id>_<year>_picks.csv`). The commissioner can
+   save these for later analytics or import into a spreadsheet.
+2. Wipe: delete all rows from `games` (cascades `picks`). Tenant and player data are
+   untouched.
+3. Reset: set `players.season_status = 'pending'` for all players across all tenants.
+4. Sync: run the equivalent of `sync-schedule` to import the new season's games and
+   populate `weeks.default_lock_at`.
+
+After `reset-season`, each commissioner logs in and clicks "Activate Season" in League
+Settings (already implemented) to copy the default lock times into their tenant.
+
+### Player season status
+
+Tracks each pigeon's participation state for the coming season. Resets to `pending`
+every season so commissioners start with a clean slate.
+
+**Schema** (`database/migration_stage10.sql`):
+```sql
+ALTER TABLE players
+  ADD COLUMN season_status TEXT NOT NULL DEFAULT 'pending'
+  CHECK (season_status IN ('pending', 'active', 'out'));
+```
+
+- `pending` — default; assumed returning but not yet confirmed
+- `active` — confirmed (e.g. paid entry fee, told commissioner they're in)
+- `out` — dropping this season
+
+**Backend**: expose `season_status` in `GET /admin/pigeons` response and accept it in
+`PATCH /admin/pigeons/{player_id}`.
+
+**Frontend**: show a status badge/dropdown per pigeon in the Roster tab. Commissioner
+can change status inline.
+
+### Configurable payout structure
+
+Commissioners can define how many points each finishing place pays per week and for the
+overall standings. The "top 5 pays" threshold stays hardcoded for now (see backlog).
+
+**Schema** (`database/migration_stage10.sql`):
+```sql
+CREATE TABLE tenant_payouts (
+  tenant_id BIGINT NOT NULL REFERENCES tenants(tenant_id) ON DELETE CASCADE,
+  place     INT    NOT NULL CHECK (place >= 1),
+  points    INT    NOT NULL CHECK (points >= 0),
+  PRIMARY KEY (tenant_id, place)
+);
+```
+
+Seed default values for existing tenants from the current hardcoded amounts.
+
+**Backend**: `GET /admin/payouts` and `PUT /admin/payouts` (replaces all rows for the
+tenant atomically).
+
+**Frontend** (League Settings → new "Payouts" section):
+- Table with one row per place (1–5), editable points field.
+- Calculator below: **Total annual prize pool = sum(points) × 19** (18 weekly winners
+  + 1 overall winner). Updates live as commissioner types.
+- Save button replaces all rows atomically.
+
+### Code fixes included in this stage
+
+These were deferred from earlier stages and are required before manual testing:
+
+- **`fetch.ts` `withPigeon()` hardcoded cap**: remove the `> 68` guard; switch
+  alt-player management to use `player_id` throughout.
+- **`AltPigeon` missing `player_id`**: add `player_id` to the type and use it in the
+  picks API call instead of `pigeon_number`.
+- **`import_picks_xlsx` raises `NotImplementedError`**: rewrite for `player_id` schema
+  and test end-to-end with new-season data.
+- **Scheduler email jobs cross-tenant**: loop over tenants in `run_email_sun`,
+  `run_email_mon`, and `run_email_tue_warn`; filter recipients and winner query by
+  `tenant_id`.
+
+### Manual test checklist
+
+- `reset-season` archives CSVs, wipes games/picks, resets season_status.
+- `sync-schedule` loads 2025 games and default lock times.
+- Commissioner activates season; lock times appear correctly.
+- Commissioner updates pigeon season statuses (pending / active / out).
+- Commissioner configures payouts; calculator shows correct total.
+- Player enters picks before lock; picks are saved.
+- Picks are rejected after lock.
+- Alt-player pick entry works (player_id routing, not pigeon_number).
+- Results page shows correct data after week locks.
+- Leaderboard ranks correctly against new payout structure.
+- Sunday/Monday/Tuesday emails fire with correct recipients and content per tenant.
+- XLSX pick import works end-to-end.
 
 Suggested prompt:
 
-> Add a tenant-creation flow (operator endpoint or CLI) and verify the end-to-end
-> commissioner onboarding path: create tenant → create players → create users →
-> password reset → first login.
+> Implement Stage 10: reset-season CLI command, player season_status field, configurable
+> tenant payout structure, and the deferred code fixes (AltPigeon/player_id, withPigeon
+> cap, import_picks_xlsx, multi-tenant email jobs).
 
-## Stage 10: Frontend and Integration Tests
+## Stage 11: Integration Tests
 
-Add tests around the high-mode UI pages and tenant scoping.
+Build a durable automated test suite so future changes have less chance to break things.
+This is the largest testing investment in the project.
 
-Picks/results cases:
+### Code fixes required before testing
 
-- Before lock: own picks visible, others hidden.
-- After lock: all picks visible.
-- In-progress games show partial scoring.
-- Final games show final scoring.
-- Missing picks synthesize default/penalty behavior.
-- Current user and alternates highlight correctly.
-- Tenant switch changes visible players/results.
+All Stage 10 code fixes (listed above) must be complete before this stage begins, since
+tests written against broken behavior will themselves be wrong.
 
-Enter-picks cases:
+### Backend API tests
 
-- Can edit before lock.
-- Cannot edit after lock.
-- Can switch managed player.
-- Admin/manager permissions behave correctly.
-- Submit errors are surfaced.
+Expand `tests/test_snapshots.py` into a proper pytest suite covering:
 
-Analytics cases:
+- Auth: login, `/auth/me`, select-context, password reset flow.
+- Picks: submit before lock, reject after lock, alt-player submission.
+- Results: week picks (locked/unlocked), leaderboard, YTD.
+- Admin: roster CRUD (pigeons, users), lock time management, bulk email (dry-run),
+  payout get/set, league rename, season activation.
+- Tenant scoping: confirm data from tenant A is never visible in tenant B responses.
+- XLSX import: round-trip test with a known fixture file.
+- Email jobs: mock the email sender; assert per-tenant recipient lists and content.
 
-- Uses only active tenant rows.
-- Current player selection works.
-- Alternate/managed player selection works.
-- Top 5, MNF outcomes, and best possible rank ignore other tenants.
+### Frontend / integration tests
 
-Admin cases:
+Choose a framework (Playwright or Vitest + React Testing Library) and cover:
 
-- Tenant admin sees only own tenant.
-- Global admin can access platform-level tools.
-- Bulk email only emails active tenant.
-- Import only affects active tenant.
+- Login and tenant switch flow.
+- Enter Picks: submit, reject after lock, alt-player.
+- Picks and Results: before/after lock visibility, scoring display.
+- Analytics: tenant-scoped rows, top 5, MNF outcomes, best possible rank.
+- League Settings: rename, payout editor, season activation, roster management.
+- Season status badges update and persist.
 
 Suggested prompt:
 
-> Add frontend and integration tests for picks/results, enter-picks, analytics, and admin tenant-scoping behavior.
+> Build the Stage 11 integration test suite: expand backend pytest coverage, add
+> frontend tests with [chosen framework], and verify tenant isolation end-to-end.
 
-## Stage 11: Production Migration and Rollback
+## Stage 12: Production Migration and Deployment
 
-Prepare the final release process.
+Ops-only stage. No new development. Run after Stage 11 tests pass.
 
 Checklist:
 
-- Run migration against the cloned DB.
-- Compare old/new leaderboard outputs for the current tenant.
-- Compare picks/results row counts.
-- Compare user/player assignments.
-- Smoke test the frontend.
-- Take a production backup.
-- Apply migration.
-- Keep old DB available for quick rollback.
+- Run `database/db_update.sql` + stage migrations against the cloned DB; verify row
+  counts and leaderboard output match the original.
+- Smoke test the frontend against the clone.
+- Take a production backup (point-in-time snapshot).
+- Apply migrations to production DB.
+- Deploy updated backend and frontend.
+- Run `reset-season` when the 2024 season data is ready to be archived.
+- Keep the old `pigeon_pool` DB available for at least one season as a rollback target.
 
 Suggested prompt:
 
-> Prepare and run the production migration checklist for the multi-tenant release, including validation queries and rollback notes.
+> Run the production migration checklist and deploy the multi-tenant release.
 
 ## Scheduler Architecture
 
@@ -527,11 +661,18 @@ The backend runs an internal asyncio scheduler (1-minute heartbeat) for score sy
 - The background task is essentially idle (sleeping) except during game windows, so B1 overhead is negligible.
 - An external trigger would add operational complexity (authenticated endpoint, external cron service, separate log aggregation) for a problem already solved.
 
-The one required change for multi-tenancy: email jobs currently assume one pool. They must be updated to loop over tenants (or dispatch per-tenant) when tenant count grows. Address in Stage 5.
+The required change for multi-tenancy: email jobs currently query `tenant_weeks` and
+`v_weekly_leaderboard` without a `tenant_id` filter, and `get_all_player_emails` returns
+all users across all tenants. Fine for one tenant; breaks when a second tenant goes live.
+Fix scheduled for Stage 10.
 
 ## Known Limitations / Out of Scope
 
-- **Seasons**: `weeks` (1–18) and `games` implicitly represent one NFL season. Multiple tenants running different seasons simultaneously is not modeled. Each season, the games and weeks tables are reset. This is a known constraint; a `season_id` concept is left for a future iteration.
+- **Seasons**: `weeks` (1–18) and `games` implicitly represent one NFL season. Multiple
+  tenants running different seasons simultaneously is not modeled. The season transition
+  flow (archive → wipe → sync) is implemented in Stage 10 via `reset-season`. A formal
+  `season_id` concept (to keep multiple seasons live simultaneously) is left for a future
+  iteration.
 - **Pool size**: The 68-pigeon cap is removed from the schema constraint. Individual tenants may configure pool sizes differently through application logic, but there is no formal `max_players` per-tenant setting in this plan.
 - **Tenant switch triggers full page reload**: `switchTenant` stores the new JWT then calls `window.location.reload()` so all page-level data re-fetches against the new tenant. A future improvement would invalidate per-page query caches (e.g., via React Query) and re-render in place without a full reload.
 

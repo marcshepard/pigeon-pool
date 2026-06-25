@@ -92,6 +92,38 @@ async def get_week_picks(
 
 
 # ---------------------------------------------------------------------------
+# League (tenant) settings
+# ---------------------------------------------------------------------------
+
+UPDATE_TENANT_NAME_SQL = text("""
+    UPDATE tenants SET name = :name WHERE tenant_id = :tenant_id
+""")
+
+
+class LeagueUpdate(BaseModel):
+    name: str
+
+
+@router.patch(
+    "/league",
+    status_code=204,
+    summary="Rename this league (commissioner only)",
+)
+async def update_league(
+    update: LeagueUpdate,
+    db: AsyncSession = Depends(get_db),
+    me=Depends(require_admin),
+):
+    name = update.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="League name cannot be empty")
+    await db.execute(UPDATE_TENANT_NAME_SQL, {"name": name, "tenant_id": me.tenant_id})
+    await db.commit()
+    info("admin: league renamed", tenant_id=me.tenant_id, name=name)
+    return Response(status_code=204)
+
+
+# ---------------------------------------------------------------------------
 # Lock-time management (tenant_weeks, not weeks.lock_at)
 # ---------------------------------------------------------------------------
 

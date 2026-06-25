@@ -453,6 +453,15 @@ export function adminDeleteUser(email: string): Promise<void> {
   });
 }
 
+/** Rename the active league (commissioner only). */
+export function adminUpdateLeague(name: string): Promise<void> {
+  return apiFetch("/admin/league", {
+    method: "PATCH",
+    body: JSON.stringify({ name }),
+    factory: () => undefined,
+  });
+}
+
 /** Send a bulk email to all users (admin only). Returns void on success. */
 export function adminSendBulkEmail(
   req: AdminBulkEmailRequest

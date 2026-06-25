@@ -37,6 +37,7 @@ import AdminPage from "./pages/Admin";
 import AnalyticsPage from "./pages/Analytics";
 import AdminLocksAndPicks from "./pages/admin/AdminLocksAndPicks";
 import AdminRoster from "./pages/admin/AdminRoster";
+import AdminSettings from "./pages/admin/AdminSettings";
 
 // ---- optional theme ----
 const theme = createTheme({
@@ -67,7 +68,7 @@ function getNavItems(isAdmin: boolean): NavItem[] {
     { path: "/about", label: "About", icon: <InfoOutlinedIcon fontSize="small" /> },
   ];
   if (isAdmin) {
-    items.push({ path: "/admin", label: "Admin", icon: <AdminPanelSettingsIcon fontSize="small" /> });
+    items.push({ path: "/admin", label: "League Settings", icon: <AdminPanelSettingsIcon fontSize="small" /> });
   }
   return items;
 }
@@ -119,6 +120,7 @@ function PrivateShell() {
             <Route index element={<Navigate to="/admin/picks" replace />} />
             <Route path="picks" element={<AdminLocksAndPicks />} />
             <Route path="pigeons" element={<AdminRoster />} />
+            <Route path="settings" element={<AdminSettings />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

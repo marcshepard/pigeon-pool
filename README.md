@@ -98,6 +98,40 @@ uvicorn backend.main:app --reload --port 8000
 ```
 Note: You can also run the `pigeon BE` VS Code task.
 
+## CLI reference
+
+All commands are run from the repo root with the conda environment active.
+
+### Season setup
+```bash
+python -m backend.cli sync-schedule          # import NFL schedule for the season
+python -m backend.cli sync-scores 6          # sync scores for week 6
+python -m backend.cli sync-kickoffs 6        # refresh kickoff times for week 6
+python -m backend.cli import-picks-xlsx picks.xlsx --week 6   # import picks from XLSX
+```
+
+### League (tenant) management
+```bash
+python -m backend.cli list-leagues
+# Create a new league (commissioner must already have a user account)
+python -m backend.cli create-league --name "My Pool" --commissioner-email admin@example.com
+# Delete a league and all its data (orphaned users are also deleted)
+python -m backend.cli delete-league <tenant_id> --yes
+```
+
+New-league onboarding flow:
+1. Run `create-league` — creates the tenant and a placeholder "Commissioner" player
+2. Commissioner logs in; their new league appears in the tenant switcher
+3. Commissioner goes to League Settings → Roster to add players and users
+4. New users visit the site and use "Forgot Password" to set their password before first login
+
+### Scheduler jobs (run immediately, bypass time gates)
+```bash
+python -m backend.cli run-job score_sync
+python -m backend.cli run-job email_sun --dry-run
+python -m backend.cli show-email-recipients --which tue
+```
+
 ### 3. FE setup
 1. Install node.js from https://nodejs.org/en/download
 
@@ -158,3 +192,4 @@ we go standalone next year, the following changes should be made to the BE (or a
 | [docs/contributing.md](docs/contributing.md) | Running the test suite, snapshot update workflow |
 | [docs/frontend.md](docs/frontend.md) | Frontend directory structure, key data flows, build commands |
 | [docs/multi.md](docs/multi.md) | Multi-tenant migration plan and per-stage completion notes |
+| [docs/backlog.md](docs/backlog.md) | Known improvements deferred from the multi-tenancy milestone |

@@ -8,23 +8,18 @@ import { PageScroll } from "../components/Layout";
 
 export default function AdminPage() {
   const { pathname } = useLocation();
-  const value = pathname.endsWith("/pigeons") ? "pigeons" : "picks";
+  const value = pathname.endsWith("/settings")
+    ? "settings"
+    : pathname.endsWith("/pigeons")
+    ? "pigeons"
+    : "picks";
 
   return (
     <PageScroll>
       <Tabs value={value} sx={{ mb: 2 }} centered>
-        <Tab
-          value="picks"
-          label="Picks"
-          component={NavLink}
-          to="/admin/picks"
-        />
-        <Tab
-          value="pigeons"
-          label="Pigeons"
-          component={NavLink}
-          to="/admin/pigeons"
-        />
+        <Tab value="picks"    label="Picks"    component={NavLink} to="/admin/picks" />
+        <Tab value="pigeons"  label="Roster"   component={NavLink} to="/admin/pigeons" />
+        <Tab value="settings" label="Settings" component={NavLink} to="/admin/settings" />
       </Tabs>
       <Outlet />
     </PageScroll>

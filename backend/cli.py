@@ -5,6 +5,9 @@ Commands:
 - sync-schedule  : Populate the current season's NFL schedule (weeks 1–18), called once
 - sync-scores    : Update scores & status for a specific week, called while games are live
 - sync-kickoffs  : Refresh kickoff times for a specific week, called infrequently
+- list-leagues   : Show all tenants with member/player counts
+- create-league  : Create a new league/tenant and assign a commissioner
+- delete-league  : Permanently delete a league and its data
 - -help          : Show help/usage
 
 Example usage:
@@ -13,6 +16,9 @@ Example usage:
 - python -m backend.cli sync-kickoffs 6
 - python -m backend.cli import-picks-xlsx C:/path/to/picks.xlsx --week 6
 - python -m backend.cli import-picks-xlsx C:/path/to/picks.xlsx --max-week 6
+- python -m backend.cli list-leagues
+- python -m backend.cli create-league --name "My Pool" --commissioner-email admin@example.com
+- python -m backend.cli delete-league 2 --yes
 """
 # pylint: disable=line-too-long
 
@@ -185,6 +191,187 @@ async def cmd_run_job(args: argparse.Namespace) -> int:
 
     return 0
 
+# -----------------------------------------------------------------------------
+# League (tenant) management commands
+# -----------------------------------------------------------------------------
+
+def cmd_list_leagues(_: argparse.Namespace) -> int:
+    """List all tenants with member and player counts."""
+    settings = get_settings()
+    cfg = settings.psycopg_kwargs()
+    with get_connection(cfg) as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT t.tenant_id, t.name,
+                       COUNT(DISTINCT tm.user_id) AS members,
+                       COUNT(DISTINCT p.player_id) AS players
+                  FROM tenants t
+                  LEFT JOIN tenant_members tm ON tm.tenant_id = t.tenant_id
+                  LEFT JOIN players p ON p.tenant_id = t.tenant_id
+                 GROUP BY t.tenant_id, t.name
+                 ORDER BY t.tenant_id
+            """)
+            rows = cur.fetchall()
+    if not rows:
+        print("[cli] No leagues found.")
+        return 0
+    print(f"{'ID':>4}  {'Name':<30}  {'Members':>7}  {'Players':>7}")
+    print(f"{'----':>4}  {'------------------------------':<30}  {'-------':>7}  {'-------':>7}")
+    for r in rows:
+        print(f"{r[0]:>4}  {r[1]:<30}  {r[2]:>7}  {r[3]:>7}")
+    return 0
+
+
+def cmd_create_league(args: argparse.Namespace) -> int:
+    """
+    Create a new league/tenant.
+    The commissioner must already have a user account. A placeholder player named
+    'Commissioner' (pigeon_number=1) is created; rename it via League Settings after login.
+    Default lock times (weeks.default_lock_at) are copied into tenant_weeks if available.
+    """
+    settings = get_settings()
+    cfg = settings.psycopg_kwargs()
+    name = args.name.strip()
+    email = args.commissioner_email.strip().lower()
+    if not name:
+        print("error: --name cannot be empty")
+        return 2
+
+    with get_connection(cfg) as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT user_id FROM users WHERE lower(email) = %s", (email,))
+            row = cur.fetchone()
+            if not row:
+                print(f"error: user '{email}' not found. Create the user account first.")
+                return 1
+            user_id = row[0]
+
+            cur.execute("INSERT INTO tenants (name) VALUES (%s) RETURNING tenant_id", (name,))
+            tenant_id = cur.fetchone()[0]
+
+            cur.execute("""
+                INSERT INTO tenant_weeks (tenant_id, week_number, lock_at)
+                SELECT %s, week_number, default_lock_at
+                  FROM weeks
+                 WHERE default_lock_at IS NOT NULL
+                ON CONFLICT DO NOTHING
+            """, (tenant_id,))
+            lock_count = cur.rowcount
+
+            cur.execute("""
+                INSERT INTO players (tenant_id, pigeon_number, pigeon_name)
+                VALUES (%s, 1, 'Commissioner')
+                RETURNING player_id
+            """, (tenant_id,))
+            player_id = cur.fetchone()[0]
+
+            cur.execute(
+                "INSERT INTO user_players (user_id, player_id, role) VALUES (%s, %s, 'owner')",
+                (user_id, player_id),
+            )
+            cur.execute("""
+                INSERT INTO tenant_members (tenant_id, user_id, role, primary_player_id)
+                VALUES (%s, %s, 'commissioner', %s)
+            """, (tenant_id, user_id, player_id))
+
+        conn.commit()
+
+    print(f"[cli] ✅ League created: tenant_id={tenant_id}, name='{name}'")
+    print(f"[cli]    Commissioner: {email}")
+    print(f"[cli]    Lock times copied: {lock_count} weeks")
+    print(f"[cli]    Placeholder player 'Commissioner' (player_id={player_id}) created")
+    print(f"[cli]    → Rename via League Settings after first login")
+    return 0
+
+
+def cmd_delete_league(args: argparse.Namespace) -> int:
+    """
+    Permanently delete a league and all its data.
+    Users who belong only to this league are also deleted.
+    Requires --yes or interactive confirmation.
+    """
+    settings = get_settings()
+    cfg = settings.psycopg_kwargs()
+    tenant_id = args.tenant_id
+
+    with get_connection(cfg) as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT name FROM tenants WHERE tenant_id = %s", (tenant_id,))
+            row = cur.fetchone()
+            if not row:
+                print(f"error: no league with tenant_id={tenant_id}")
+                return 1
+            tenant_name = row[0]
+
+            cur.execute("SELECT COUNT(*) FROM tenant_members WHERE tenant_id = %s", (tenant_id,))
+            member_count = cur.fetchone()[0]
+
+            cur.execute("SELECT COUNT(*) FROM players WHERE tenant_id = %s", (tenant_id,))
+            player_count = cur.fetchone()[0]
+
+            cur.execute("""
+                SELECT COUNT(*) FROM picks p
+                  JOIN players pl ON pl.player_id = p.player_id
+                 WHERE pl.tenant_id = %s
+            """, (tenant_id,))
+            pick_count = cur.fetchone()[0]
+
+            # Users whose only tenant is this one
+            cur.execute("""
+                SELECT u.email
+                  FROM tenant_members tm
+                  JOIN users u ON u.user_id = tm.user_id
+                 WHERE tm.tenant_id = %s
+                   AND NOT EXISTS (
+                       SELECT 1 FROM tenant_members tm2
+                        WHERE tm2.user_id = tm.user_id
+                          AND tm2.tenant_id != %s
+                   )
+            """, (tenant_id, tenant_id))
+            orphaned_emails = [r[0] for r in cur.fetchall()]
+
+        print(f"League '{tenant_name}' (tenant_id={tenant_id})")
+        print(f"  {member_count} members, {player_count} players, {pick_count} picks will be deleted")
+        if orphaned_emails:
+            print(f"  {len(orphaned_emails)} user(s) with no other league will also be deleted:")
+            for e in orphaned_emails:
+                print(f"    - {e}")
+        else:
+            print("  No users will be deleted (all members belong to other leagues too)")
+
+        if not args.yes:
+            try:
+                confirm = input("\nType 'yes' to permanently delete: ")
+            except EOFError:
+                print("\n[cli] Aborted (no TTY — use --yes to skip confirmation).")
+                return 0
+            if confirm.strip().lower() != "yes":
+                print("[cli] Aborted.")
+                return 0
+
+        with conn.cursor() as cur:
+            # 1. Remove all tenant_members (clears primary_player_id FK blocking player deletion)
+            cur.execute("DELETE FROM tenant_members WHERE tenant_id = %s", (tenant_id,))
+
+            # 2. Delete orphaned users (cascades their user_players rows)
+            if orphaned_emails:
+                cur.execute(
+                    "DELETE FROM users WHERE lower(email) = ANY(%s)",
+                    ([e.lower() for e in orphaned_emails],),
+                )
+
+            # 3. Delete players (cascades picks and remaining user_players)
+            cur.execute("DELETE FROM players WHERE tenant_id = %s", (tenant_id,))
+
+            # 4. Delete the tenant (cascades tenant_weeks)
+            cur.execute("DELETE FROM tenants WHERE tenant_id = %s", (tenant_id,))
+
+        conn.commit()
+
+    print(f"[cli] ✅ League '{tenant_name}' (tenant_id={tenant_id}) permanently deleted.")
+    return 0
+
+
 async def cmd_show_email_recipients(args: argparse.Namespace) -> int:
     """
     Show who would receive emails for a given email job path.
@@ -292,6 +479,41 @@ def build_parser() -> argparse.ArgumentParser:
     p_run_job.add_argument("--dry-run", action="store_true",
                            help="Set EMAIL_DRY_RUN=true for this invocation (logs recipients, no send)")
     p_run_job.set_defaults(func=cmd_run_job)
+
+    # list-leagues
+    p_list = sub.add_parser(
+        "list-leagues",
+        help="Show all leagues (tenants) with member and player counts.",
+    )
+    p_list.set_defaults(func=cmd_list_leagues)
+
+    # create-league
+    p_create = sub.add_parser(
+        "create-league",
+        help="Create a new league and assign a commissioner.",
+        description=(
+            "Creates a tenant, a placeholder player, and adds the commissioner. "
+            "The commissioner must already have a user account. "
+            "Default lock times are copied from weeks.default_lock_at if available."
+        ),
+    )
+    p_create.add_argument("--name", required=True, help="League name")
+    p_create.add_argument("--commissioner-email", required=True, metavar="EMAIL",
+                          help="Email of an existing user to make commissioner")
+    p_create.set_defaults(func=cmd_create_league)
+
+    # delete-league
+    p_delete = sub.add_parser(
+        "delete-league",
+        help="Permanently delete a league and all its data.",
+        description=(
+            "Deletes the tenant, all players, all picks, and all lock times for that league. "
+            "Users who belong only to this league are also deleted. Irreversible."
+        ),
+    )
+    p_delete.add_argument("tenant_id", type=int, help="tenant_id to delete (see list-leagues)")
+    p_delete.add_argument("--yes", action="store_true", help="Skip interactive confirmation")
+    p_delete.set_defaults(func=cmd_delete_league)
 
     # show-email-recipients
     p_recip = sub.add_parser(

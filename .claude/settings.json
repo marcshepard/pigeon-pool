@@ -2,7 +2,12 @@
   "permissions": {
     "allow": [
       "PowerShell(Get-Command pytest -ErrorAction SilentlyContinue)",
-      "PowerShell(py -m pytest --version 2>&1)"
+      "PowerShell(py -m pytest --version 2>&1)",
+      "PowerShell(Get-Command python3 2>$null; Get-Command python 2>$null; \\(Get-Command python\\).Source)",
+      "PowerShell(& \"C:\\\\Users\\\\marcs\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python313\\\\python.exe\" -m py_compile \"c:\\\\Users\\\\marcs\\\\Repos\\\\pigeon-pool\\\\backend\\\\cli.py\" 2>&1)",
+      "PowerShell(& \"C:\\\\Users\\\\marcs\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python313\\\\python.exe\" -m py_compile \"c:\\\\Users\\\\marcs\\\\Repos\\\\pigeon-pool\\\\backend\\\\routes\\\\admin.py\" 2>&1)",
+      "PowerShell(if \\($?\\) { \"cli.py OK\" })",
+      "PowerShell(if \\($?\\) { \"admin.py OK\" })"
     ]
   }
 }
