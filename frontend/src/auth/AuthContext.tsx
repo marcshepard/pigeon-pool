@@ -8,7 +8,7 @@
 // src/auth/AuthContext.tsx
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { apiMe, apiLogin, apiLogout } from "../backend/fetch";
+import { apiMe, apiLogin, apiLogout, apiSelectTenantContext } from "../backend/fetch";
 import { type AuthContextValue, type AuthState, AuthCtx } from "./authContextObjects";
 import { LoginPayload } from "../backend/types";
 
@@ -37,6 +37,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const switchTenant = async (tenant_id: number) => {
+    await apiSelectTenantContext(tenant_id);
+    // Reload so all page-level data re-fetches against the new tenant.
+    // TODO (future milestone): invalidate per-page query caches instead of full reload.
+    window.location.reload();
+  };
+
   useEffect(() => {
     refresh();
   }, []);
@@ -45,7 +52,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 
   const value = useMemo<AuthContextValue>(
-    () => ({ state, refresh, signIn, signOut }),
+    () => ({ state, refresh, signIn, signOut, switchTenant }),
     [state]   // eslint-disable-line react-hooks/exhaustive-deps
   );
 

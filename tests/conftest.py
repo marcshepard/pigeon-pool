@@ -38,16 +38,16 @@ def auth_headers():
     with psycopg.connect(**s.psycopg_kwargs()) as conn:
         with conn.cursor() as cur:
             cur.execute("""
-                SELECT u.user_id, p.pigeon_number, u.email
+                SELECT u.user_id, p.player_id, u.email, tm.tenant_id
                   FROM users u
                   JOIN tenant_members tm ON tm.user_id = u.user_id
                   JOIN players p ON p.player_id = tm.primary_player_id
                  WHERE tm.role = 'commissioner'
-                 ORDER BY u.user_id, p.pigeon_number
+                 ORDER BY u.user_id, p.player_id
                  LIMIT 1
             """)
             row = cur.fetchone()
     assert row, "No commissioner user found in DB"
-    uid, pn, email = row
-    token, _ = make_session_token(pn, email, uid=uid, is_admin=True)
+    uid, player_id, email, tenant_id = row
+    token, _ = make_session_token(player_id, tenant_id, email, uid=uid)
     return {"Authorization": f"Bearer {token}"}

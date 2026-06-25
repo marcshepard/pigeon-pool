@@ -247,74 +247,176 @@ Updated five files to use the tenant-aware schema:
 - `backend/utils/score_sync.py` — Still inserts into `weeks.lock_at` (dropped); will fail if scheduler is re-enabled. The scheduler is currently disabled (`DISABLE_SCHEDULER=True` in `main.py`). Fix before re-enabling.
 - `backend/utils/import_picks_xlsx.py` — Uses `pigeon_number` as player identifier. Fix in Stage 5/6.
 
-## Stage 5: Role Separation
+## Stage 5: Backend Fixes and Multi-Tenant Auth ✅ COMPLETE
 
-Separate platform/global admin from tenant admin.
+Fix all backend breakage deferred from Stage 4, update the JWT token shape, and add
+multi-tenant auth UX. The original Stages 5 and 6 are merged here because the JWT
+token change and admin-route fixes are tightly coupled.
 
-Roles:
+### Role model
 
-- Global admin: can manage platform-level state and support all tenants. Represented by `users.is_admin` renamed/repurposed to `global_admin`.
-- Tenant admin: can manage users, players, imports, locks, and emails within one tenant. Represented by `tenant_members.role = 'admin'` (added in Stage 2).
-- Owner/manager/viewer: player-level permissions within a tenant.
+There is no global-admin concept. The two roles are:
 
-Notes:
+- **Commissioner**: tenant-level admin who manages players, users, lock times, and
+  emails within one tenant. Represented by `tenant_members.role = 'commissioner'`.
+- **Member**: regular participant. Represented by `tenant_members.role = 'member'`.
 
-- `users.is_admin` is renamed to `global_admin` here. This is intentionally deferred from Stage 2 to reduce blast radius.
-- The JWT currently encodes `adm` as a boolean for `is_admin`. Stage 5 changes the semantics of that claim to mean global admin only. Stage 6 then adds `tenant_id` to the token. These two stages must be coordinated: updating the token schema in Stage 5 without also adding `tenant_id` is a half-step — plan the full token shape in Stage 5 and implement it across both stages.
-- Scheduled email jobs currently assume one pool. Tenant-scoped emails (weekly results, pick reminders) must loop over tenants or be dispatched per-tenant here.
+`users.is_admin` was dropped in Stage 2 and is not reintroduced. `require_admin` in
+`auth.py` enforces commissioner-only access.
 
-Suggested prompt:
+### JWT token shape (breaking change from Stage 4)
 
-> Separate global admin from tenant admin in the backend permissions model, with tenant admin represented through tenant_members.role.
+- `sub` = `str(player_id)` — was `pigeon_number`; now unambiguously `player_id`
+  (numerically equal for all Stage-3-migrated rows).
+- `tid` = `tenant_id` — new claim; used by `current_user` to scope the DB join.
+- `uid` = `user_id` — unchanged.
+- `adm` claim dropped — was redundant with the DB join in `current_user`.
+- Existing Stage-4 tokens are invalidated; users must log in again.
 
-## Stage 6: Multi-Tenant Auth UX
+### Deliverables
 
-Add explicit tenant/player selection once backend scoping is safe.
+**Schema (migration `database/migration_stage5.sql`):**
+- Add `last_used_at TIMESTAMPTZ` to `tenant_members`. Tracks which tenant a user last
+  signed into; used to auto-select the default tenant on next login.
 
-Backend behavior:
+**`backend/routes/auth.py`:**
+- `make_session_token` updated to new JWT shape.
+- `current_user` uses `tid` from token to scope the `tenant_members` join.
+- Login auto-selects the most-recently-used tenant (by `last_used_at`) where the user
+  is still a member; falls back to any tenant. Sets `last_used_at` on the chosen row.
+- `POST /auth/select-context` — validates membership in the requested tenant, issues a
+  new token scoped to that tenant, updates `last_used_at`.
+- `/auth/me` expanded to include `available_tenants` list (so the frontend knows
+  whether to show a tenant switcher).
 
-- Login returns a normal session if the user has exactly one available tenant/player context.
-- Login returns a tenant/player choice payload if the user has multiple contexts.
-- Add an endpoint such as `/auth/select-context`.
-- Session token includes active `tenant_id` and `player_id`.
-- `/auth/me` returns active tenant, available tenants, active player, alternate players, and roles.
+**`backend/routes/admin.py` (commissioner endpoints):**
+- All routes updated to use the new schema: `tenant_weeks` (not `weeks.lock_at`),
+  `player_id` (not `pigeon_number`), `tenant_members` (not `users.is_admin` or
+  `user_players.is_primary`). All data-access routes scoped to `me.tenant_id`.
+- `POST /admin/activate-season` — copies `weeks.default_lock_at` into `tenant_weeks`
+  for the commissioner's tenant (idempotent). Errors if `default_lock_at` is not yet
+  populated (i.e. no schedule has been imported for the new season).
 
-Frontend behavior:
+**`backend/utils/score_sync.py`:**
+- `load_schedule()` writes `weeks.default_lock_at` instead of the dropped `weeks.lock_at`.
+- Does not touch `tenant_weeks`; each commissioner activates their own season via
+  `POST /admin/activate-season`.
 
-- Existing users with one tenant see no added complexity.
-- Users with multiple tenants can choose/switch tenant.
-- Player switching remains scoped to the active tenant.
+**`backend/utils/import_picks_xlsx.py`:**
+- Raises `NotImplementedError` with a clear message. The historical XLSX import used
+  `pigeon_number` as the player identifier, but `picks` now uses `player_id`. Full fix
+  and end-to-end testing are deferred to Stage 8 (cannot be tested until the next NFL
+  season provides new data).
 
-Suggested prompt:
+**`database/seed_test_tenant.sql`:**
+- One-time script to create a second tenant for local multi-tenant testing.
+- Copies `weeks.default_lock_at` → `tenant_weeks` for the new tenant.
+- Adds a placeholder user as commissioner — edit the email placeholder before running.
+- Run with: `psql -U postgres -d pigeon_pool_multi -f database/seed_test_tenant.sql`
 
-> Add tenant and player selection to auth for users who belong to multiple tenants, preserving the simple flow for single-tenant users.
+### Completion notes
+
+- **`database/migration_stage5.sql`** — adds `last_used_at TIMESTAMPTZ` to `tenant_members`. Run before deploying.
+- **`backend/routes/auth.py`** — new JWT shape (`sub=player_id`, `tid=tenant_id`, `uid=user_id`; `adm` dropped). `current_user` scopes DB join to `tenant_id` from token. Login auto-selects last-used tenant and sets `last_used_at`. `POST /auth/select-context` issues a new scoped token. `/auth/me` returns `available_tenants` list. Stage-4 tokens are invalid; users must log in again.
+- **`backend/routes/admin.py`** — all routes rewritten to use `tenant_weeks`, `player_id`, `tenant_members`. Routes scoped to `me.tenant_id`. `POST /admin/activate-season` copies `weeks.default_lock_at` → `tenant_weeks` for the active tenant. XLSX import endpoint now returns HTTP 501.
+- **`backend/utils/score_sync.py`** — `load_schedule()` writes `weeks.default_lock_at` instead of dropped `weeks.lock_at`. Does not touch `tenant_weeks`.
+- **`backend/utils/import_picks_xlsx.py`** — `import_picks_pivot_xlsx_with_engine` raises `NotImplementedError`. Full fix deferred to Stage 8.
+- **`database/seed_test_tenant.sql`** — creates a second tenant with a commissioner for local multi-tenant testing. Edit the email placeholder and run once with `psql`.
+- **`tests/conftest.py`** — updated to use new `make_session_token(player_id, tenant_id, email, uid)` signature.
+- All 5 snapshot tests pass.
+
+### Testing after this stage
+
+- All commissioner UI pages load (picks page already worked; pigeons and users pages
+  were broken due to old schema references — now fixed).
+- Log in as commissioner → `available_tenants` in `/auth/me` shows multiple tenants
+  if the seed script has been run.
+- `POST /auth/select-context` switches tenant and issues a new scoped token.
+- After switching, commissioner pages show data for the new tenant only.
+
+## Stage 6: Frontend Commissioner and Tenant UX ✅ COMPLETE
+
+Bring the commissioner (admin) UI to a fully working state under the new multi-tenant
+schema, and add tenant-switching UX so users with multiple tenants can switch without
+touching the API directly.
+
+### Deliverables
+
+**Commissioner roster page (`frontend/src/pages/admin/AdminRoster.tsx`):**
+- **Create pigeon** — "New Pigeon" button opens a dialog with a required name field and
+  optional number field (auto-assigned if blank, via `POST /admin/pigeons`). On success,
+  the new pigeon is appended to the list and auto-selected.
+- **Update pigeon** — `adminUpdatePigeon` now uses `player_id` in the URL path (not
+  `pigeon_number`) to match the backend PATCH route.
+- **Create user** — "Add new user" dialog now includes a pigeon autocomplete; the user
+  must choose a primary pigeon before the Create button enables. Passes
+  `{ email, primary_pigeon }` to `POST /admin/users`, which atomically creates the
+  `users` + `user_players` + `tenant_members` rows. Prevents the "orphaned user" bug
+  from Stage 5 testing.
+
+**Frontend type updates (`frontend/src/backend/types.ts` / `fetch.ts`):**
+- `AdminPigeon` gains `player_id: number` field and constructor validation.
+- `AdminPigeonCreateIn` interface added (`pigeon_name`, optional `pigeon_number`).
+  Imported as `import type` so esbuild strips it (interfaces have no runtime value).
+- `AdminUserCreateIn` requires `primary_pigeon: number`.
+- `adminCreatePigeon()` added to `fetch.ts` (`POST /admin/pigeons`).
+- `adminUpdatePigeon()` now takes `playerId: number` (was `pigeonNumber`).
+
+**Tenant switching:**
+- `TenantInfo` interface added to `types.ts` (`tenant_id`, `name`, `role`).
+- `Me` class gains `tenant_id: number`, `available_tenants: TenantInfo[]`,
+  `activeTenant` getter, and `canSwitchTenant` getter.
+- `apiSelectTenantContext(tenant_id)` added to `fetch.ts` — POSTs to
+  `/auth/select-context`, stores the new JWT, returns the updated `Me`.
+- `switchTenant(tenant_id)` added to `AuthContext`; calls the above then triggers a
+  full page reload so all page-level data re-fetches against the new tenant.
+- `UserMenuAvatar` shows the active tenant name and role, plus "Switch to: X" items for
+  each other tenant. Only visible when the user belongs to more than one tenant.
+- App-bar title replaced with `me.activeTenant.name` (falls back to `"Pigeon Pool"`
+  when auth hasn't resolved). Makes it immediately clear which pool the user is in.
+
+### Completion notes
+
+- All TypeScript compiles cleanly (`tsc --noEmit` zero errors after all changes).
+- Correct workflow for a new tenant: create pigeons first, then create users (each user
+  requires an existing primary pigeon). Attempting the reverse is blocked at the UI level.
+- Tenant switch triggers `window.location.reload()` — simple and correct, if slightly
+  jarring. Noted in Known Limitations for future improvement.
+- The `import type` fix for interfaces avoids a browser ES-module error where Vite emits
+  the bare `import { InterfaceName }` and the browser can't find it as a runtime export.
 
 ## Stage 7: Frontend Data Model Cleanup
 
-Update frontend types and pages so player identity and display pigeon number are distinct.
+Update frontend types and pages so player identity and display pigeon number are distinct
+in the remaining pages (picks, results, analytics, YTD). Some of this work was done in
+Stage 6 for the admin roster; what remains is the player-facing pages.
 
-Priority areas:
+**Already done (Stage 6):**
+- `AdminPigeon` uses `player_id` for identity, `pigeon_number` for display.
+- `Me` carries `tenant_id` and `available_tenants`.
+- Commissioner PATCH/POST routes use `player_id` in URLs.
 
-- `frontend/src/backend/types.ts`
-- `EnterPicks`
-- `PicksAndResults`
-- `YearToDatePage`
-- `Analytics`
-- Admin roster
-- Admin locks/imports
-- User menu / tenant switcher
-
-Goals:
-
-- Use `player_id` for identity.
-- Use `pigeon_number` as display/order within a tenant.
-- Avoid assuming `pigeon_number` is globally unique.
-- Remove `scoreForPick` and the rank-derivation logic from `resultsShaping.ts`. The frontend has been duplicating the scoring formula and the two implementations have already drifted (frontend is missing the missed-pick penalty). Trust pre-computed scores and ranks from the backend.
-- Remove `useAutoRefreshManager` (the polling hook). It has been a source of bugs — two overlapping timers, a >2-day stale-data heuristic, and a week-transition detector — and it is the primary consumer of the duplicate scoring logic. Replace with a manual refresh button on PicksAndResults. The backend already keeps scores current on its own schedule; the frontend does not need to poll.
+**Remaining in this stage:**
+- `EnterPicks` — verify player selection uses `player_id`, not `pigeon_number`, when
+  managing alternates.
+- `PicksAndResults` — verify tenant-scoped data and remove duplicate scoring logic.
+- `YearToDatePage` — verify tenant filtering.
+- `Analytics` — verify tenant filtering.
+- Remove `scoreForPick` and the rank-derivation logic from `resultsShaping.ts`. The
+  frontend has been duplicating the scoring formula and the two implementations have
+  already drifted (frontend is missing the missed-pick penalty). Trust pre-computed
+  scores and ranks from the backend.
+- Remove `useAutoRefreshManager` (the polling hook). It has been a source of bugs — two
+  overlapping timers, a >2-day stale-data heuristic, and a week-transition detector —
+  and it is the primary consumer of the duplicate scoring logic. Replace with a manual
+  refresh button on PicksAndResults. The backend already keeps scores current on its
+  own schedule; the frontend does not need to poll.
 
 Suggested prompt:
 
-> Update the frontend data model so player identity uses `player_id` while keeping `pigeon_number` as the tenant-local display number. Also remove the auto-refresh polling hook and the duplicate scoring logic, replacing auto-refresh with a manual refresh button.
+> Update the remaining frontend pages (EnterPicks, PicksAndResults, YTD, Analytics) so
+> player identity uses `player_id` throughout. Remove the auto-refresh polling hook and
+> the duplicate scoring logic, replacing auto-refresh with a manual refresh button.
 
 ## Stage 8: Frontend and Integration Tests
 
@@ -358,19 +460,24 @@ Suggested prompt:
 
 ## Stage 9: Tenant Creation and Onboarding
 
-Add product-level flows for creating and managing new tenants.
+Add product-level flows for creating and managing new tenants. There is no global-admin
+role; tenant creation is a server-side / SQL operation for now (see
+`database/seed_test_tenant.sql`). This stage adds a self-service or operator-assisted
+path.
 
 Deliverables:
 
-- Global admin can create a tenant.
-- Tenant admin can invite or create users.
-- Tenant admin can create/edit players.
-- New-user password reset/onboarding works.
+- Operator or server-side flow to create a new tenant (API endpoint or admin CLI).
+- Commissioner can invite or create users within their tenant.
+- Commissioner can create/edit players (already implemented in Stage 6).
+- New-user password reset/onboarding works end-to-end.
 - New tenants can start without Andy-specific integrations enabled.
 
 Suggested prompt:
 
-> Add global-admin tenant creation and tenant-admin onboarding flows for users and players.
+> Add a tenant-creation flow (operator endpoint or CLI) and verify the end-to-end
+> commissioner onboarding path: create tenant → create players → create users →
+> password reset → first login.
 
 ## Stage 10: Product Decoupling
 
@@ -421,6 +528,7 @@ The one required change for multi-tenancy: email jobs currently assume one pool.
 
 - **Seasons**: `weeks` (1–18) and `games` implicitly represent one NFL season. Multiple tenants running different seasons simultaneously is not modeled. Each season, the games and weeks tables are reset. This is a known constraint; a `season_id` concept is left for a future iteration.
 - **Pool size**: The 68-pigeon cap is removed from the schema constraint. Individual tenants may configure pool sizes differently through application logic, but there is no formal `max_players` per-tenant setting in this plan.
+- **Tenant switch triggers full page reload**: `switchTenant` stores the new JWT then calls `window.location.reload()` so all page-level data re-fetches against the new tenant. A future improvement would invalidate per-page query caches (e.g., via React Query) and re-render in place without a full reload.
 
 ## Immediate Recommended Sequence
 

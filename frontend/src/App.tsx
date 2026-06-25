@@ -76,7 +76,7 @@ function getNavItems(isAdmin: boolean): NavItem[] {
 }
 
 function PrivateShell() {
-  const { state, signOut, me } = useAuth();
+  const { state, signOut, switchTenant, me } = useAuth();
 
   // First boot: probing /auth/me
   if (state.status === "unknown") {
@@ -100,13 +100,13 @@ function PrivateShell() {
 
   // Signed in → render the app shell with routes
   const userMenu = state.status === "signedIn" ? (
-    <UserMenuAvatar user={state.user} onSignOut={signOut} />
+    <UserMenuAvatar user={state.user} onSignOut={signOut} onSwitchTenant={switchTenant} />
   ) : null;
 
   return (
     <AppShell>
       <ResponsiveNav
-        title="Pigeon Pool"
+        title={me?.activeTenant?.name ?? "Pigeon Pool"}
         brand={<Brand />}
         navItems={getNavItems(me?.is_admin ?? false)}
         userMenu={userMenu}

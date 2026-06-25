@@ -21,6 +21,7 @@ import {
 import { useSearchParams } from "react-router-dom";
 import {
   adminGetPigeons,
+  adminCreatePigeon,
   adminUpdatePigeon,
   adminGetUsers,
   adminCreateUser,
@@ -118,8 +119,11 @@ export default function AdminRoster() {
                 else next.set("pigeon", String(pn));
                 setSp(next, { replace: true });
               }}
+              onPigeonAdded={(p) => {
+                setPigeons((arr) => [...arr, p].sort((a, b) => a.pigeon_number - b.pigeon_number));
+              }}
               onPigeonChanged={(updated) => {
-                setPigeons((arr) => arr.map((p) => (p.pigeon_number === updated.pigeon_number ? updated : p)));
+                setPigeons((arr) => arr.map((p) => (p.player_id === updated.player_id ? updated : p)));
               }}
               refreshUsers={async () => setUsers(await adminGetUsers())}
               onSnackbar={(message, severity) => setSnackbar({ open: true, message, severity })}
@@ -237,6 +241,7 @@ function PigeonsPanel({
   byPigeon,
   selected,
   onSelect,
+  onPigeonAdded,
   onPigeonChanged,
   refreshUsers,
   onSnackbar,
@@ -245,12 +250,17 @@ function PigeonsPanel({
   byPigeon: { primary: Record<number, string[]>; secondary: Record<number, string[]> };
   selected: AdminPigeon | null;
   onSelect: (pn: number | null) => void;
+  onPigeonAdded: (p: AdminPigeon) => void;
   onPigeonChanged: (p: AdminPigeon) => void;
   refreshUsers: () => Promise<void>;
   onSnackbar: (message: string, severity?: "success" | "error" | "info" | "warning") => void;
 }) {
   const [name, setName] = useState<string>(selected?.pigeon_name ?? "");
   const [saving, setSaving] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newNumber, setNewNumber] = useState("");
+  const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     setName(selected?.pigeon_name ?? "");
@@ -261,25 +271,48 @@ function PigeonsPanel({
   const primaryList = selected ? byPigeon.primary[selected.pigeon_number] ?? [] : [];
   const secondaryList = selected ? byPigeon.secondary[selected.pigeon_number] ?? [] : [];
 
+  const handleCreate = async () => {
+    setCreating(true);
+    try {
+      const created = await adminCreatePigeon({
+        pigeon_name: newName.trim(),
+        pigeon_number: newNumber.trim() ? Number(newNumber) : undefined,
+      });
+      onPigeonAdded(created);
+      onSelect(created.pigeon_number);
+      setCreateOpen(false);
+      setNewName("");
+      setNewNumber("");
+      onSnackbar("Pigeon created.", "success");
+    } catch (e: unknown) {
+      onSnackbar(e instanceof Error ? e.message : String(e), "error");
+    } finally {
+      setCreating(false);
+    }
+  };
+
   return (
     <Box>
       <Typography variant="h6" gutterBottom>
         Pigeons
       </Typography>
 
-      <Typography variant="body2" sx={{ mb: 6 }}>
-        You can change a pigeon's name here
+      <Typography variant="body2" sx={{ mb: 2 }}>
+        Create new pigeons or change a pigeon's name here.
       </Typography>
 
-      <Autocomplete
-        options={options}
-        value={selected ? { label: `${selected.pigeon_number} – ${selected.pigeon_name}`, pn: selected.pigeon_number } : null}
-        onChange={(_, v) => onSelect(v ? v.pn : null)}
-        renderInput={(params) => <TextField {...params} label="Select pigeon" />}
-        sx={{ mb: 2, maxWidth: 420 }}
-      />
+      <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}>
+        <Autocomplete
+          options={options}
+          value={selected ? { label: `${selected.pigeon_number} – ${selected.pigeon_name}`, pn: selected.pigeon_number } : null}
+          onChange={(_, v) => onSelect(v ? v.pn : null)}
+          renderInput={(params) => <TextField {...params} label="Select pigeon" />}
+          sx={{ minWidth: 280 }}
+        />
+        <Button variant="outlined" onClick={() => setCreateOpen(true)}>New Pigeon</Button>
+      </Stack>
 
-      {!selected && <Alert severity="info">Select a pigeon to manage.</Alert>}
+      {!selected && <Alert severity="info">Select a pigeon to manage, or create a new one.</Alert>}
 
       {selected && (
         <Stack spacing={2} maxWidth={520}>
@@ -297,10 +330,11 @@ function PigeonsPanel({
                 if (!selected) return;
                 setSaving(true);
                 try {
-                  await adminUpdatePigeon(selected.pigeon_number, {
+                  await adminUpdatePigeon(selected.player_id, {
                     pigeon_name: name === selected.pigeon_name ? undefined : name,
                   });
                   const updated: AdminPigeon = {
+                    player_id: selected.player_id,
                     pigeon_number: selected.pigeon_number,
                     pigeon_name: name,
                     owner_email: selected.owner_email ?? null,
@@ -346,6 +380,41 @@ function PigeonsPanel({
           </Box>
         </Stack>
       )}
+
+      {/* Create pigeon dialog */}
+      <Dialog open={createOpen} onClose={() => !creating && setCreateOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>New Pigeon</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <TextField
+              autoFocus
+              label="Name"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              fullWidth
+              disabled={creating}
+            />
+            <TextField
+              label="Number (optional — auto-assigned if blank)"
+              value={newNumber}
+              onChange={(e) => setNewNumber(e.target.value.replace(/\D/g, ""))}
+              fullWidth
+              disabled={creating}
+              inputProps={{ inputMode: "numeric" }}
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCreateOpen(false)} disabled={creating}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={handleCreate}
+            disabled={!newName.trim() || creating}
+          >
+            {creating ? "Creating…" : "Create"}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
@@ -370,6 +439,7 @@ function UsersPanel({
 }) {
   const [createOpen, setCreateOpen] = useState(false);
   const [newEmail, setNewEmail] = useState("");
+  const [newPrimary, setNewPrimary] = useState<number | null>(null);
   const [primary, setPrimary] = useState<number | null>(selected?.primary_pigeon ?? null);
   const [secondary, setSecondary] = useState<number[]>(selected?.secondary_pigeons ?? []);
   const [saving, setSaving] = useState(false);
@@ -516,38 +586,53 @@ function UsersPanel({
       )}
 
       {/* Create user dialog */}
-      <Dialog open={createOpen} onClose={() => setCreateOpen(false)}>
-        <DialogTitle>Create user</DialogTitle>
+      <Dialog open={createOpen} onClose={() => { setCreateOpen(false); setNewEmail(""); setNewPrimary(null); }} maxWidth="xs" fullWidth>
+        <DialogTitle>Add new user</DialogTitle>
         <DialogContent>
-          <TextField
-            autoFocus
-            margin="dense"
-            label="Email"
-            type="email"
-            fullWidth
-            value={newEmail}
-            onChange={(e) => setNewEmail(e.target.value)}
-          />
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <TextField
+              autoFocus
+              label="Email"
+              type="email"
+              fullWidth
+              value={newEmail}
+              onChange={(e) => setNewEmail(e.target.value)}
+            />
+            <Autocomplete
+              options={pigeonOptions}
+              value={pigeonOptions.find((o) => o.pn === newPrimary) ?? null}
+              onChange={(_, v) => setNewPrimary(v?.pn ?? null)}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label="Primary pigeon"
+                  required
+                  helperText="Must exist before creating user — create a pigeon first if needed"
+                />
+              )}
+            />
+          </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setCreateOpen(false)}>Cancel</Button>
+          <Button onClick={() => { setCreateOpen(false); setNewEmail(""); setNewPrimary(null); }}>Cancel</Button>
           <Button
             variant="contained"
             onClick={async () => {
+              if (!newEmail.trim() || newPrimary == null) return;
               try {
-                const nu = await adminCreateUser({ email: newEmail.trim() });
+                const nu = await adminCreateUser({ email: newEmail.trim(), primary_pigeon: newPrimary });
                 const next = [...users, nu].sort((a, b) => a.email.localeCompare(b.email));
                 onUsersChanged(next);
                 setCreateOpen(false);
                 setNewEmail("");
-                // Select the new user in URL
+                setNewPrimary(null);
                 onSelect(nu.email);
                 onSnackbar("User created successfully.", "success");
               } catch (e: unknown) {
                 onSnackbar(e instanceof Error ? e.message : String(e), "error");
               }
             }}
-            disabled={!newEmail}
+            disabled={!newEmail.trim() || newPrimary == null}
           >
             Create
           </Button>

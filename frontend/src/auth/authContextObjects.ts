@@ -16,6 +16,7 @@ export type AuthContextValue = {
   refresh: () => Promise<void>;
   signIn: (payload: LoginPayload) => Promise<void>;
   signOut: () => Promise<void>;
+  switchTenant: (tenant_id: number) => Promise<void>;
   me?: Me;
 };
 

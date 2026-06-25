@@ -71,32 +71,44 @@ export interface AltPigeon {
   pigeon_name: string;
 }
 
+export interface TenantInfo {
+  tenant_id: number;
+  name: string;
+  role: "commissioner" | "member";
+}
+
 // ---- Me (result of /auth/me or /auth/login) ----
 export class Me {
   pigeon_number: number;
   pigeon_name: string;
   email: string;
   is_admin: boolean;
+  tenant_id: number;
   session: SessionInfo;
 
   /** Additional pigeons this user can manage (excludes the active one). */
   alternates: AltPigeon[];
 
+  /** All tenants the user belongs to (for tenant switching). */
+  available_tenants: TenantInfo[];
+
   constructor(data: unknown) {
     if (!isRecord(data)) throw new DataValidationError("Invalid Me payload (not an object)");
 
-    const { pigeon_number, pigeon_name, email, is_admin, session, alt_pigeons } = data;
+    const { pigeon_number, pigeon_name, email, is_admin, tenant_id, session, alt_pigeons, available_tenants } = data;
 
     if (!isNumber(pigeon_number)) throw new DataValidationError("pigeon_number must be number");
     if (!isString(pigeon_name)) throw new DataValidationError("pigeon_name must be string");
     if (!isString(email)) throw new DataValidationError("email must be string");
     if (!isBoolean(is_admin)) throw new DataValidationError("is_admin must be boolean");
+    if (!isNumber(tenant_id)) throw new DataValidationError("tenant_id must be number");
     if (!isRecord(session)) throw new DataValidationError("session must be object");
 
     this.pigeon_number = pigeon_number;
     this.pigeon_name = pigeon_name;
     this.email = email;
     this.is_admin = is_admin;
+    this.tenant_id = tenant_id;
     this.session = new SessionInfo(session);
 
     // alternates is optional (e.g., /auth/login may not include it)
@@ -115,11 +127,33 @@ export class Me {
       }
       this.alternates = parsed;
     }
+
+    // available_tenants is optional on login responses; populated by /auth/me
+    this.available_tenants = [];
+    if (available_tenants !== undefined) {
+      if (!Array.isArray(available_tenants)) {
+        throw new DataValidationError("available_tenants must be an array");
+      }
+      for (const t of available_tenants) {
+        if (!isRecord(t) || !isNumber(t.tenant_id) || !isString(t.name) || !isString(t.role)) {
+          throw new DataValidationError("available_tenants[] entry is invalid");
+        }
+        this.available_tenants.push({ tenant_id: t.tenant_id as number, name: t.name as string, role: t.role as "commissioner" | "member" });
+      }
+    }
   }
 
   /** Convenience: true if the user can switch to another pigeon. */
   get canSwitchPigeon(): boolean {
     return this.alternates.length > 0;
+  }
+
+  get activeTenant(): TenantInfo | undefined {
+    return this.available_tenants.find((t) => t.tenant_id === this.tenant_id);
+  }
+
+  get canSwitchTenant(): boolean {
+    return this.available_tenants.length > 1;
   }
 }
 
@@ -417,8 +451,9 @@ export class AdminWeekLock {
   }
 }
 
-/** Row from GET /admin/pigeons */
+/** Row from GET /admin/pigeons and response from POST /admin/pigeons */
 export class AdminPigeon {
+  player_id: number;
   pigeon_number: number;
   pigeon_name: string;
   /** May be null/undefined if unassigned */
@@ -426,22 +461,30 @@ export class AdminPigeon {
 
   constructor(data: unknown) {
     if (!isRecord(data)) throw new DataValidationError("Invalid AdminPigeon (not an object)");
-    const { pigeon_number, pigeon_name, owner_email } = data;
+    const { player_id, pigeon_number, pigeon_name, owner_email } = data;
 
+    if (!isNumber(player_id)) throw new DataValidationError("player_id must be number");
     if (!isNumber(pigeon_number)) throw new DataValidationError("pigeon_number must be number");
     if (!isString(pigeon_name)) throw new DataValidationError("pigeon_name must be string");
     if (!(owner_email === null || owner_email === undefined || isString(owner_email))) {
       throw new DataValidationError("owner_email must be string|null|undefined");
     }
 
+    this.player_id = player_id;
     this.pigeon_number = pigeon_number;
     this.pigeon_name = pigeon_name;
     this.owner_email = (owner_email ?? null) as string | null;
   }
 }
 
+/** Payload for POST /admin/pigeons */
+export interface AdminPigeonCreateIn {
+  pigeon_name: string;
+  pigeon_number?: number;
+}
+
 /**
- * Payload for PATCH /admin/pigeons/{pigeon_number}
+ * Payload for PATCH /admin/pigeons/{player_id}
  * - Omit a field to leave it unchanged
  * - Send owner_email: null to unassign the owner
  */
@@ -497,12 +540,14 @@ export class AdminUser {
 /** Payload for POST /admin/users */
 export class AdminUserCreateIn {
   email: string;
+  primary_pigeon: number;
 
   constructor(data: unknown) {
-    if (!isRecord(data) || !isString(data.email)) {
-      throw new DataValidationError("Invalid AdminUserCreateIn (email required)");
+    if (!isRecord(data) || !isString(data.email) || !isNumber(data.primary_pigeon)) {
+      throw new DataValidationError("Invalid AdminUserCreateIn (email and primary_pigeon required)");
     }
     this.email = data.email;
+    this.primary_pigeon = data.primary_pigeon;
   }
 }
 

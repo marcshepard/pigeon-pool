@@ -74,12 +74,15 @@ class ScoreSync:
             # --- upsert the week first (compute lock_at from earliest kickoff) ---
             kickoffs = [_parse_event_kickoff(ev) for ev in events]
             lock_at_utc = _calc_lock_at_pacific(kickoffs)
+            # Write to default_lock_at (global template). Each tenant activates
+            # their own season via POST /admin/activate-season, which copies
+            # default_lock_at into tenant_weeks. Do NOT write tenant_weeks here.
             await self.session.execute(
                 text("""
-                    INSERT INTO weeks (week_number, lock_at)
+                    INSERT INTO weeks (week_number, default_lock_at)
                     VALUES (:week, :lock_at)
                     ON CONFLICT (week_number)
-                    DO UPDATE SET lock_at = EXCLUDED.lock_at
+                    DO UPDATE SET default_lock_at = EXCLUDED.default_lock_at
                 """),
                 {"week": week, "lock_at": lock_at_utc},
             )

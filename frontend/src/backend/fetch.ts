@@ -22,6 +22,7 @@ import {
   WeekPicksRow,
   type AdminBulkEmailRequest
 } from "./types";
+import type { AdminPigeonCreateIn } from "./types";
 
 // Base URL for API calls, from env or default to relative /api (for dev with proxy)
 const BASE = import.meta.env.VITE_API_URL as string;
@@ -157,6 +158,16 @@ export async function apiMe(): Promise<Me> {
     factory: (d) => new Me(d),
     redirectOn401: false, // AuthContext decides what to do on first boot
   });
+}
+
+export async function apiSelectTenantContext(tenant_id: number): Promise<Me> {
+  const out = await apiFetch<LoginOut>("/auth/select-context", {
+    method: "POST",
+    body: JSON.stringify({ tenant_id }),
+    factory: (d) => d as LoginOut,
+  });
+  setToken(out.access_token);
+  return new Me(out.user);
 }
 
 export async function apiLogout(): Promise<void> {
@@ -359,17 +370,27 @@ export function adminGetPigeons(): Promise<AdminPigeon[]> {
   });
 }
 
+/** Create a new pigeon in the current tenant. pigeon_number is auto-assigned if omitted. */
+export function adminCreatePigeon(input: AdminPigeonCreateIn): Promise<AdminPigeon> {
+  return apiFetch("/admin/pigeons", {
+    method: "POST",
+    body: JSON.stringify(input),
+    factory: (data: unknown) => new AdminPigeon(data),
+  });
+}
+
 /**
  * Update a single pigeon (name and/or owner).
+ * Uses player_id (not pigeon_number) in the URL.
  * Pass { owner_email: null } to unassign an owner.
  */
 export function adminUpdatePigeon(
-  pigeonNumber: number,
+  playerId: number,
   patch: AdminPigeonUpdateIn | { pigeon_name?: string; owner_email?: string | null }
 ): Promise<void> {
   const body =
     patch instanceof AdminPigeonUpdateIn ? patch : new AdminPigeonUpdateIn(patch);
-  return apiFetch(`/admin/pigeons/${pigeonNumber}`, {
+  return apiFetch(`/admin/pigeons/${playerId}`, {
     method: "PATCH",
     body: JSON.stringify(body),
     factory: () => undefined,
@@ -392,11 +413,12 @@ export function adminGetUsers(): Promise<AdminUser[]> {
 }
 
 /**
- * Create a user (admin only).
- * Backend generates a random password; response includes email and empty assignments.
+ * Create a user (commissioner only).
+ * Atomically creates the account and adds the user to this tenant with a primary pigeon.
+ * Backend generates a random password; user must reset before first login.
  */
 export function adminCreateUser(
-  input: AdminUserCreateIn | { email: string }
+  input: AdminUserCreateIn | { email: string; primary_pigeon: number }
 ): Promise<AdminUser> {
   const body = input instanceof AdminUserCreateIn ? input : new AdminUserCreateIn(input);
   return apiFetch("/admin/users", {
