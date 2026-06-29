@@ -484,6 +484,7 @@ export default function EnterPicksPage() {
             value={String(week)}
             onChange={(e) => handleWeekChange(Number(e.target.value))}
             options={futureWeeks.map((w) => ({ value: String(w), label: `Week ${w}` }))}
+            sx={{ minWidth: 90 }}
           />
 
           {/* Center: title w/ easter egg for fast "home team by 3" selection */}
