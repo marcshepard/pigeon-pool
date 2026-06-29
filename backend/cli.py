@@ -9,6 +9,7 @@ Commands:
 - list-leagues   : Show all tenants with member/player counts
 - create-league  : Create a new league/tenant and assign a commissioner
 - delete-league  : Permanently delete a league and its data
+- run-sql        : Execute a SQL migration file using the app's DB connection
 - -help          : Show help/usage
 
 Example usage:
@@ -21,6 +22,7 @@ Example usage:
 - python -m backend.cli list-leagues
 - python -m backend.cli create-league --name "My Pool" --commissioner-email admin@example.com
 - python -m backend.cli delete-league 2 --yes
+- python -m backend.cli run-sql database/migration_stage11.sql
 """
 # pylint: disable=line-too-long
 
@@ -404,6 +406,29 @@ def cmd_create_league(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_run_sql(args: argparse.Namespace) -> int:
+    """
+    Execute a SQL file against the configured database.
+    Used for applying migration scripts without requiring a separate psql install.
+    """
+    path = args.path
+    try:
+        with open(path, encoding="utf-8") as f:
+            sql = f.read()
+    except FileNotFoundError:
+        print(f"error: file not found: {path}")
+        return 1
+
+    settings = get_settings()
+    cfg = settings.psycopg_kwargs()
+    with get_connection(cfg) as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql)
+        conn.commit()
+    print(f"[cli] Applied: {path}")
+    return 0
+
+
 def cmd_delete_league(args: argparse.Namespace) -> int:
     """
     Permanently delete a league and all its data.
@@ -671,6 +696,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_delete.add_argument("tenant_id", type=int, help="tenant_id to delete (see list-leagues)")
     p_delete.add_argument("--yes", action="store_true", help="Skip interactive confirmation")
     p_delete.set_defaults(func=cmd_delete_league)
+
+    # run-sql
+    p_run_sql = sub.add_parser(
+        "run-sql",
+        help="Execute a SQL file against the configured database (for migrations).",
+        description="Reads a .sql file and executes it in a single transaction using the app DB connection.",
+    )
+    p_run_sql.add_argument("path", help="Path to .sql file")
+    p_run_sql.set_defaults(func=cmd_run_sql)
 
     # show-email-recipients
     p_recip = sub.add_parser(

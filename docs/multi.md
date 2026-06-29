@@ -621,30 +621,28 @@ All deliverables implemented:
 - Frontend `AdminSettings.tsx` — `PayoutsEditor` section added below league name (editable table, prize pool calculator, save button)
 - Frontend `AboutPage.tsx` — payout table replaced with dynamic data from `GET /admin/payouts` via Zustand cache
 
-## Stage 11: Integration Tests
+## Stage 11: Backend Integration Tests
 
-Build a durable automated test suite so future changes have less chance to break things.
-This is the largest testing investment in the project.
+Build a durable backend test suite so future changes have less chance to break things.
 
-### Code fixes required before testing
+### Completion notes
 
-All Stage 10 code fixes (listed above) must be complete before this stage begins, since
-tests written against broken behavior will themselves be wrong.
+- Rewrote `tests/conftest.py` with session-scoped fixtures: two isolated test tenants,
+  adaptive `scored_games` (uses real game IDs when available, inserts synthetic games
+  otherwise), pre-minted JWT tokens, and `insert_pick`/`pick_cleaner` helpers.
+- Created `tests/test_auth.py`, `tests/test_picks.py`, `tests/test_results.py`,
+  `tests/test_admin.py`, `tests/test_tenant_isolation.py` — 54 tests total, all passing.
+- Added `database/migration_stage11.sql`: `ON DELETE CASCADE` on `players.tenant_id`
+  (pigeon deletion now cascades from tenant delete; users are unaffected).
+- Added `python -m backend.cli run-sql <file>` command for applying SQL migration files
+  without requiring a separate psql install.
+- Added `docs/tests.md` with design rationale (auth approach, adaptive fixture, lock
+  bypass, scoring formula mirror).
+- Deferred: XLSX import round-trip, email job recipient tests (edge cases, low priority).
+- Snapshot tests (`test_snapshots.py`) updated to reflect post-reset-season DB state.
+  Revert snapshots before restoring last year's DB for regression testing.
 
-### Backend API tests
-
-Expand `tests/test_snapshots.py` into a proper pytest suite covering:
-
-- Auth: login, `/auth/me`, select-context, password reset flow.
-- Picks: submit before lock, reject after lock, alt-player submission.
-- Results: week picks (locked/unlocked), leaderboard, YTD.
-- Admin: roster CRUD (pigeons, users), lock time management, bulk email (dry-run),
-  payout get/set, league rename, season activation.
-- Tenant scoping: confirm data from tenant A is never visible in tenant B responses.
-- XLSX import: round-trip test with a known fixture file.
-- Email jobs: mock the email sender; assert per-tenant recipient lists and content.
-
-### Frontend / integration tests
+## Stage 12: Frontend Tests
 
 Choose a framework (Playwright or Vitest + React Testing Library) and cover:
 
@@ -655,14 +653,17 @@ Choose a framework (Playwright or Vitest + React Testing Library) and cover:
 - League Settings: rename, payout editor, season activation, roster management.
 - Season status badges update and persist.
 
+Note: `MnfOutcomes.tsx` uses `new Date()` directly (line 63) — the only place requiring
+genuine clock control. Will need injection or mocking for that component's tests.
+
 Suggested prompt:
 
-> Build the Stage 11 integration test suite: expand backend pytest coverage, add
-> frontend tests with [chosen framework], and verify tenant isolation end-to-end.
+> Build the Stage 12 frontend test suite using [chosen framework]. Cover the flows listed
+> in docs/multi.md Stage 12. Note the MnfOutcomes date dependency.
 
-## Stage 12: Production Migration and Deployment
+## Stage 13: Production Migration and Deployment
 
-Ops-only stage. No new development. Run after Stage 11 tests pass.
+Ops-only stage. No new development. Run after Stage 12 tests pass.
 
 Checklist:
 

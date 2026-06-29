@@ -7,7 +7,12 @@
       "PowerShell(& \"C:\\\\Users\\\\marcs\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python313\\\\python.exe\" -m py_compile \"c:\\\\Users\\\\marcs\\\\Repos\\\\pigeon-pool\\\\backend\\\\cli.py\" 2>&1)",
       "PowerShell(& \"C:\\\\Users\\\\marcs\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python313\\\\python.exe\" -m py_compile \"c:\\\\Users\\\\marcs\\\\Repos\\\\pigeon-pool\\\\backend\\\\routes\\\\admin.py\" 2>&1)",
       "PowerShell(if \\($?\\) { \"cli.py OK\" })",
-      "PowerShell(if \\($?\\) { \"admin.py OK\" })"
+      "PowerShell(if \\($?\\) { \"admin.py OK\" })",
+      "Bash(curl -s \"https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?year=2026&week=1&seasontype=2\")",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); evs=d.get\\('events',[]\\); print\\(f'{len\\(evs\\)} events'\\); [print\\(e['date'], e['name']\\) for e in evs[:5]]\")",
+      "Bash(curl -s \"https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?year=2026&week=1&seasontype=2\" -H \"User-Agent: Mozilla/5.0 \\(Windows NT 10.0; Win64; x64\\) AppleWebKit/537.36 \\(KHTML, like Gecko\\) Chrome/125.0.0.0 Safari/537.36\")",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); evs=d.get\\('events',[]\\); s=d.get\\('leagues',[{}]\\)[0].get\\('season',{}\\); print\\('season year:', s.get\\('year'\\)\\); print\\('startDate:', s.get\\('startDate'\\)\\); print\\(f'{len\\(evs\\)} events'\\); [print\\(e['date'], e['name']\\) for e in evs[:5]]\")",
+      "Bash(python -m pytest tests/ -x --tb=short -q)"
     ]
   }
 }

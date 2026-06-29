@@ -11,12 +11,18 @@ Short version:
 
 ## Backend tests
 
-Tests live in `tests/` and use pytest against the `pigeon_pool_multi` development database
-(see [docs/multi.md](multi.md) for migration context).
+Tests live in `tests/` and use pytest against the `pigeon_pool_multi` development database.
+See [docs/tests.md](tests.md) for a full explanation of the test design: auth approach, the adaptive
+`scored_games` fixture, how pick insertion bypasses the lock trigger, and the scoring formula mirror.
 
 Run all tests:
 ```bash
 pytest
+```
+
+Run a specific file:
+```bash
+pytest tests/test_results.py -v
 ```
 
 ### Snapshot tests

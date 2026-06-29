@@ -67,7 +67,7 @@ CREATE SEQUENCE IF NOT EXISTS players_player_id_seq START WITH 1;
 
 CREATE TABLE IF NOT EXISTS players (
   player_id     BIGINT NOT NULL PRIMARY KEY DEFAULT nextval('players_player_id_seq'),
-  tenant_id     BIGINT NOT NULL REFERENCES tenants(tenant_id),
+  tenant_id     BIGINT NOT NULL REFERENCES tenants(tenant_id) ON DELETE CASCADE,
   pigeon_number INT    NOT NULL CHECK (pigeon_number >= 1),
   pigeon_name   TEXT   NOT NULL,
   UNIQUE (tenant_id, pigeon_number),
