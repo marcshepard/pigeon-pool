@@ -50,6 +50,7 @@ function checkSnapshot(name: string, data: unknown) {
 
 // ── skip guard ────────────────────────────────────────────────────────────────
 
+// eslint-disable-next-line no-empty-pattern
 test.beforeEach(({}, testInfo) => {
   if (!getState().has_real_games) {
     testInfo.annotations.push({

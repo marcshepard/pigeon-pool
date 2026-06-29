@@ -123,7 +123,7 @@ async def cmd_sync_kickoffs(args: argparse.Namespace) -> int:
 async def cmd_reset_season(args: argparse.Namespace) -> int:
     """
     Prepare for a new league year:
-      1. Archive all picks to CSV per tenant → archive/<tid>_<year>_picks.csv
+      1. Archive all picks to CSV per tenant -> archive/<tid>_<year>_picks.csv
       2. Delete all games (cascades picks) and tenant_weeks
       3. Reset players.season_status = 'pending'
       4. Sync the new season's schedule
@@ -189,7 +189,7 @@ async def cmd_reset_season(args: argparse.Namespace) -> int:
                     "home_score", "away_score", "status",
                 ])
                 writer.writerows(rows)
-            print(f"[cli]   Archived {len(rows)} picks for '{tenant_name}' → {archive_path}")
+            print(f"[cli]   Archived {len(rows)} picks for '{tenant_name}' -> {archive_path}")
 
         # Step 2: Wipe games (cascades picks) and tenant_weeks
         with conn.cursor() as cur:
@@ -227,7 +227,7 @@ async def cmd_reset_season(args: argparse.Namespace) -> int:
                 print(f"[cli]   Seeded {seeded} lock times for '{tenant_name}'")
         conn.commit()
 
-    print("[cli] ✅ Season reset complete. Review lock times in the admin UI before the season starts.")
+    print("[cli] Season reset complete. Review lock times in the admin UI before the season starts.")
     return 0
 
 
@@ -243,7 +243,7 @@ def cmd_import_picks_xlsx(args: argparse.Namespace) -> int:
 
     settings = get_settings()
     cfg = settings.psycopg_kwargs()
-    print(f"[cli] import-pivot-xlsx → {cfg['user']}@{cfg['host']}:{cfg['port']}/{cfg['dbname']}")
+    print(f"[cli] import-pivot-xlsx -> {cfg['user']}@{cfg['host']}:{cfg['port']}/{cfg['dbname']}")
 
     # Validate week constraints if provided
     only_week: int | None = None
@@ -272,7 +272,7 @@ def cmd_import_picks_xlsx(args: argparse.Namespace) -> int:
                 conn=conn,
                 **extra_kwargs,
             )
-            print(f"[cli] ✅ Pivot import complete. Processed {processed} player-pick cells.")
+            print(f"[cli] Pivot import complete. Processed {processed} player-pick cells.")
         finally:
             # Always clear the flag so future uses of this connection (or pooled conns) are safe
             with conn.cursor() as cur:  # pylint: disable=no-member
@@ -403,11 +403,11 @@ def cmd_create_league(args: argparse.Namespace) -> int:
 
         conn.commit()
 
-    print(f"[cli] ✅ League created: tenant_id={tenant_id}, name='{name}'")
-    print(f"[cli]    Commissioner: {email}")
-    print(f"[cli]    Lock times copied: {lock_count} weeks")
-    print(f"[cli]    Placeholder player 'Commissioner' (player_id={player_id}) created")
-    print("[cli]    → Rename via League Settings after first login")
+    print(f"[cli] League created: tenant_id={tenant_id}, name='{name}'")
+    print(f"[cli]   Commissioner: {email}")
+    print(f"[cli]   Lock times copied: {lock_count} weeks")
+    print(f"[cli]   Placeholder player 'Commissioner' (player_id={player_id}) created")
+    print("[cli]   -> Rename via League Settings after first login")
     return 0
 
 
@@ -518,7 +518,7 @@ def cmd_delete_league(args: argparse.Namespace) -> int:
 
         conn.commit()
 
-    print(f"[cli] ✅ League '{tenant_name}' (tenant_id={tenant_id}) permanently deleted.")
+    print(f"[cli] League '{tenant_name}' (tenant_id={tenant_id}) permanently deleted.")
     return 0
 
 
@@ -696,8 +696,8 @@ def cmd_setup_fe_tests(_: argparse.Namespace) -> int:
     with open(state_path, "w", encoding="utf-8") as f:
         json.dump(state, f, indent=2)
 
-    print(f"[cli] ✅ FE test fixtures ready: tenant_id={tenant_id}, has_real_games={has_real_games}")
-    print(f"[cli]    Test state → {state_path}")
+    print(f"[cli] FE test fixtures ready: tenant_id={tenant_id}, has_real_games={has_real_games}")
+    print(f"[cli]   Test state -> {state_path}")
     return 0
 
 
@@ -728,7 +728,7 @@ def cmd_teardown_fe_tests(_: argparse.Namespace) -> int:
         conn.commit()
 
     os.remove(state_path)
-    print("[cli] ✅ FE test fixtures cleaned up.")
+    print("[cli] FE test fixtures cleaned up.")
     return 0
 
 
