@@ -34,7 +34,7 @@
       "problemMatcher": []
     },
     {
-      "label": "pigeon tests",
+      "label": "pigeon BE tests",
       "type": "shell",
       "command": "cmd",
       "args": [
@@ -44,6 +44,16 @@
       ],
       "options": {
         "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "pigeon FE tests",
+      "type": "shell",
+      "command": "npm",
+      "args": ["run", "test:e2e"],
+      "options": {
+        "cwd": "${workspaceFolder}/frontend"
       },
       "problemMatcher": []
     }

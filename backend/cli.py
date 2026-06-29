@@ -10,6 +10,8 @@ Commands:
 - create-league  : Create a new league/tenant and assign a commissioner
 - delete-league  : Permanently delete a league and its data
 - run-sql        : Execute a SQL migration file using the app's DB connection
+- setup-fe-tests : Create Playwright FE test fixtures; write playwright/.test-state.json
+- teardown-fe-tests : Remove FE test fixtures created by setup-fe-tests
 - -help          : Show help/usage
 
 Example usage:
@@ -30,13 +32,16 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 import os
-from typing import Any, Dict, Callable, Awaitable
+from typing import Any, Dict, Callable, Awaitable, NoReturn
 import asyncio
 
 import psycopg
+from passlib.hash import bcrypt as _bcrypt
 from sqlalchemy import text
 
+from backend.routes.auth import make_session_token
 from backend.utils.db import AsyncSessionLocal
 from backend.utils.score_sync import ScoreSync
 from backend.utils.settings import get_settings
@@ -61,7 +66,7 @@ _JOBS: dict[str, Callable[[Any], Awaitable[dict[str, Any]]]] = {
 
 class _HelpOnErrorParser(argparse.ArgumentParser):
     """ArgumentParser that prints the full help text on errors for a friendlier UX."""
-    def error(self, message: str) -> None:
+    def error(self, message: str) -> NoReturn:
         self.print_help()
         self.exit(2, f"\nerror: {message}\n")
 
@@ -136,9 +141,9 @@ async def cmd_reset_season(args: argparse.Namespace) -> int:
                 year = row[0] if row and row[0] else 2024
 
             cur.execute("SELECT COUNT(*) FROM games")
-            game_count = cur.fetchone()[0]
+            game_count = cur.fetchone()[0]  # type: ignore[index]
             cur.execute("SELECT COUNT(*) FROM picks p JOIN players pl ON pl.player_id = p.player_id")
-            pick_count = cur.fetchone()[0]
+            pick_count = cur.fetchone()[0]  # type: ignore[index]
             cur.execute("SELECT tenant_id, name FROM tenants ORDER BY tenant_id")
             tenants = cur.fetchall()
 
@@ -363,7 +368,7 @@ def cmd_create_league(args: argparse.Namespace) -> int:
             user_id = row[0]
 
             cur.execute("INSERT INTO tenants (name) VALUES (%s) RETURNING tenant_id", (name,))
-            tenant_id = cur.fetchone()[0]
+            tenant_id = cur.fetchone()[0]  # type: ignore[index]
 
             cur.execute("""
                 INSERT INTO tenant_weeks (tenant_id, week_number, lock_at)
@@ -379,7 +384,7 @@ def cmd_create_league(args: argparse.Namespace) -> int:
                 VALUES (%s, 1, 'Commissioner')
                 RETURNING player_id
             """, (tenant_id,))
-            player_id = cur.fetchone()[0]
+            player_id = cur.fetchone()[0]  # type: ignore[index]
 
             cur.execute(
                 "INSERT INTO user_players (user_id, player_id, role) VALUES (%s, %s, 'owner')",
@@ -402,7 +407,7 @@ def cmd_create_league(args: argparse.Namespace) -> int:
     print(f"[cli]    Commissioner: {email}")
     print(f"[cli]    Lock times copied: {lock_count} weeks")
     print(f"[cli]    Placeholder player 'Commissioner' (player_id={player_id}) created")
-    print(f"[cli]    → Rename via League Settings after first login")
+    print("[cli]    → Rename via League Settings after first login")
     return 0
 
 
@@ -423,7 +428,7 @@ def cmd_run_sql(args: argparse.Namespace) -> int:
     cfg = settings.psycopg_kwargs()
     with get_connection(cfg) as conn:
         with conn.cursor() as cur:
-            cur.execute(sql)
+            cur.execute(sql)  # type: ignore[arg-type]
         conn.commit()
     print(f"[cli] Applied: {path}")
     return 0
@@ -449,17 +454,17 @@ def cmd_delete_league(args: argparse.Namespace) -> int:
             tenant_name = row[0]
 
             cur.execute("SELECT COUNT(*) FROM tenant_members WHERE tenant_id = %s", (tenant_id,))
-            member_count = cur.fetchone()[0]
+            member_count = cur.fetchone()[0]  # type: ignore[index]
 
             cur.execute("SELECT COUNT(*) FROM players WHERE tenant_id = %s", (tenant_id,))
-            player_count = cur.fetchone()[0]
+            player_count = cur.fetchone()[0]  # type: ignore[index]
 
             cur.execute("""
                 SELECT COUNT(*) FROM picks p
                   JOIN players pl ON pl.player_id = p.player_id
                  WHERE pl.tenant_id = %s
             """, (tenant_id,))
-            pick_count = cur.fetchone()[0]
+            pick_count = cur.fetchone()[0]  # type: ignore[index]
 
             # Users whose only tenant is this one
             cur.execute("""
@@ -514,6 +519,216 @@ def cmd_delete_league(args: argparse.Namespace) -> int:
         conn.commit()
 
     print(f"[cli] ✅ League '{tenant_name}' (tenant_id={tenant_id}) permanently deleted.")
+    return 0
+
+
+def cmd_setup_fe_tests(_: argparse.Namespace) -> int:
+    """
+    Create isolated test fixtures for Playwright FE tests. Mirrors the logic of the
+    scored_games + test_data fixtures in tests/conftest.py so game detection and
+    synthetic insertion stay in one place (Python).
+
+    Writes playwright/.test-state.json with:
+      has_real_games  — bool; snapshot tests skip when False
+      test            — tenant/player/user/token for stateful E2E tests
+      snapshot        — commissioner token for the real tenant (snapshot tests only)
+    """
+    settings = get_settings()
+    cfg = settings.psycopg_kwargs()
+
+    with get_connection(cfg) as conn:
+        with conn.cursor() as cur:
+            # Guard against leftover data from an aborted previous run.
+            cur.execute("DELETE FROM tenants WHERE name = '_Test FE League'")
+            cur.execute("DELETE FROM users WHERE email = '_testfe@example.com'")
+        conn.commit()
+
+        with conn.cursor() as cur:
+            # ── Step 1: detect or inject scored games (mirrors conftest scored_games) ──
+            cur.execute("""
+                SELECT game_id, week_number, home_score, away_score
+                  FROM games
+                 WHERE kickoff_at <= now()
+                   AND home_score IS NOT NULL
+                   AND away_score IS NOT NULL
+                 ORDER BY week_number, game_id
+                 LIMIT 10
+            """)
+            scored_rows = cur.fetchall()
+
+            has_real_games = bool(scored_rows)
+            synthetic_ids: list[int] = []
+
+            if not scored_rows:
+                cur.execute("""
+                    INSERT INTO games (week_number, kickoff_at, home_abbr, away_abbr, status, home_score, away_score)
+                    VALUES (1, '2020-01-05 18:00:00+00', 'KC', 'BUF', 'final', 21, 14)
+                    RETURNING game_id
+                """)
+                g1 = cur.fetchone()[0]  # type: ignore[index]
+                cur.execute("""
+                    INSERT INTO games (week_number, kickoff_at, home_abbr, away_abbr, status, home_score, away_score)
+                    VALUES (1, '2020-01-05 21:30:00+00', 'LAR', 'SF', 'final', 10, 3)
+                    RETURNING game_id
+                """)
+                g2 = cur.fetchone()[0]  # type: ignore[index]
+                synthetic_ids.extend([g1, g2])
+                scored_rows = [(g1, 1, 21, 14), (g2, 1, 10, 3)]
+
+            scored_weeks = {r[1] for r in scored_rows}
+            scored_week = min(scored_weeks)
+
+            # Submission game — week 18, always unlocked for the test tenant (lock_at = 2099).
+            # We insert TB @ NO; if that exact matchup already exists in week 18 we reuse it.
+            submission_week = 18
+            cur.execute("""
+                INSERT INTO games (week_number, kickoff_at, home_abbr, away_abbr, status)
+                VALUES (%s, '2099-09-01 20:00:00+00', 'TB', 'NO', 'scheduled')
+                ON CONFLICT (week_number, home_abbr, away_abbr) DO NOTHING
+                RETURNING game_id
+            """, (submission_week,))
+            row = cur.fetchone()
+            if row:
+                submission_gid = row[0]
+                synthetic_ids.append(submission_gid)
+            else:
+                cur.execute(
+                    "SELECT game_id FROM games WHERE week_number = %s AND home_abbr = 'TB' AND away_abbr = 'NO'",
+                    (submission_week,),
+                )
+                submission_gid = cur.fetchone()[0]  # type: ignore[index]
+
+            # ── Step 2: create _Test FE League tenant, player, and user ──
+            cur.execute("INSERT INTO tenants (name) VALUES ('_Test FE League') RETURNING tenant_id")
+            tenant_id = cur.fetchone()[0]  # type: ignore[index]
+
+            cur.execute("""
+                INSERT INTO players (tenant_id, pigeon_number, pigeon_name)
+                VALUES (%s, 1, '_TestFE')
+                RETURNING player_id
+            """, (tenant_id,))
+            player_id = cur.fetchone()[0]  # type: ignore[index]
+
+            pw_hash = _bcrypt.hash("testpass")
+            cur.execute(
+                "INSERT INTO users (email, password_hash) VALUES ('_testfe@example.com', %s) RETURNING user_id",
+                (pw_hash,),
+            )
+            user_id = cur.fetchone()[0]  # type: ignore[index]
+
+            cur.execute(
+                "INSERT INTO user_players (user_id, player_id, role) VALUES (%s, %s, 'owner')",
+                (user_id, player_id),
+            )
+            cur.execute("""
+                INSERT INTO tenant_members (tenant_id, user_id, role, primary_player_id)
+                VALUES (%s, %s, 'commissioner', %s)
+            """, (tenant_id, user_id, player_id))
+
+            # ── Step 3: lock times for test tenant ──
+            # Insert all 18 weeks so pick submission works for any week the form shows.
+            # Scored weeks (except submission_week) get progressive past lock_at so that
+            # get_current_week ORDER BY lock_at DESC returns a deterministic max week.
+            # submission_week and all other weeks get a far-future lock_at (unlocked).
+            for wk in range(1, 19):
+                if wk in scored_weeks and wk != submission_week:
+                    cur.execute("""
+                        INSERT INTO tenant_weeks (tenant_id, week_number, lock_at)
+                        VALUES (%s, %s, '2020-01-01 00:00:00+00'::timestamptz + (%s || ' days')::interval)
+                    """, (tenant_id, wk, wk))
+                else:
+                    cur.execute("""
+                        INSERT INTO tenant_weeks (tenant_id, week_number, lock_at)
+                        VALUES (%s, %s, '2099-01-01 00:00:00+00')
+                    """, (tenant_id, wk))
+
+            # ── Step 4: snapshot token — commissioner of the real pool (tenant 1) ──
+            cur.execute("""
+                SELECT u.user_id, p.player_id, u.email, tm.tenant_id
+                  FROM users u
+                  JOIN tenant_members tm ON tm.user_id = u.user_id
+                  JOIN players p ON p.player_id = tm.primary_player_id
+                 WHERE tm.role = 'commissioner'
+                   AND tm.tenant_id NOT IN (
+                       SELECT tenant_id FROM tenants WHERE name LIKE '\\_Test%'
+                   )
+                 ORDER BY tm.tenant_id, u.user_id
+                 LIMIT 1
+            """)
+            snap_row = cur.fetchone()
+
+        conn.commit()
+
+    # Mint tokens
+    test_token, _exp = make_session_token(player_id, tenant_id, "_testfe@example.com", uid=user_id)
+
+    snap_token = None
+    snap_tenant_id = None
+    if snap_row:
+        s_uid, s_pid, s_email, s_tid = snap_row
+        snap_token, _exp = make_session_token(s_pid, s_tid, s_email, uid=s_uid)
+        snap_tenant_id = s_tid
+
+    state = {
+        "has_real_games": has_real_games,
+        "test": {
+            "tenant_id": tenant_id,
+            "player_id": player_id,
+            "user_id": user_id,
+            "user_email": "_testfe@example.com",
+            "user_password": "testpass",
+            "auth_token": test_token,
+            "scored_game_ids": [r[0] for r in scored_rows],
+            "scored_week": scored_week,
+            "submission_game_id": submission_gid,
+            "submission_week": submission_week,
+            "synthetic_game_ids": synthetic_ids,
+        },
+        "snapshot": {
+            "tenant_id": snap_tenant_id,
+            "auth_token": snap_token,
+            "scored_week": scored_week,
+        },
+    }
+
+    os.makedirs("playwright", exist_ok=True)
+    state_path = os.path.join("playwright", ".test-state.json")
+    with open(state_path, "w", encoding="utf-8") as f:
+        json.dump(state, f, indent=2)
+
+    print(f"[cli] ✅ FE test fixtures ready: tenant_id={tenant_id}, has_real_games={has_real_games}")
+    print(f"[cli]    Test state → {state_path}")
+    return 0
+
+
+def cmd_teardown_fe_tests(_: argparse.Namespace) -> int:
+    """
+    Remove all fixtures created by setup-fe-tests. Reads playwright/.test-state.json
+    to identify synthetic games and the test tenant to delete.
+    """
+    state_path = os.path.join("playwright", ".test-state.json")
+    if not os.path.exists(state_path):
+        print(f"[cli] No test state file at {state_path} — nothing to clean up.")
+        return 0
+
+    with open(state_path, encoding="utf-8") as f:
+        state = json.load(f)
+
+    settings = get_settings()
+    cfg = settings.psycopg_kwargs()
+    synthetic = state.get("test", {}).get("synthetic_game_ids", [])
+
+    with get_connection(cfg) as conn:
+        with conn.cursor() as cur:
+            if synthetic:
+                cur.execute("DELETE FROM games WHERE game_id = ANY(%s)", (synthetic,))
+            # Cascade deletes players, picks, user_players, tenant_members, tenant_weeks.
+            cur.execute("DELETE FROM tenants WHERE name = '_Test FE League'")
+            cur.execute("DELETE FROM users WHERE email = '_testfe@example.com'")
+        conn.commit()
+
+    os.remove(state_path)
+    print("[cli] ✅ FE test fixtures cleaned up.")
     return 0
 
 
@@ -705,6 +920,20 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_run_sql.add_argument("path", help="Path to .sql file")
     p_run_sql.set_defaults(func=cmd_run_sql)
+
+    # setup-fe-tests
+    p_setup_fe = sub.add_parser(
+        "setup-fe-tests",
+        help="Create Playwright FE test fixtures and write playwright/.test-state.json.",
+    )
+    p_setup_fe.set_defaults(func=cmd_setup_fe_tests)
+
+    # teardown-fe-tests
+    p_teardown_fe = sub.add_parser(
+        "teardown-fe-tests",
+        help="Remove FE test fixtures created by setup-fe-tests.",
+    )
+    p_teardown_fe.set_defaults(func=cmd_teardown_fe_tests)
 
     # show-email-recipients
     p_recip = sub.add_parser(

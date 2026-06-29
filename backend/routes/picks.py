@@ -227,6 +227,8 @@ async def upsert_picks_bulk(
             },
         )
         r = res.first()
+        if r is None:
+            raise HTTPException(status_code=500, detail="Upsert returned no row")
         out.append(
             PickOut(
                 pigeon_number=r[0],

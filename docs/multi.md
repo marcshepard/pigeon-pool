@@ -642,24 +642,63 @@ Build a durable backend test suite so future changes have less chance to break t
 - Snapshot tests (`test_snapshots.py`) updated to reflect post-reset-season DB state.
   Revert snapshots before restoring last year's DB for regression testing.
 
-## Stage 12: Frontend Tests
+## Stage 12: Frontend Tests ✅ COMPLETE
 
-Choose a framework (Playwright or Vitest + React Testing Library) and cover:
+Build a Playwright E2E test suite covering core user flows.
 
-- Login and tenant switch flow.
-- Enter Picks: submit, reject after lock, alt-player.
-- Picks and Results: before/after lock visibility, scoring display.
-- Analytics: tenant-scoped rows, top 5, MNF outcomes, best possible rank.
-- League Settings: rename, payout editor, season activation, roster management.
-- Season status badges update and persist.
+### Completion notes
 
-Note: `MnfOutcomes.tsx` uses `new Date()` directly (line 63) — the only place requiring
-genuine clock control. Will need injection or mocking for that component's tests.
+**Framework**: Playwright (`@playwright/test`) with Chromium only; configured in
+`frontend/playwright.config.ts`. Tests run sequentially (`fullyParallel: false`) because
+they share DB state.
 
-Suggested prompt:
+**Test architecture**:
+- `e2e/global-setup.ts` — calls `python -m backend.cli setup-fe-tests` to create an
+  isolated `_Test FE League` tenant with one player (`_TestFE`), a commissioner user
+  (`_testfe@example.com / testpass`), synthetic games, and lock times for all 18 weeks.
+  Writes `playwright/.test-state.json` with tokens and game IDs.
+- `e2e/global-teardown.ts` — calls `python -m backend.cli teardown-fe-tests` to delete
+  the test tenant and synthetic games. Picks created during tests are cleaned up via
+  cascade.
+- `e2e/helpers/auth.ts` — `setAuthToken` / `clearAuthToken` inject JWTs into
+  `localStorage` via `addInitScript` so tests start authenticated without logging in.
+- `e2e/helpers/state.ts` — reads `playwright/.test-state.json` for tenant/player/game IDs.
 
-> Build the Stage 12 frontend test suite using [chosen framework]. Cover the flows listed
-> in docs/multi.md Stage 12. Note the MnfOutcomes date dependency.
+**Spec files (35 tests, all passing)**:
+- `auth.spec.ts` (5) — login success/failure, unauthenticated redirect, tenant name in
+  app bar, tenant switcher visibility.
+- `picks.spec.ts` (4) — page loads with games, submit via home-by-3 easter egg
+  (double-click heading), lock rejection via API, alt-player via API.
+- `results.spec.ts` (5) — page loads, locked week shows table, picks/leaderboard API
+  returns 200, unlocked week hides other players.
+- `admin.spec.ts` (6) — commissioner pages accessible, league rename round-trips,
+  payouts visible, roster shows test player (via autocomplete open), 401 on bad token,
+  picks lock page loads.
+- `analytics.spec.ts` (8) — selectors populate, tabs present, Your Picks table renders,
+  Top 5 switches without error, pigeon selector non-empty, MNF/Top5 panel renders,
+  API returns data.
+- `snapshots.spec.ts` (7) — YTD leaderboard, YTD rendered row count, week 1 and 10
+  picks and leaderboard API responses, analytics week 1 headings, analytics Top 5 tab.
+  All snapshot tests skip when no real scored games exist in the DB.
+
+**Key design decisions**:
+- Analytics page uses conditional rendering (no MUI `TabPanel`); tests check for
+  `<table>` (Your Picks) or MnfOutcomes/Top5 text (Top 5 tab) instead of `[role=tabpanel]`.
+- `waitForResponse` removed from analytics tests: the test tenant has only one locked
+  week (week 1), so the page loads week 1 on mount; clicking the same week option is a
+  no-op and fires no new request.
+- Pick submission test uses the "home by 3" double-click easter egg to fill all 16 games
+  at once (single-game submit fails per-game validation).
+- Roster test opens the MUI Autocomplete before checking for the player name (names are
+  only visible when the dropdown is open).
+
+**Run commands** (`frontend/` directory):
+- `npm run test:e2e` — full suite
+- `npm run test:e2e:update` — regenerate snapshot JSON files
+
+**Backend CLI commands added** (`backend/cli.py`):
+- `setup-fe-tests` — creates `_Test FE League` fixtures; writes `playwright/.test-state.json`
+- `teardown-fe-tests` — removes fixtures; deletes state file
 
 ## Stage 13: Production Migration and Deployment
 

@@ -1,3 +1,70 @@
+# Test Suite Overview
+
+The project has two test suites:
+
+| Suite | Command | Count | Framework |
+|-------|---------|-------|-----------|
+| Backend | `pytest` (repo root) | 54 tests | pytest + FastAPI `TestClient` |
+| Frontend E2E | `npm run test:e2e` (in `frontend/`) | 35 tests | Playwright (Chromium) |
+
+Both suites run against the `pigeon_pool_multi` dev database and create/teardown their
+own isolated test tenants, so they never touch Tenant 1 data (except snapshot tests,
+which read-only query Tenant 1).
+
+---
+
+# Frontend E2E Test Design
+
+## Architecture
+
+**Global setup** (`e2e/global-setup.ts`) calls `python -m backend.cli setup-fe-tests`,
+which creates a `_Test FE League` tenant with:
+- One player: `_TestFE` (pigeon_number=1)
+- One commissioner user: `_testfe@example.com / testpass`
+- Lock times: the lowest scored week is locked (past); all other weeks use year-2099
+  lock times (unlocked). Week 18 is always unlocked for pick submission.
+- Writes `playwright/.test-state.json` with auth tokens and game IDs.
+
+**Global teardown** (`e2e/global-teardown.ts`) calls `teardown-fe-tests`, which
+deletes the tenant (cascading picks/players) and the state file.
+
+**Auth injection** (`e2e/helpers/auth.ts`): `setAuthToken` injects a pre-minted JWT
+into `localStorage` via `page.addInitScript` — tests start authenticated without
+clicking through the login form.
+
+## Spec files
+
+| File | Tests | What it covers |
+|------|-------|----------------|
+| `auth.spec.ts` | 5 | Login success/failure, redirect, tenant name in app bar, tenant switcher |
+| `picks.spec.ts` | 4 | Page loads, full submit via home-by-3 easter egg, lock rejection (API), alt-player (API) |
+| `results.spec.ts` | 5 | Page loads, locked week table, picks/leaderboard API, unlocked week privacy |
+| `admin.spec.ts` | 6 | Commissioner access, league rename, payouts, roster player, 401 on bad token, lock page |
+| `analytics.spec.ts` | 8 | Selectors, tabs, Your Picks table, Top 5 panel, pigeon selector, MNF/Top5 content, API |
+| `snapshots.spec.ts` | 7 | Golden-file API and rendered-content checks against the real Tenant 1 pool |
+
+## Design decisions
+
+**No `role=tabpanel`**: Analytics uses conditional rendering (`{tab === 0 && <Component />}`),
+not MUI `TabPanel`. Tests check for `<table>` (Your Picks) or MnfOutcomes/Top5 text (Top 5).
+
+**No `waitForResponse` for week selection**: The test tenant has only one locked week
+(the earliest week with real scored games). The analytics page defaults to that week on
+mount, so the picks response fires before the test can register a listener. Tests verify
+UI content directly instead.
+
+**Pick submission via easter egg**: The submit button validates that every game in the
+week has a pick. Week 2 has 16 real NFL games. The test double-clicks the "Enter picks"
+heading to auto-fill all games as home by 3, then submits.
+
+**Roster autocomplete**: Player names in the Admin Roster page live inside a collapsed
+MUI Autocomplete. Tests open the dropdown before asserting on player names.
+
+**Cleanup via cascade**: Picks submitted during tests are not deleted explicitly. Global
+teardown deletes the `_Test FE League` tenant, which cascades to players and picks.
+
+---
+
 # Backend Test Design
 
 ## Overview

@@ -38,6 +38,28 @@ To regenerate snapshots after an intentional schema or data change:
 pytest --update-snapshots
 ```
 
+## Frontend E2E tests
+
+Tests live in `frontend/e2e/` and use Playwright (Chromium). They spin up an isolated
+`_Test FE League` tenant in the dev DB for the duration of the run.
+
+```bash
+cd frontend && npm run test:e2e
+```
+
+Or use the VS Code task **pigeon FE tests**.
+
+The backend and frontend servers are started automatically if not already running. If
+your **pigeon pool** VS Code task is already up, Playwright reuses those servers and
+starts faster.
+
+To regenerate the FE snapshot golden files after an intentional data change:
+```bash
+cd frontend && npm run test:e2e:update
+```
+
+See [docs/tests.md](tests.md) for the full test design (both backend and frontend).
+
 ## Frontend type checking
 
 ```bash
