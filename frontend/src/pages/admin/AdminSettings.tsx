@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Alert, Box, Button, Divider, Stack, TextField, Typography } from "@mui/material";
-import { adminUpdateLeague, adminPutPayouts, getPayouts } from "../../backend/fetch";
+import { adminUpdateLeague, adminPutPayouts, getPayouts, getPoolInfo } from "../../backend/fetch";
 import { useAuth } from "../../auth/useAuth";
 import { useAppCache } from "../../hooks/useAppCache";
 import type { PayoutRow } from "../../backend/types";
@@ -55,14 +55,29 @@ export default function AdminSettings() {
       </Stack>
 
       <Divider sx={{ my: 4 }} />
-      <PayoutsEditor />
+      <ReturnsEditor />
     </Box>
   );
 }
 
-function PayoutsEditor() {
+function validateReturns(rows: PayoutRow[]): Record<number, string> {
+  const errors: Record<number, string> = {};
+  for (let i = 0; i < rows.length; i++) {
+    if (rows[i].points < 0) {
+      errors[rows[i].place] = "Must be ≥ 0";
+    } else if (i > 0 && rows[i].points > rows[i - 1].points) {
+      errors[rows[i].place] = `Must not exceed ${ordinal(rows[i - 1].place)} place (${rows[i - 1].points})`;
+    }
+  }
+  return errors;
+}
+
+function ReturnsEditor() {
   const cacheGetPayouts = useAppCache((s) => s.getPayouts);
   const cacheSetPayouts = useAppCache((s) => s.setPayouts);
+  const cacheGetPoolInfo = useAppCache((s) => s.getPoolInfo);
+  const cacheSetPoolInfo = useAppCache((s) => s.setPoolInfo);
+  const pigeonCount = useAppCache((s) => s.poolInfo?.data.pigeon_count ?? null);
 
   const [rows, setRows] = useState<PayoutRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -86,7 +101,17 @@ function PayoutsEditor() {
       .finally(() => setLoading(false));
   }, [cacheGetPayouts, cacheSetPayouts]);
 
-  const prizePool = rows.reduce((sum, r) => sum + r.points, 0) * 19;
+  useEffect(() => {
+    if (cacheGetPoolInfo()) return;
+    getPoolInfo()
+      .then((d) => cacheSetPoolInfo(d))
+      .catch(() => {/* non-fatal */});
+  }, [cacheGetPoolInfo, cacheSetPoolInfo]);
+
+  const totalSeasonReturn = rows.reduce((sum, r) => sum + r.points, 0) * 19;
+  const avgPerPigeon = pigeonCount ? Math.round(totalSeasonReturn / pigeonCount) : null;
+  const fieldErrors = validateReturns(rows);
+  const hasErrors = Object.keys(fieldErrors).length > 0;
 
   const handlePointsChange = (place: number, raw: string) => {
     const n = parseInt(raw.replace(/\D/g, "") || "0", 10);
@@ -109,13 +134,13 @@ function PayoutsEditor() {
     }
   };
 
-  if (loading) return <Typography variant="body2" color="text.secondary">Loading payouts…</Typography>;
+  if (loading) return <Typography variant="body2" color="text.secondary">Loading returns…</Typography>;
 
   return (
     <Box>
-      <Typography variant="h6" gutterBottom>Payouts</Typography>
+      <Typography variant="h6" gutterBottom>Returns</Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Prize amounts paid for each finishing place. The prize pool is the sum × 19 entries.
+        Return amounts for each finishing place. Leave blank if a given place doesn't have a return.
       </Typography>
       <Stack spacing={1.5} maxWidth={280}>
         {rows.map((r) => (
@@ -127,16 +152,21 @@ function PayoutsEditor() {
             size="small"
             inputProps={{ inputMode: "numeric", pattern: "\\d*" }}
             disabled={saving}
+            error={!!fieldErrors[r.place]}
+            helperText={fieldErrors[r.place]}
           />
         ))}
         <Typography variant="body2" color="text.secondary">
-          Prize pool: ${prizePool.toLocaleString()}
+          Total season return: {totalSeasonReturn.toLocaleString()}
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          Per pigeon return: {avgPerPigeon != null ? avgPerPigeon.toLocaleString() : "—"}
         </Typography>
         {saved && <Alert severity="success">Saved.</Alert>}
         {error && <Alert severity="error">{error}</Alert>}
         <Box>
-          <Button variant="contained" onClick={handleSave} disabled={saving || rows.length === 0}>
-            {saving ? "Saving…" : "Save payouts"}
+          <Button variant="contained" onClick={handleSave} disabled={saving || rows.length === 0 || hasErrors}>
+            {saving ? "Saving…" : "Save returns"}
           </Button>
         </Box>
       </Stack>

@@ -302,6 +302,21 @@ export function getResultsWeekLeaderboard(week: number): Promise<LeaderboardRow[
 }
 
 /**
+ * Fetch active pigeon count for the current tenant.
+ */
+export function getPoolInfo(): Promise<{ pigeon_count: number }> {
+  return apiFetch("/results/pool-info", {
+    method: "GET",
+    factory: (data: unknown) => {
+      if (!data || typeof data !== "object" || !("pigeon_count" in data)) {
+        throw new Error("Invalid pool-info response");
+      }
+      return data as { pigeon_count: number };
+    },
+  });
+}
+
+/**
  * Fetch leaderboard rows across all locked weeks (concatenated).
  */
 export function getResultsAllLeaderboards(): Promise<LeaderboardRow[]> {

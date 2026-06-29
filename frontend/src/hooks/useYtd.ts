@@ -4,12 +4,10 @@
  * Caches the result in app cache.
  */
 
-import { useEffect, useState } from "react";
-import { getResultsAllLeaderboards, getCurrentWeek } from "../backend/fetch";
-import { LeaderboardRow } from "../backend/types";
+import { useEffect, useMemo, useState } from "react";
+import { getResultsAllLeaderboards, getCurrentWeek, getPayouts } from "../backend/fetch";
+import { LeaderboardRow, type PayoutRow } from "../backend/types";
 import { useAppCache } from "../hooks/useAppCache";
-
-const RETURNS_BY_PLACE = [530, 270, 160, 100, 70] as const;
 
 export type WeekCell = { rank: number; score: number; points: number };
 export type YtdRow = {
@@ -25,12 +23,21 @@ export type YtdRow = {
 
 export function useYtd() {
   // ✅ select each store value separately (no object selector)
-  const getYtdCache      = useAppCache((s) => s.getYtd);
-  const setYtdCache      = useAppCache((s) => s.setYtd);
+  const getYtdCache         = useAppCache((s) => s.getYtd);
+  const setYtdCache         = useAppCache((s) => s.setYtd);
   const setCurrentWeekCache = useAppCache((s) => s.setCurrentWeek);
-  
+  const getPayoutsCache     = useAppCache((s) => s.getPayouts);
+  const setPayoutsCache     = useAppCache((s) => s.setPayouts);
+  const payoutsData         = useAppCache((s) => s.payouts?.data ?? null);
+
   // Subscribe to currentWeek for reactivity (refetch when week/status changes)
   const currentWeek = useAppCache((s) => s.currentWeek?.data ?? null);
+
+  // Derived reactively from Zustand so it's correct even when YTD comes from cache
+  const paidCount = useMemo(
+    () => payoutsData?.filter(p => p.points > 0).length ?? 0,
+    [payoutsData],
+  );
 
   const [rows, setRows]   = useState<YtdRow[]>([]);
   const [weeks, setWeeks] = useState<number[]>([]);
@@ -62,14 +69,25 @@ export function useYtd() {
           return;
         }
 
-        // 4) Fetch all leaderboards and filter out live week (unless final)
+        // 4) Fetch payouts (for return and paid-place calculations)
+        let payoutRows: PayoutRow[] = getPayoutsCache() ?? [];
+        if (payoutRows.length === 0) {
+          try {
+            payoutRows = await getPayouts();
+            setPayoutsCache(payoutRows);
+          } catch { /* non-fatal — returns will show as 0 */ }
+        }
+        const payoutsMap = new Map(payoutRows.map(p => [p.place, p.points]));
+        const paid = payoutRows.filter(p => p.points > 0).length;
+
+        // 5) Fetch all leaderboards and filter out live week (unless final)
         const weekly: LeaderboardRow[] = await getResultsAllLeaderboards();
         const filtered = current.status === "final" ? weekly : weekly.filter(w => w.week_number !== current.week);
 
-        // 4) Weeks list
+        // 6) Weeks list
         const weeksList = Array.from(new Set(filtered.map(w => w.week_number))).sort((a, b) => a - b);
 
-        // 5) Group by pigeon
+        // 7) Group by pigeon
         const byPigeon = new Map<number, YtdRow>();
         for (const w of filtered) {
           let r = byPigeon.get(w.pigeon_number);
@@ -89,7 +107,7 @@ export function useYtd() {
           r.byWeek[w.week_number] = { rank: w.rank, score: w.score, points: w.points };
         }
 
-        // 6) Tie counts for payouts
+        // 8) Tie counts for payouts
         const tieCounts = new Map<number, Map<number, number>>();
         for (const wk of weeksList) {
           const m = new Map<number, number>();
@@ -101,12 +119,12 @@ export function useYtd() {
         const payoutFor = (rank: number, tieCount: number) => {
           let pool = 0;
           for (let pos = rank; pos < rank + tieCount; pos++) {
-            if (pos >= 1 && pos <= 5) pool += RETURNS_BY_PLACE[pos - 1];
+            pool += payoutsMap.get(pos) ?? 0;
           }
           return tieCount > 0 ? pool / tieCount : 0;
         };
 
-        // 7) Aggregates
+        // 9) Aggregates
         for (const r of byPigeon.values()) {
           const cells = Object.values(r.byWeek);
           const numWeeks = cells.length;
@@ -115,7 +133,7 @@ export function useYtd() {
           const worst    = numWeeks >= 2 ? Math.max(...cells.map(w => w.points)) : 0;
           r.pointsAdj    = totalPts - worst;
 
-          r.top5 = cells.reduce((s, w) => s + (w.rank <= 5 ? 1 : 0), 0);
+          r.top5 = cells.reduce((s, w) => s + (w.rank <= paid ? 1 : 0), 0);
 
           let ret = 0;
           for (const [wkStr, cell] of Object.entries(r.byWeek)) {
@@ -126,7 +144,7 @@ export function useYtd() {
           r.returnTotal = ret;
         }
 
-        // 8) Ranks
+        // 10) Ranks
         {
           const arr = [...byPigeon.values()].sort((a, b) => a.pointsAdj - b.pointsAdj || a.pigeon_number - b.pigeon_number);
           let shown = 0, curr = 0, prev: number | null = null;
@@ -162,5 +180,5 @@ export function useYtd() {
     return () => { cancelled = true; };
   }, [getYtdCache, setYtdCache, setCurrentWeekCache, currentWeek]);
 
-  return { rows, weeks, loading, error };
+  return { rows, weeks, paidCount, loading, error };
 }

@@ -23,7 +23,7 @@ test.describe("league settings (admin)", () => {
     // Rename
     await input.clear();
     await input.fill("_Test FE League Renamed");
-    // Use exact match to avoid the "Save payouts" button also matching /save/i
+    // Use exact match to avoid the "Save returns" button also matching /save/i
     await page.getByRole("button", { name: "Save", exact: true }).click();
     await expect(page.getByText(/saved|success/i)).toBeVisible({ timeout: 5000 });
 
@@ -37,10 +37,10 @@ test.describe("league settings (admin)", () => {
     await expect(page.getByText(/saved|success/i)).toBeVisible({ timeout: 5000 });
   });
 
-  test("payouts editor shows and saves", async ({ page }) => {
+  test("returns editor shows and saves", async ({ page }) => {
     await page.goto("/admin/settings");
-    // Payouts section should render with at least one place row
-    await expect(page.getByText(/payout|prize/i).first()).toBeVisible({ timeout: 5000 });
+    // Returns section should render with at least one place row
+    await expect(page.getByText(/return/i).first()).toBeVisible({ timeout: 5000 });
   });
 
   test("roster tab shows the test player", async ({ page }) => {

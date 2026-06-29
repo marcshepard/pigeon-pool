@@ -20,7 +20,7 @@ import type { YtdRow } from "../hooks/useYtd";
 
 export default function YtdPage() {
   const { state } = useAuth();
-  const { rows, weeks, loading, error } = useYtd();
+  const { rows, weeks, paidCount, loading, error } = useYtd();
   const [snack, setSnack] = useState({ open: false, message: "", severity: "info" as Severity });
 
   // surface hook errors in the snackbar if you like
@@ -89,13 +89,13 @@ export default function YtdPage() {
         valueGetter: (r) => r.yearRankPts, renderCell: (r) => {
           const val = r.yearRankPts;
           const tie = (ptsCounts.get(val) ?? 0) > 1;
-          const star = val >= 1 && val <= 5 ? "*" : "";
+          const star = val >= 1 && val <= paidCount ? "*" : "";
           return `${tie ? "T" : ""}${val}${star}`;
         },
-        info: "Ranking for year based on total points (T=Tie, *=Top 5)" },
+        info: `Ranking for year based on total points (T=Tie, *=Top ${paidCount})` },
       { key: "top5",        header: "TOP",    align: "left",
         valueGetter: (r) => r.top5, renderCell: (r) => String(r.top5),
-        info: "Number of weekly finishes in the top five" },
+        info: `Number of weekly finishes in the top ${paidCount}` },
       { key: "returnTotal", header: "RETURN", align: "left",
         valueGetter: (r) => r.returnTotal, renderCell: (r) => Number.isInteger(r.returnTotal) ? String(r.returnTotal) : r.returnTotal.toFixed(2),
         info: "Total return, year-to-date" },
@@ -109,7 +109,7 @@ export default function YtdPage() {
     );
 
     return cols;
-  }, [weeks, rows]);
+  }, [weeks, rows, paidCount]);
 
   return (
     <PageFit

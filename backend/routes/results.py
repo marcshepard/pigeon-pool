@@ -39,6 +39,10 @@ router = APIRouter(prefix="/results", tags=["results"])
 # Models
 # =============================================================================
 
+class PoolInfo(BaseModel):
+    pigeon_count: int
+
+
 class WeekPicksRow(BaseModel):
     """Pick row joined with game metadata for a specific locked week."""
     pigeon_number: int
@@ -160,6 +164,23 @@ async def _ensure_week_locked(db: AsyncSession, week: int, tenant_id: int) -> No
 # =============================================================================
 # Endpoints
 # =============================================================================
+
+@router.get(
+    "/pool-info",
+    response_model=PoolInfo,
+    summary="Active pigeon count for this tenant",
+)
+async def get_pool_info(
+    db: AsyncSession = Depends(get_db),
+    me=Depends(require_user),
+):
+    """Return the number of active pigeons in the tenant."""
+    res = await db.execute(
+        text("SELECT COUNT(*) FROM players WHERE tenant_id = :tid"),
+        {"tid": me.tenant_id},
+    )
+    return PoolInfo(pigeon_count=res.scalar() or 0)
+
 
 @router.get(
     "/weeks/{week}/picks",

@@ -17,9 +17,9 @@ export default function AdminPage() {
   return (
     <PageScroll>
       <Tabs value={value} sx={{ mb: 2 }} centered>
-        <Tab value="picks"    label="Picks"    component={NavLink} to="/admin/picks" />
         <Tab value="pigeons"  label="Roster"   component={NavLink} to="/admin/pigeons" />
         <Tab value="settings" label="Settings" component={NavLink} to="/admin/settings" />
+        <Tab value="picks"    label="Picks"    component={NavLink} to="/admin/picks" />
       </Tabs>
       <Outlet />
     </PageScroll>

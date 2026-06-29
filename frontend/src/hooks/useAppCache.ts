@@ -42,6 +42,7 @@ type AppCacheState = {
   resultsByWeek: Record<number, TimeStamped<ResultsWeekCache> | undefined>;
   ytd: TimeStamped<YtdCache> | null;
   payouts: TimeStamped<PayoutRow[]> | null;
+  poolInfo: TimeStamped<{ pigeon_count: number }> | null;
 
   // actions
   setTTL: (ms: number) => void;
@@ -58,6 +59,9 @@ type AppCacheState = {
   setPayouts: (rows: PayoutRow[]) => void;
   getPayouts: () => PayoutRow[] | null;
 
+  setPoolInfo: (info: { pigeon_count: number }) => void;
+  getPoolInfo: () => { pigeon_count: number } | null;
+
   invalidateAll: () => void;
   sweep: () => void;
 };
@@ -72,6 +76,7 @@ export const useAppCache = create<AppCacheState>()(
       resultsByWeek: {},
       ytd: null,
       payouts: null,
+      poolInfo: null,
 
       setTTL: (ms) => set({ ttlMs: ms }),
 
@@ -139,7 +144,17 @@ export const useAppCache = create<AppCacheState>()(
         return Date.now() - entry.at > get().ttlMs ? null : entry.data;
       },
 
-      invalidateAll: () => set({ resultsByWeek: {}, ytd: null, payouts: null }),
+      setPoolInfo: (info) => {
+        set({ poolInfo: { at: Date.now(), data: info } });
+      },
+
+      getPoolInfo: () => {
+        const entry = get().poolInfo;
+        if (!entry) return null;
+        return Date.now() - entry.at > get().ttlMs ? null : entry.data;
+      },
+
+      invalidateAll: () => set({ resultsByWeek: {}, ytd: null, payouts: null, poolInfo: null }),
 
       sweep: () => {
         const now = Date.now();
@@ -152,10 +167,12 @@ export const useAppCache = create<AppCacheState>()(
         }
         const ytd = get().ytd;
         const payouts = get().payouts;
+        const poolInfo = get().poolInfo;
         set({
           resultsByWeek: freshWeeks,
           ytd: ytd && now - ytd.at <= ttlMs ? ytd : null,
           payouts: payouts && now - payouts.at <= ttlMs ? payouts : null,
+          poolInfo: poolInfo && now - poolInfo.at <= ttlMs ? poolInfo : null,
           _lastSweepAt: now,
         });
       },
