@@ -269,12 +269,16 @@ def scored_games(db_conn, test_data):
     Tenant B gets the same locked weeks (so isolation tests can call results endpoints).
 
     If the DB has no scored games (e.g. after reset-season), two synthetic games are
-    inserted into week 1 with known scores (KC 21 BUF 14, LAR 10 SF 3) and removed
-    at teardown.
+    written into week 1 with known scores (KC 21 BUF 14, LAR 10 SF 3). If a real game
+    already occupies that (week, home, away) slot — e.g. the actual schedule's real,
+    not-yet-played Week 1 LAR@SF — it's temporarily overwritten and restored to its
+    original values at teardown instead of being deleted; otherwise a fresh row is
+    inserted and deleted at teardown.
     """
     tenant_a_id = test_data["tenant_a_id"]
     tenant_b_id = test_data["tenant_b_id"]
     synthetic_ids = []
+    original_games = []
 
     with db_conn.cursor() as cur:
         cur.execute("""
@@ -289,22 +293,43 @@ def scored_games(db_conn, test_data):
         scored_rows = cur.fetchall()
 
     if not scored_rows:
+        # Synthetic (week, kickoff, home, away, home_score, away_score). Week 1's real
+        # matchups can coincide with these (e.g. a real, not-yet-played LAR@SF game) once
+        # the season's actual schedule is loaded, since (week_number, home_abbr, away_abbr)
+        # is unique. Where that happens, temporarily overwrite the real row instead of
+        # failing on the conflict, and restore its original values at teardown so a real
+        # scheduled game isn't left with a fake final score.
+        synthetic_games = [
+            (1, "2020-01-05 18:00:00+00", "KC", "BUF", 21, 14),
+            (1, "2020-01-05 21:30:00+00", "LAR", "SF", 10, 3),
+        ]
+        new_rows = []
         with db_conn.cursor() as cur:
-            cur.execute("""
-                INSERT INTO games (week_number, kickoff_at, home_abbr, away_abbr, status, home_score, away_score)
-                VALUES (1, '2020-01-05 18:00:00+00', 'KC', 'BUF', 'final', 21, 14)
-                RETURNING game_id
-            """)
-            g1 = cur.fetchone()[0]
-            cur.execute("""
-                INSERT INTO games (week_number, kickoff_at, home_abbr, away_abbr, status, home_score, away_score)
-                VALUES (1, '2020-01-05 21:30:00+00', 'LAR', 'SF', 'final', 10, 3)
-                RETURNING game_id
-            """)
-            g2 = cur.fetchone()[0]
+            for week, kickoff, home, away, hs, as_ in synthetic_games:
+                cur.execute(
+                    "SELECT game_id, kickoff_at, status, home_score, away_score "
+                    "FROM games WHERE week_number = %s AND home_abbr = %s AND away_abbr = %s",
+                    (week, home, away),
+                )
+                existing = cur.fetchone()
+                if existing:
+                    gid = existing[0]
+                    cur.execute("""
+                        UPDATE games SET kickoff_at = %s, status = 'final', home_score = %s, away_score = %s
+                        WHERE game_id = %s
+                    """, (kickoff, hs, as_, gid))
+                    original_games.append(existing)
+                else:
+                    cur.execute("""
+                        INSERT INTO games (week_number, kickoff_at, home_abbr, away_abbr, status, home_score, away_score)
+                        VALUES (%s, %s, %s, %s, 'final', %s, %s)
+                        RETURNING game_id
+                    """, (week, kickoff, home, away, hs, as_))
+                    gid = cur.fetchone()[0]
+                    synthetic_ids.append(gid)
+                new_rows.append((gid, week, hs, as_))
         db_conn.commit()
-        synthetic_ids.extend([g1, g2])
-        scored_rows = [(g1, 1, 21, 14), (g2, 1, 10, 3)]
+        scored_rows = new_rows
 
     scored_weeks = {r[1] for r in scored_rows}
 
@@ -365,6 +390,16 @@ def scored_games(db_conn, test_data):
         db_conn.rollback()
         with db_conn.cursor() as cur:
             cur.execute("DELETE FROM games WHERE game_id = ANY(%s)", (synthetic_ids,))
+        db_conn.commit()
+
+    if original_games:
+        db_conn.rollback()
+        with db_conn.cursor() as cur:
+            for gid, kickoff_at, status, home_score, away_score in original_games:
+                cur.execute("""
+                    UPDATE games SET kickoff_at = %s, status = %s, home_score = %s, away_score = %s
+                    WHERE game_id = %s
+                """, (kickoff_at, status, home_score, away_score, gid))
         db_conn.commit()
 
 

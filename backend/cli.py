@@ -558,22 +558,48 @@ def cmd_setup_fe_tests(_: argparse.Namespace) -> int:
 
             has_real_games = bool(scored_rows)
             synthetic_ids: list[int] = []
+            overwritten_games: list[dict] = []
 
             if not scored_rows:
-                cur.execute("""
-                    INSERT INTO games (week_number, kickoff_at, home_abbr, away_abbr, status, home_score, away_score)
-                    VALUES (1, '2020-01-05 18:00:00+00', 'KC', 'BUF', 'final', 21, 14)
-                    RETURNING game_id
-                """)
-                g1 = cur.fetchone()[0]  # type: ignore[index]
-                cur.execute("""
-                    INSERT INTO games (week_number, kickoff_at, home_abbr, away_abbr, status, home_score, away_score)
-                    VALUES (1, '2020-01-05 21:30:00+00', 'LAR', 'SF', 'final', 10, 3)
-                    RETURNING game_id
-                """)
-                g2 = cur.fetchone()[0]  # type: ignore[index]
-                synthetic_ids.extend([g1, g2])
-                scored_rows = [(g1, 1, 21, 14), (g2, 1, 10, 3)]
+                # (week, kickoff, home, away, home_score, away_score). A real, not-yet-played
+                # game can already occupy this (week_number, home_abbr, away_abbr) slot once
+                # the season's actual schedule is loaded — overwrite it temporarily rather than
+                # failing on the unique-constraint conflict, and restore it in teardown.
+                synthetic_games = [
+                    (1, "2020-01-05 18:00:00+00", "KC", "BUF", 21, 14),
+                    (1, "2020-01-05 21:30:00+00", "LAR", "SF", 10, 3),
+                ]
+                new_rows = []
+                for week, kickoff, home, away, hs, away_s in synthetic_games:
+                    cur.execute(
+                        "SELECT game_id, kickoff_at, status, home_score, away_score "
+                        "FROM games WHERE week_number = %s AND home_abbr = %s AND away_abbr = %s",
+                        (week, home, away),
+                    )
+                    existing = cur.fetchone()
+                    if existing:
+                        gid, orig_kick, orig_status, orig_hs, orig_as = existing
+                        cur.execute("""
+                            UPDATE games SET kickoff_at = %s, status = 'final', home_score = %s, away_score = %s
+                            WHERE game_id = %s
+                        """, (kickoff, hs, away_s, gid))
+                        overwritten_games.append({
+                            "game_id": gid,
+                            "kickoff_at": orig_kick.isoformat(),
+                            "status": orig_status,
+                            "home_score": orig_hs,
+                            "away_score": orig_as,
+                        })
+                    else:
+                        cur.execute("""
+                            INSERT INTO games (week_number, kickoff_at, home_abbr, away_abbr, status, home_score, away_score)
+                            VALUES (%s, %s, %s, %s, 'final', %s, %s)
+                            RETURNING game_id
+                        """, (week, kickoff, home, away, hs, away_s))
+                        gid = cur.fetchone()[0]  # type: ignore[index]
+                        synthetic_ids.append(gid)
+                    new_rows.append((gid, week, hs, away_s))
+                scored_rows = new_rows
 
             scored_weeks = {r[1] for r in scored_rows}
             scored_week = min(scored_weeks)
@@ -683,6 +709,7 @@ def cmd_setup_fe_tests(_: argparse.Namespace) -> int:
             "submission_game_id": submission_gid,
             "submission_week": submission_week,
             "synthetic_game_ids": synthetic_ids,
+            "overwritten_games": overwritten_games,
         },
         "snapshot": {
             "tenant_id": snap_tenant_id,
@@ -717,11 +744,17 @@ def cmd_teardown_fe_tests(_: argparse.Namespace) -> int:
     settings = get_settings()
     cfg = settings.psycopg_kwargs()
     synthetic = state.get("test", {}).get("synthetic_game_ids", [])
+    overwritten = state.get("test", {}).get("overwritten_games", [])
 
     with get_connection(cfg) as conn:
         with conn.cursor() as cur:
             if synthetic:
                 cur.execute("DELETE FROM games WHERE game_id = ANY(%s)", (synthetic,))
+            for g in overwritten:
+                cur.execute("""
+                    UPDATE games SET kickoff_at = %s, status = %s, home_score = %s, away_score = %s
+                    WHERE game_id = %s
+                """, (g["kickoff_at"], g["status"], g["home_score"], g["away_score"], g["game_id"]))
             # Cascade deletes players, picks, user_players, tenant_members, tenant_weeks.
             cur.execute("DELETE FROM tenants WHERE name = '_Test FE League'")
             cur.execute("DELETE FROM users WHERE email = '_testfe@example.com'")
