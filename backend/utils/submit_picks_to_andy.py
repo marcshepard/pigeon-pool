@@ -176,7 +176,7 @@ async def _enter_form(page) -> None:
 
 async def submit_to_andy(body: SubmitBody, deadline_sec: int = DEFAULT_DEADLINE_SEC) -> None:
     """ Submits picks to Andy's Pigeon Pool survey site using Playwright. """
-    url = f"https://pigeonpool.survey.fm/week{str(body.week).zfill(2)}-25"
+    url = f"https://pigeonpool.survey.fm/week{str(body.week).zfill(2)}-26"
     info(f"Submitting picks to Andy's Pigeon Pool: {url}")
 
     async def _run() -> None:
