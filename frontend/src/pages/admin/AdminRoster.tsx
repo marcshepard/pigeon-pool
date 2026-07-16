@@ -86,7 +86,7 @@ export default function AdminRoster() {
   return (
     <Box>
       <Typography variant="body1" align="center" gutterBottom sx={{ mb: 2 }}>
-        Manage users (who can log in) and pigeons.
+        Manage pigeons and users
       </Typography>
 
       {loading && <Alert severity="info">Loading…</Alert>}
@@ -94,24 +94,6 @@ export default function AdminRoster() {
 
       {!loading && !error && (
         <Stack direction={{ xs: "column", md: "row" }} spacing={3} alignItems="flex-start">
-          <Box flex={1}>
-            <UsersPanel
-              pigeons={pigeons}
-              users={users}
-              selected={selectedUser}
-              onSelect={(email) => {
-                const next = new URLSearchParams(sp);
-                if (!email) next.delete("user");
-                else next.set("user", email);
-                setSp(next, { replace: true });
-              }}
-              onUsersChanged={(nextUsers) => setUsers(nextUsers)}
-              onSnackbar={(message, severity) => setSnackbar({ open: true, message, severity })}
-            />
-          </Box>
-
-          <Divider flexItem orientation="vertical" sx={{ display: { xs: "none", md: "block" } }} />
-
           <Box flex={1}>
             <PigeonsPanel
               pigeons={pigeons}
@@ -130,6 +112,24 @@ export default function AdminRoster() {
                 setPigeons((arr) => arr.map((p) => (p.player_id === updated.player_id ? updated : p)));
               }}
               refreshUsers={async () => setUsers(await adminGetUsers())}
+              onSnackbar={(message, severity) => setSnackbar({ open: true, message, severity })}
+            />
+          </Box>
+
+          <Divider flexItem orientation="vertical" sx={{ display: { xs: "none", md: "block" } }} />
+
+          <Box flex={1}>
+            <UsersPanel
+              pigeons={pigeons}
+              users={users}
+              selected={selectedUser}
+              onSelect={(email) => {
+                const next = new URLSearchParams(sp);
+                if (!email) next.delete("user");
+                else next.set("user", email);
+                setSp(next, { replace: true });
+              }}
+              onUsersChanged={(nextUsers) => setUsers(nextUsers)}
               onSnackbar={(message, severity) => setSnackbar({ open: true, message, severity })}
             />
           </Box>
@@ -304,7 +304,7 @@ function PigeonsPanel({
       </Typography>
 
       <Typography variant="body2" sx={{ mb: 2 }}>
-        Create new pigeons or change a pigeon's name here.
+        Create new pigeons or change a pigeon's name
       </Typography>
 
       <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}>

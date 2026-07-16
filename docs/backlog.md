@@ -5,6 +5,17 @@ Known improvements that are out of scope for the current multi-tenancy milestone
 
 ## Commissioner / admin UX
 
+**League-wide "picks open" gate**
+Right now nothing stops picks before a commissioner is ready — the lock trigger treats a
+missing `tenant_weeks` row as *unlocked*, not locked (see docs/architecture.md). A
+per-player `season_status = 'active'` gate was considered but rejected: with a 67-pigeon
+pool, toggling each one individually before opening picks is too much manual work for the
+commissioner. Prefer a single tenant-level flag (e.g. `tenants.picks_open`) checked
+alongside the per-week lock, toggled once via a League Settings button — gives the
+commissioner time to confirm the season's roster without a raw 403 leaking through, and
+last year's players can still log in and browse either way. Needs a friendly frontend
+message in `EnterPicks.tsx` (not a raw error) when picks aren't open yet.
+
 **Configurable "top N pays" threshold**
 Currently hardcoded to 5 in the analytics, YTD, and About pages. Each commissioner
 should be able to set how many places pay out (e.g. top 3 or top 10). Requires adding

@@ -204,5 +204,6 @@ we go standalone next year, the following changes should be made to the BE (or a
 |----------|----------|
 | [docs/contributing.md](docs/contributing.md) | Running the test suite, snapshot update workflow |
 | [docs/frontend.md](docs/frontend.md) | Frontend directory structure, key data flows, build commands |
-| [docs/multi.md](docs/multi.md) | Multi-tenant migration plan and per-stage completion notes |
+| [docs/architecture.md](docs/architecture.md) | Multi-tenancy data model, auth/JWT, onboarding model, scheduler, known limitations |
+| [docs/deployment.md](docs/deployment.md) | Production migration steps + new-season runbook (temporary — deleted after the migration) |
 | [docs/backlog.md](docs/backlog.md) | Known improvements deferred from the multi-tenancy milestone |

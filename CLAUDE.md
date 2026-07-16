@@ -1,0 +1,1 @@
+Project instructions live in [AGENTS.md](AGENTS.md) — read that file.
