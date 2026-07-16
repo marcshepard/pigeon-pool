@@ -178,7 +178,7 @@ export default function EnterPicksPage() {
     
     // If already cached, use it
     if (currentWeek) {
-      const defaultWeek = currentWeek.week + 1;
+      const defaultWeek = currentWeek.any_locked ? currentWeek.week + 1 : currentWeek.week;
       // Don't set week > 18 (season over)
       if (defaultWeek <= 18) {
         setWeek(defaultWeek ?? "");
@@ -197,7 +197,7 @@ export default function EnterPicksPage() {
         console.log("EnterPicks: fetched current week:", cw);
         if (cancelled) return;
         setCurrentWeekCache(cw);
-        const defaultWeek = cw.week + 1;
+        const defaultWeek = cw.any_locked ? cw.week + 1 : cw.week;
         // Don't set week > 18 (season over)
         if (defaultWeek <= 18) {
           setWeek(defaultWeek ?? "");
@@ -219,7 +219,7 @@ export default function EnterPicksPage() {
   // Future week options (next_picks_week..18), fallback start=1
   const futureWeeks = useMemo(() => {
     if (!currentWeek) return [];
-    const start = currentWeek.week + 1;
+    const start = currentWeek.any_locked ? currentWeek.week + 1 : currentWeek.week;
     console.log("EnterPicks: useMemo using start week:", start);
     if (start == null) return [];
     const end = 18;

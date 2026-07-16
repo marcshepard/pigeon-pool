@@ -5,13 +5,13 @@
       "PowerShell(.venv*)",
       "PowerShell(npx *)",
       "PowerShell(npm *)",
-      "PowerShell(npx playwright*)",
+      "PowerShell(cd *)",
+      "Bash(cd *)",
       "Bash(python *)",
       "Bash(npx *)",
       "Bash(npm *)",
-      "Bash(node -e ' *)",
-      "PowerShell(& \"C:\\\\Users\\\\marcs\\\\anaconda3\\\\python.exe\" -m pytest --version 2>&1)",
-      "PowerShell(& \"C:\\\\Users\\\\marcs\\\\anaconda3\\\\python.exe\" -m pytest tests/test_score_sync.py -v 2>&1)"
+      "Bash(find *)",
+      "Bash(node -e ' *)"
     ]
   }
 }

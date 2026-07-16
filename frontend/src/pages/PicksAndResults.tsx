@@ -48,7 +48,7 @@ export default function PicksheetPage() {
   }, [autoScroll]);
 
   const user = useAuth().me;
-  const { lockedWeeks } = useSchedule();
+  const { lockedWeeks, loading: scheduleLoading } = useSchedule();
   const [week, setWeek] = useState<number | null>(null);
   const [snack, setSnack] = useState({ open: false, message: "", severity: "info" as Severity });
 
@@ -58,6 +58,9 @@ export default function PicksheetPage() {
       setWeek(lockedWeeks[lockedWeeks.length - 1]);
     }
   }, [lockedWeeks, week]);
+
+  // True once we know for certain no week has locked yet this season
+  const noDataYet = !scheduleLoading && lockedWeeks.length === 0;
 
   const { rows, games, currentWeek, consensusRow, loading, error } = useResults(week);
 
@@ -283,26 +286,35 @@ export default function PicksheetPage() {
                   value: String(w),
                   label: `Week ${w}`,
                 }))}
+                sx={{ minWidth: 90 }}
               />
 
               {/* Title */}
-              <Typography
-                variant="h6"
-                fontWeight="bold"
-                sx={{ flex: 1, textAlign: 'center' }}
-                style={{ margin: 0 }}
-              >
-                {week == null
-                  ? "Loading results…"
-                  : week == currentWeek?.week ? 
-                    (currentWeek?.status === "final"
-                      ? "Final results"
-                      : currentWeek?.status === "scheduled"
-                        ? "Picks"
-                        : "Partial results")
-                      : "Final results"
-                }
-              </Typography>
+              <Box sx={{ flex: 1, textAlign: 'center' }}>
+                <Typography
+                  variant="h6"
+                  fontWeight="bold"
+                  style={{ margin: 0 }}
+                >
+                  {noDataYet
+                    ? "No data"
+                    : week == null
+                      ? "Loading results…"
+                      : week == currentWeek?.week ?
+                        (currentWeek?.status === "final"
+                          ? "Final results"
+                          : currentWeek?.status === "scheduled"
+                            ? "Picks"
+                            : "Partial results")
+                          : "Final results"
+                  }
+                </Typography>
+                {noDataYet && (
+                  <Typography variant="body2" color="text.secondary">
+                    Come back after the Week 1 submission deadline to see everyone's picks.
+                  </Typography>
+                )}
+              </Box>
 
               {/* Export & Print */}
               <Box display="flex" justifyContent="flex-end" alignItems="center" gap={1}>
@@ -321,7 +333,7 @@ export default function PicksheetPage() {
 
             {loading ? (
               <Alert severity="info">Loading…</Alert>
-            ) : (
+            ) : noDataYet ? null : (
               <>
                 {showResultsCols && games.some(g => g.status === "in_progress") && (
                   <>
@@ -363,7 +375,7 @@ export default function PicksheetPage() {
           </Box>
         }
       >
-        {!loading && (
+        {!loading && !noDataYet && (
           <StackColumn>
             <PrintArea className="print-grid-area" sx={{ flex: 1, minHeight: 0 }}>
               <DataGridLite<ResultsRow>

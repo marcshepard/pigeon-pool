@@ -48,6 +48,7 @@ class CurrentWeek(BaseModel):
     """ Current scheduling state """
     week: int
     status: str  # "scheduled" | "in_progress" | "final"
+    any_locked: bool  # False before any week has ever locked (week is a 1-fallback, not an actual lock)
 
 # ---------- SQL ----------
 
@@ -78,6 +79,7 @@ async def get_current_week(
         LIMIT 1
     """), {"tenant_id": me.tenant_id})).first()
 
+    any_locked = bool(next_row)
     current_week = next_row[0] if (next_row and next_row[0] > 1) else 1
 
     # Get all games for current_week
@@ -98,6 +100,7 @@ async def get_current_week(
     return CurrentWeek(
         week=current_week,
         status=week_status,
+        any_locked=any_locked,
     )
 
 

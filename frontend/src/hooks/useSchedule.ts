@@ -21,6 +21,7 @@ export function useSchedule() {
   // Compute locked weeks based on current week
   const lockedWeeks = useMemo(() => {
     if (!currentWeekFromCache) return [];
+    if (!currentWeekFromCache.any_locked) return [];
     return computeLockedWeeks(currentWeekFromCache.week + 1);
   }, [currentWeekFromCache]);
 

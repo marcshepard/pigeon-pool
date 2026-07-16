@@ -28,15 +28,18 @@ function uniqBy<T, K>(arr: T[], keyFn: (t: T) => K): T[] {
 
 export default function AnalyticsPage() {
   const { me } = useAuth();
-  const { lockedWeeks, currentWeek } = useSchedule();
-  
-  // Default week: current if available, else last locked
+  const { lockedWeeks, currentWeek, loading: scheduleLoading } = useSchedule();
+
+  // True once we know for certain no week has locked yet this season
+  const noDataYet = !scheduleLoading && lockedWeeks.length === 0;
+
+  // Default week: most recently locked week (currentWeek.week is only meaningful once any_locked)
   const [week, setWeek] = useState<number | "">("");
   useEffect(() => {
-    if (week === "" && (currentWeek?.week || lockedWeeks.length)) {
-      setWeek(currentWeek?.week || lockedWeeks[lockedWeeks.length - 1]);
+    if (week === "" && currentWeek?.any_locked) {
+      setWeek(currentWeek.week);
     }
-  }, [week, currentWeek, lockedWeeks]);
+  }, [week, currentWeek]);
 
   // Default pigeon: self
   const [pigeon, setPigeon] = useState<number | "">("");
@@ -120,6 +123,7 @@ export default function AnalyticsPage() {
           id="week-select"
           labelId="week-label"
           size="small"
+          sx={{ minWidth: 90 }}
         />
         
         <Typography variant="h6" fontWeight="bold" sx={{ flex: 1, textAlign: "center" }}>
@@ -153,15 +157,25 @@ export default function AnalyticsPage() {
 
       {/* Tab panels */}
       <PageFit.ScrollArea>
-        {tab === 0 && week && pigeon && (
-          <RemainingGames week={Number(week)} pigeon={Number(pigeon)} />
-        )}
-        {tab === 1 && week && pigeon && (
-          allSundayFinal ? (
-            <MnfOutcomes pigeon={Number(pigeon)} week={Number(week)} />
-          ) : (
-            <Top5Playground pigeon={Number(pigeon)} week={Number(week)} />
-          )
+        {noDataYet ? (
+          <Stack alignItems="center" sx={{ mt: 4, textAlign: "center" }} spacing={1}>
+            <Typography variant="body2" color="text.secondary">
+              Come back after the Week 1 submission deadline to see your picks and analytics.
+            </Typography>
+          </Stack>
+        ) : (
+          <>
+            {tab === 0 && week && pigeon && (
+              <RemainingGames week={Number(week)} pigeon={Number(pigeon)} />
+            )}
+            {tab === 1 && week && pigeon && (
+              allSundayFinal ? (
+                <MnfOutcomes pigeon={Number(pigeon)} week={Number(week)} />
+              ) : (
+                <Top5Playground pigeon={Number(pigeon)} week={Number(week)} />
+              )
+            )}
+          </>
         )}
       </PageFit.ScrollArea>
     </PageFit>

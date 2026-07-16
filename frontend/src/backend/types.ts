@@ -225,6 +225,7 @@ export type WeekState =
 export class CurrentWeek {
   week: number;                   // Current week number
   status: WeekState;              // State of the current week
+  any_locked: boolean;            // False before any week has ever locked (week is a 1-fallback, not an actual lock)
 
   constructor(data: unknown) {
     if (!isRecord(data)) {
@@ -232,6 +233,7 @@ export class CurrentWeek {
     }
     this.week = Number(data.week);
     this.status = data.status as WeekState;
+    this.any_locked = Boolean(data.any_locked);
   }
 }
 
