@@ -659,15 +659,15 @@ async def create_user(
     me=Depends(require_admin),
 ):
     """
-    Atomically creates the user account and adds them to this tenant with the given
-    primary pigeon. The pigeon must already exist in this tenant. User is given a
-    random placeholder password and must use password-reset before first login.
+    Atomically adds the user to this tenant with the given primary pigeon. If the email
+    belongs to an existing user (e.g. a member of another tenant), that account is linked
+    into this tenant rather than creating a duplicate. Otherwise a new user account is
+    created with a random placeholder password; the user must use password-reset before
+    first login. The pigeon must already exist in this tenant.
     """
     debug("admin: create_user called", tenant_id=me.tenant_id, email=user.email)
 
     existing = (await db.execute(GET_USER_ID_BY_EMAIL_SQL, {"email": user.email})).first()
-    if existing:
-        raise HTTPException(status_code=409, detail=f"User {user.email} already exists")
 
     player_row = (await db.execute(GET_PLAYER_BY_NUMBER_SQL, {
         "tenant_id": me.tenant_id,
@@ -677,16 +677,21 @@ async def create_user(
         raise HTTPException(status_code=404, detail=f"Pigeon #{user.primary_pigeon} not found in this tenant")
     player_id = player_row[0]
 
-    result = (await db.execute(INSERT_USER_SQL, {
-        "email": user.email,
-        "password_hash": _random_password_hash(),
-    })).first()
-    uid = result[0]
+    if existing:
+        uid = existing[0]
+        already_member = (await db.execute(text("""
+            SELECT 1 FROM tenant_members WHERE tenant_id = :tenant_id AND user_id = :uid
+        """), {"tenant_id": me.tenant_id, "uid": uid})).first()
+        if already_member:
+            raise HTTPException(status_code=409, detail=f"User {user.email} already exists in this league")
+    else:
+        result = (await db.execute(INSERT_USER_SQL, {
+            "email": user.email,
+            "password_hash": _random_password_hash(),
+        })).first()
+        uid = result[0]
 
-    await db.execute(text("""
-        INSERT INTO user_players (user_id, player_id, role)
-        VALUES (:uid, :player_id, 'owner')
-    """), {"uid": uid, "player_id": player_id})
+    await db.execute(INSERT_PLAYER_OWNER_SQL, {"user_id": uid, "player_id": player_id})
 
     await db.execute(text("""
         INSERT INTO tenant_members (tenant_id, user_id, role, primary_player_id)

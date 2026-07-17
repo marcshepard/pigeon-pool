@@ -7,7 +7,7 @@ The project has two test suites:
 | Backend | `pytest` (repo root) | 54 tests | pytest + FastAPI `TestClient` |
 | Frontend E2E | `npm run test:e2e` (in `frontend/`) | 35 tests | Playwright (Chromium) |
 
-Both suites run against the `pigeon_pool_multi` dev database and create/teardown their
+Both suites run against the dev database configured in `backend/.env` and create/teardown their
 own isolated test tenants, so they never touch Tenant 1 data (except snapshot tests,
 which read-only query Tenant 1).
 
@@ -69,7 +69,7 @@ teardown deletes the `_Test FE League` tenant, which cascades to players and pic
 
 ## Overview
 
-The backend test suite lives in `tests/` and uses pytest against the `pigeon_pool_multi` development database. Tests are organized by feature area:
+The backend test suite lives in `tests/` and uses pytest against the dev database configured in `backend/.env`. Tests are organized by feature area:
 
 | File | What it tests |
 |------|---------------|

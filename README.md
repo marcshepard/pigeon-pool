@@ -18,39 +18,12 @@ Web app for the pigeon pool
 | ------ | ----------- | ------- |
 | dev    | development | localhost development |
 | main   | production  | azure hosted app, CI/CD using github actions |
-| multi  | development | multi-tenancy migration work (uses `pigeon_pool_multi` DB clone) |
 
 Environment configuration:
 * .env - default non-secret values for dev/localhost
 * .env.development.local - secrets for dev/localhost (or just use environment variables) - gitignore'd
 * .env.production - overrides of non-secrets in .env for main/production
 Note: there is no .env.production.local; production secrets are stored as Azure environment variables
-
-### Switching between databases (multi-tenancy development)
-
-The `multi` branch sets `POSTGRES_DB=pigeon_pool_multi` in `backend/.env`. Checking out that branch automatically points the app at the migration clone. Checking out `main` or `dev` restores `POSTGRES_DB=pigeon_pool`.
-
-To recreate the clone from scratch:
-```bash
-# Windows (PowerShell) — uses the password from backend/.env.development.local
-$env:PGPASSWORD = "LetMeIn!"
-createdb -U postgres pigeon_pool_multi
-pg_dump -U postgres pigeon_pool | psql -U postgres -d pigeon_pool_multi
-```
-
-To run the multi-tenant migration against the clone:
-```bash
-$env:PGPASSWORD = "LetMeIn!"
-psql -U postgres -d pigeon_pool_multi -f database/db_update.sql
-```
-
-To restore the clone to its pre-migration state (re-clone from the original):
-```bash
-$env:PGPASSWORD = "LetMeIn!"
-dropdb -U postgres pigeon_pool_multi
-createdb -U postgres pigeon_pool_multi
-pg_dump -U postgres pigeon_pool | psql -U postgres -d pigeon_pool_multi
-```
 
 ## Quick start (localhost deployment)
 
@@ -113,15 +86,57 @@ python -m backend.cli import-picks-xlsx picks.xlsx --week 6   # import picks fro
 ### New season setup (each subsequent summer)
 Run once before the new NFL season starts. Archives all picks, wipes last season's games and
 lock times, resets player season status, syncs the new schedule, and reseeds lock times.
+Against production, use the production env setup below to target the live DB.
 ```bash
 # Archive, wipe, and re-sync (prompts for confirmation; add --yes to skip)
 python -m backend.cli reset-season
 
-# Then in the admin UI:
-# - Review and adjust per-tenant lock times (League Settings → Weeks)
-# - Set player season_status (pending/active/out) (League Settings → Roster)
+# Then in the admin UI, per tenant/league:
+# - Activate Season (League Settings) — copies new default_lock_at values into tenant_weeks;
+#   review/adjust individual week lock times if needed
+# - Roster (League Settings) — set each returning pigeon's season_status (pending/active/out)
+#   as they confirm they're playing this year
 ```
 Archives are written to `archive/<tenant_id>_<year>_picks.csv` in the repo root.
+
+### Running CLI commands against production
+`backend.cli` picks its DB target from `APP_ENV` (see `backend/utils/settings.py`), which
+defaults to `development` — i.e. localhost. To point a CLI command at production instead, set
+`APP_ENV=production` plus the three secrets that are normally supplied by Azure App Service
+config (`POSTGRES_PASSWORD`, `JWT_SECRET`, `EMAIL_ACCESS_KEY`).
+
+Use `conda activate pigeon` + `python -m backend.cli ...`, **not**
+`conda run -n pigeon python -m backend.cli ...`. Commands like `reset-season` and
+`delete-league` prompt for an interactive `yes` confirmation via `input()`, and in Windows
+PowerShell `conda run` doesn't forward an interactive TTY for that prompt — it fails
+immediately with `[cli] Aborted (no TTY — use --yes to skip confirmation)`. `conda activate`
+runs the command directly in your shell, so the prompt works normally.
+
+**Option A — per-shell env vars** (no secrets on disk):
+```powershell
+conda activate pigeon
+$env:APP_ENV = "production"
+$env:POSTGRES_PASSWORD = "<from Azure App Service Configuration>"
+$env:JWT_SECRET = "<from Azure App Service Configuration>"
+$env:EMAIL_ACCESS_KEY = "<from Azure App Service Configuration>"
+python -m backend.cli <command> [args]
+```
+
+**Option B — `backend/.env.production.local`** (fewer commands per session): copy the same
+three secrets from Azure App Service Configuration into a local `backend/.env.production.local`
+file (same `KEY=value` format as `.env.development.local`). `settings.py` loads it automatically
+whenever `APP_ENV=production`, so you only need:
+```powershell
+conda activate pigeon
+$env:APP_ENV = "production"
+python -m backend.cli <command> [args]
+```
+This file is covered by the repo's `.env.*.local` gitignore pattern, so it won't get committed
+— but it does put real production secrets at rest on your machine. Treat the copy as temporary:
+delete `backend/.env.production.local` once you're done with production CLI work.
+
+Either way, unset `APP_ENV` (or open a new shell) afterward so you don't accidentally point a
+later local command at production.
 
 ### League (tenant) management
 ```bash
@@ -205,5 +220,4 @@ we go standalone next year, the following changes should be made to the BE (or a
 | [docs/contributing.md](docs/contributing.md) | Running the test suite, snapshot update workflow |
 | [docs/frontend.md](docs/frontend.md) | Frontend directory structure, key data flows, build commands |
 | [docs/architecture.md](docs/architecture.md) | Multi-tenancy data model, auth/JWT, onboarding model, scheduler, known limitations |
-| [docs/deployment.md](docs/deployment.md) | Production migration steps + new-season runbook (temporary — deleted after the migration) |
 | [docs/backlog.md](docs/backlog.md) | Known improvements deferred from the multi-tenancy milestone |

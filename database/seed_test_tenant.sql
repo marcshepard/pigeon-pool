@@ -1,6 +1,6 @@
 -- Seed a second tenant for local multi-tenant testing.
 -- Edit YOUR_EMAIL below before running.
--- Run: psql -U postgres -d pigeon_pool_multi -f database/seed_test_tenant.sql
+-- Run: psql -U postgres -d pigeon_pool -f database/seed_test_tenant.sql
 --
 -- After running:
 --   1. Log in with YOUR_EMAIL at the frontend.
