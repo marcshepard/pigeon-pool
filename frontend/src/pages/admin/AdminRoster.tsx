@@ -27,10 +27,12 @@ import {
   adminGetPigeons,
   adminCreatePigeon,
   adminUpdatePigeon,
+  adminDeletePigeon,
   adminGetUsers,
   adminCreateUser,
   adminDeleteUser,
   adminUpdateUser,
+  getCurrentWeek,
 } from "../../backend/fetch";
 import { AdminPigeon, AdminUser } from "../../backend/types";
 import { AppSnackbar } from "../../components/CommonComponents";
@@ -39,6 +41,7 @@ export default function AdminRoster() {
   const [sp, setSp] = useSearchParams();
   const [pigeons, setPigeons] = useState<AdminPigeon[]>([]);
   const [users, setUsers] = useState<AdminUser[]>([]);
+  const [seasonStarted, setSeasonStarted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity?: "success" | "error" | "info" | "warning" }>({ open: false, message: "" });
@@ -58,10 +61,11 @@ export default function AdminRoster() {
   useEffect(() => {
     setLoading(true);
     setError(null);
-    Promise.all([adminGetPigeons(), adminGetUsers()])
-      .then(([p, u]) => {
+    Promise.all([adminGetPigeons(), adminGetUsers(), getCurrentWeek()])
+      .then(([p, u, cw]) => {
         setPigeons(p);
         setUsers(u);
+        setSeasonStarted(cw.any_locked);
       })
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false));
@@ -99,6 +103,7 @@ export default function AdminRoster() {
               pigeons={pigeons}
               byPigeon={byPigeon}
               selected={selectedPigeon}
+              seasonStarted={seasonStarted}
               onSelect={(pn) => {
                 const next = new URLSearchParams(sp);
                 if (pn == null) next.delete("pigeon");
@@ -110,6 +115,12 @@ export default function AdminRoster() {
               }}
               onPigeonChanged={(updated) => {
                 setPigeons((arr) => arr.map((p) => (p.player_id === updated.player_id ? updated : p)));
+              }}
+              onPigeonDeleted={(playerId) => {
+                setPigeons((arr) => arr.filter((p) => p.player_id !== playerId));
+                const next = new URLSearchParams(sp);
+                next.delete("pigeon");
+                setSp(next, { replace: true });
               }}
               refreshUsers={async () => setUsers(await adminGetUsers())}
               onSnackbar={(message, severity) => setSnackbar({ open: true, message, severity })}
@@ -244,18 +255,22 @@ function PigeonsPanel({
   pigeons,
   byPigeon,
   selected,
+  seasonStarted,
   onSelect,
   onPigeonAdded,
   onPigeonChanged,
+  onPigeonDeleted,
   refreshUsers,
   onSnackbar,
 }: {
   pigeons: AdminPigeon[];
   byPigeon: { primary: Record<number, string[]>; secondary: Record<number, string[]> };
   selected: AdminPigeon | null;
+  seasonStarted: boolean;
   onSelect: (pn: number | null) => void;
   onPigeonAdded: (p: AdminPigeon) => void;
   onPigeonChanged: (p: AdminPigeon) => void;
+  onPigeonDeleted: (playerId: number) => void;
   refreshUsers: () => Promise<void>;
   onSnackbar: (message: string, severity?: "success" | "error" | "info" | "warning") => void;
 }) {
@@ -266,6 +281,8 @@ function PigeonsPanel({
   const [newName, setNewName] = useState("");
   const [newNumber, setNewNumber] = useState("");
   const [creating, setCreating] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     setName(selected?.pigeon_name ?? "");
@@ -297,6 +314,22 @@ function PigeonsPanel({
     }
   };
 
+  const handleDelete = async () => {
+    if (!selected) return;
+    setDeleting(true);
+    try {
+      await adminDeletePigeon(selected.player_id);
+      onPigeonDeleted(selected.player_id);
+      setDeleteOpen(false);
+      onSnackbar("Pigeon deleted.", "success");
+      await refreshUsers();
+    } catch (e: unknown) {
+      onSnackbar(e instanceof Error ? e.message : String(e), "error");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <Box>
       <Typography variant="h6" gutterBottom>
@@ -315,7 +348,7 @@ function PigeonsPanel({
           renderInput={(params) => <TextField {...params} label="Select pigeon" />}
           sx={{ minWidth: 280 }}
         />
-        <Button variant="outlined" onClick={() => setCreateOpen(true)}>New Pigeon</Button>
+        {!seasonStarted && <Button variant="outlined" onClick={() => setCreateOpen(true)}>New Pigeon</Button>}
       </Stack>
 
       {!selected && <Alert severity="info">Select a pigeon to manage, or create a new one.</Alert>}
@@ -372,6 +405,11 @@ function PigeonsPanel({
             >
               Save changes
             </Button>
+            {!seasonStarted && (
+              <Button variant="outlined" color="error" onClick={() => setDeleteOpen(true)}>
+                Delete pigeon
+              </Button>
+            )}
           </Stack>
 
           <Box>
@@ -433,6 +471,22 @@ function PigeonsPanel({
             disabled={!newName.trim() || creating}
           >
             {creating ? "Creating…" : "Create"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete pigeon confirmation */}
+      <Dialog open={deleteOpen} onClose={() => !deleting && setDeleteOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Delete Pigeon</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Delete pigeon #{selected?.pigeon_number} – {selected?.pigeon_name}? This cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteOpen(false)} disabled={deleting}>Cancel</Button>
+          <Button variant="contained" color="error" onClick={handleDelete} disabled={deleting}>
+            {deleting ? "Deleting…" : "Delete"}
           </Button>
         </DialogActions>
       </Dialog>

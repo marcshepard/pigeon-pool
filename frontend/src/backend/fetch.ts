@@ -410,6 +410,14 @@ export function adminUpdatePigeon(
   });
 }
 
+/** Delete a pigeon. Blocked once the season has started, or if it's a user's primary player. */
+export function adminDeletePigeon(playerId: number): Promise<void> {
+  return apiFetch(`/admin/pigeons/${playerId}`, {
+    method: "DELETE",
+    factory: () => undefined,
+  });
+}
+
 // =============================
 // Admin APIs – Users
 // =============================

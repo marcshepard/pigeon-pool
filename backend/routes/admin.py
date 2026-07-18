@@ -327,6 +327,17 @@ CHECK_PLAYER_EXISTS_SQL = text("""
     SELECT 1 FROM players WHERE player_id = :player_id AND tenant_id = :tenant_id
 """)
 
+CHECK_PLAYER_IS_PRIMARY_SQL = text("""
+    SELECT u.email
+    FROM tenant_members tm
+    JOIN users u ON u.user_id = tm.user_id
+    WHERE tm.primary_player_id = :player_id AND tm.tenant_id = :tenant_id
+""")
+
+DELETE_PLAYER_SQL = text("""
+    DELETE FROM players WHERE player_id = :player_id AND tenant_id = :tenant_id
+""")
+
 
 CREATE_PLAYER_SQL = text("""
     INSERT INTO players (tenant_id, pigeon_number, pigeon_name)
@@ -374,6 +385,9 @@ async def create_pigeon(
     pigeon_number is auto-assigned (next available) if not provided.
     """
     debug("admin: create_pigeon called", tenant_id=me.tenant_id, name=pigeon.pigeon_name)
+    current = await get_current_week(db, me)
+    if current.any_locked:
+        raise HTTPException(status_code=409, detail="Season has started; pigeons can no longer be added")
     pn = pigeon.pigeon_number
     if pn is None:
         row = (await db.execute(NEXT_PIGEON_NUMBER_SQL, {"tenant_id": me.tenant_id})).first()
@@ -460,6 +474,41 @@ async def update_pigeon(
 
     await db.commit()
     return Response(status_code=200)
+
+
+@router.delete(
+    "/pigeons/{player_id}",
+    status_code=204,
+    summary="Delete a pigeon (commissioner only)",
+)
+async def delete_pigeon(
+    player_id: int,
+    db: AsyncSession = Depends(get_db),
+    me=Depends(require_admin),
+):
+    """Delete a pigeon. Blocked once the season has started, or if the pigeon
+    is a user's primary player. Cascades to that pigeon's picks and user_players rows."""
+    debug("admin: delete_pigeon called", tenant_id=me.tenant_id, player_id=player_id)
+
+    current = await get_current_week(db, me)
+    if current.any_locked:
+        raise HTTPException(status_code=409, detail="Season has started; pigeons can no longer be deleted")
+
+    exists = (await db.execute(CHECK_PLAYER_EXISTS_SQL, {"player_id": player_id, "tenant_id": me.tenant_id})).first()
+    if not exists:
+        raise HTTPException(status_code=404, detail=f"Player {player_id} not found in this tenant")
+
+    primary_for = (await db.execute(CHECK_PLAYER_IS_PRIMARY_SQL, {"player_id": player_id, "tenant_id": me.tenant_id})).first()
+    if primary_for:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Pigeon is the primary player for {primary_for[0]}. Reassign their primary player first.",
+        )
+
+    await db.execute(DELETE_PLAYER_SQL, {"player_id": player_id, "tenant_id": me.tenant_id})
+    await db.commit()
+    info("admin: pigeon deleted", tenant_id=me.tenant_id, player_id=player_id)
+    return Response(status_code=204)
 
 
 # ---------------------------------------------------------------------------

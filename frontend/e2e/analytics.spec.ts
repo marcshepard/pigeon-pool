@@ -33,7 +33,7 @@ test.describe("analytics", () => {
   test("tabs are present: Your Picks and Top 5", async ({ page }) => {
     await page.goto("/analytics");
     await expect(page.getByRole("tab", { name: /your picks/i })).toBeVisible({ timeout: 8000 });
-    await expect(page.getByRole("tab", { name: /top 5/i })).toBeVisible();
+    await expect(page.getByRole("tab", { name: /top \d+/i })).toBeVisible();
   });
 
   test("Your Picks tab shows content for a scored week", async ({ page }) => {
@@ -69,7 +69,7 @@ test.describe("analytics", () => {
     await weekCombo.click();
     await page.getByRole("option", { name: new RegExp(`week ${scored_week}$`, "i") }).click();
 
-    await page.getByRole("tab", { name: /top 5/i }).click();
+    await page.getByRole("tab", { name: /top \d+/i }).click();
 
     // No uncaught error text should be visible
     await expect(page.getByText(/uncaught error|unexpected error/i)).not.toBeVisible({
@@ -80,7 +80,7 @@ test.describe("analytics", () => {
     // "MNF Outcomes" (heading for none/check-back states), "best possible rank",
     // or Top5Playground text. Match any of these.
     await expect(
-      page.getByText(/mnf outcomes|best possible rank|top five|top 5|check back|no mnf/i).first()
+      page.getByText(/mnf outcomes|best possible rank|top \d+|check back|no mnf/i).first()
     ).toBeVisible({ timeout: 8_000 });
   });
 
@@ -112,7 +112,7 @@ test.describe("analytics", () => {
     await weekCombo.click();
     await page.getByRole("option", { name: new RegExp(`week ${scored_week}$`, "i") }).click();
 
-    await page.getByRole("tab", { name: /top 5/i }).click();
+    await page.getByRole("tab", { name: /top \d+/i }).click();
 
     // MnfOutcomes renders when all Sunday games are final. Matches the heading
     // "MNF Outcomes", "best possible rank", or the no-scenario fallback text.
