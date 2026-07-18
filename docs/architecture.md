@@ -34,6 +34,12 @@ runbook see [docs/deployment.md](deployment.md) (deleted once the migration is d
 - **`tenant_payouts`** — `(tenant_id, place, points)`, one row per paying finish position.
   Commissioner-configurable via League Settings; the "top N places pay" count (rows with
   `points > 0`) is derived from this table across analytics/YTD/About.
+- **`tenants.pigeons_can_rename`** (default `true`) — whether a pigeon's owner/manager can
+  rename it themselves via `PATCH /players/{player_id}/name` (avatar menu → "Rename
+  pigeon…"), instead of asking the commissioner to do it via the Roster tab. Gated by the
+  same `role IN ('owner','manager')` check picks submission already uses — commissioners
+  can always rename any pigeon via the Roster tab regardless of this setting. Name is
+  validated to 1-30 printable characters, trimmed of leading/trailing whitespace.
 
 ## Auth & sessions
 

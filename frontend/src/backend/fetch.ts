@@ -11,6 +11,7 @@ import {
   AdminWeekLock,
   Me,
   Ok,
+  PlayerRename,
   LeaderboardRow,
   LoginPayload,
   PasswordResetConfirm,
@@ -270,6 +271,19 @@ export function setMyPicks(
 }
 
 // =============================
+// Player self-service
+// =============================
+
+/** Rename a pigeon you own or manage. 403 if the league doesn't allow self-service renames. */
+export function renamePigeon(playerId: number, pigeonName: string): Promise<PlayerRename> {
+  return apiFetch(`/players/${playerId}/name`, {
+    method: "PATCH",
+    body: JSON.stringify({ pigeon_name: pigeonName }),
+    factory: (data: unknown) => new PlayerRename(data),
+  });
+}
+
+// =============================
 // Results / Leaderboard fetches
 // =============================
 
@@ -474,11 +488,11 @@ export function adminDeleteUser(email: string): Promise<void> {
   });
 }
 
-/** Rename the active league (commissioner only). */
-export function adminUpdateLeague(name: string): Promise<void> {
+/** Update league settings: name and/or whether pigeons can rename themselves (commissioner only). */
+export function adminUpdateLeague(patch: { name?: string; pigeons_can_rename?: boolean }): Promise<void> {
   return apiFetch("/admin/league", {
     method: "PATCH",
-    body: JSON.stringify({ name }),
+    body: JSON.stringify(patch),
     factory: () => undefined,
   });
 }

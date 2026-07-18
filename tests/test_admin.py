@@ -116,6 +116,44 @@ def test_rename_league_empty_name_rejected(client, comm_headers):
     assert resp.status_code == 400
 
 
+def test_update_pigeons_can_rename_setting(client, comm_headers, test_data, db_conn):
+    resp = client.patch("/admin/league", json={"pigeons_can_rename": False}, headers=comm_headers)
+    assert resp.status_code == 204
+
+    me = client.get("/auth/me", headers=comm_headers).json()
+    tenant = next(t for t in me["available_tenants"] if t["tenant_id"] == test_data["tenant_a_id"])
+    assert tenant["pigeons_can_rename"] is False
+
+    # Restore
+    with db_conn.cursor() as cur:
+        cur.execute("UPDATE tenants SET pigeons_can_rename = true WHERE tenant_id = %s", (test_data["tenant_a_id"],))
+    db_conn.commit()
+
+
+# ── pigeon name validation ───────────────────────────────────────────────────
+
+def test_create_pigeon_name_too_long_rejected(client, comm_headers):
+    resp = client.post("/admin/pigeons", json={"pigeon_name": "x" * 31}, headers=comm_headers)
+    assert resp.status_code == 422
+
+
+def test_create_pigeon_name_empty_rejected(client, comm_headers):
+    resp = client.post("/admin/pigeons", json={"pigeon_name": "   "}, headers=comm_headers)
+    assert resp.status_code == 422
+
+
+def test_create_pigeon_name_control_char_rejected(client, comm_headers):
+    resp = client.post("/admin/pigeons", json={"pigeon_name": "Bad\nName"}, headers=comm_headers)
+    assert resp.status_code == 422
+
+
+def test_update_pigeon_name_too_long_rejected(client, comm_headers, test_data):
+    resp = client.patch(
+        f"/admin/pigeons/{test_data['alt_pid']}", json={"pigeon_name": "x" * 31}, headers=comm_headers
+    )
+    assert resp.status_code == 422
+
+
 # ── payouts ───────────────────────────────────────────────────────────────────
 
 def test_get_payouts_returns_list(client, comm_headers):

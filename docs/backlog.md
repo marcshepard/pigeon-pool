@@ -4,7 +4,3 @@
 
 **Simplify pigeon management**
 The current League Settings/Roster page is a little complex to use. Is there a simpler way?
-
-## Product / UX
-
-**Let Pigeons change their own names**

@@ -37,7 +37,8 @@ CREATE INDEX IF NOT EXISTS ix_games_kickoff     ON games (kickoff_at);
 -- === TENANTS ===
 CREATE TABLE IF NOT EXISTS tenants (
   tenant_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  name      TEXT NOT NULL
+  name      TEXT NOT NULL,
+  pigeons_can_rename BOOLEAN NOT NULL DEFAULT true
 );
 
 -- === PER-TENANT LOCK TIMES ===

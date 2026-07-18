@@ -76,6 +76,7 @@ export interface TenantInfo {
   tenant_id: number;
   name: string;
   role: "commissioner" | "member";
+  pigeons_can_rename: boolean;
 }
 
 // ---- Me (result of /auth/me or /auth/login) ----
@@ -140,10 +141,15 @@ export class Me {
         throw new DataValidationError("available_tenants must be an array");
       }
       for (const t of available_tenants) {
-        if (!isRecord(t) || !isNumber(t.tenant_id) || !isString(t.name) || !isString(t.role)) {
+        if (!isRecord(t) || !isNumber(t.tenant_id) || !isString(t.name) || !isString(t.role) || !isBoolean(t.pigeons_can_rename)) {
           throw new DataValidationError("available_tenants[] entry is invalid");
         }
-        this.available_tenants.push({ tenant_id: t.tenant_id as number, name: t.name as string, role: t.role as "commissioner" | "member" });
+        this.available_tenants.push({
+          tenant_id: t.tenant_id as number,
+          name: t.name as string,
+          role: t.role as "commissioner" | "member",
+          pigeons_can_rename: t.pigeons_can_rename as boolean,
+        });
       }
     }
   }
@@ -430,6 +436,28 @@ export class LeaderboardRow {
     this.score = data.score;
     this.rank = data.rank;
     this.points = data.points;
+  }
+}
+
+// =============================
+// Self-service player types
+// =============================
+
+/** Response from PATCH /players/{player_id}/name */
+export class PlayerRename {
+  player_id: number;
+  pigeon_number: number;
+  pigeon_name: string;
+
+  constructor(data: unknown) {
+    if (!isRecord(data)) throw new DataValidationError("Invalid PlayerRename payload (not an object)");
+    const { player_id, pigeon_number, pigeon_name } = data;
+    if (!isNumber(player_id)) throw new DataValidationError("player_id must be number");
+    if (!isNumber(pigeon_number)) throw new DataValidationError("pigeon_number must be number");
+    if (!isString(pigeon_name)) throw new DataValidationError("pigeon_name must be string");
+    this.player_id = player_id;
+    this.pigeon_number = pigeon_number;
+    this.pigeon_name = pigeon_name;
   }
 }
 

@@ -63,6 +63,7 @@ class TenantInfo(BaseModel):
     tenant_id: int
     name: str
     role: str  # 'commissioner' or 'member'
+    pigeons_can_rename: bool
 
 class MeOut(BaseModel):
     player_id: int
@@ -168,14 +169,14 @@ def set_last_used_at(cur, user_id: int, tenant_id: int) -> None:
 
 def get_available_tenants(cur, user_id: int) -> List[TenantInfo]:
     cur.execute("""
-        SELECT t.tenant_id, t.name, tm.role
+        SELECT t.tenant_id, t.name, tm.role, t.pigeons_can_rename
           FROM tenant_members tm
           JOIN tenants t ON t.tenant_id = tm.tenant_id
          WHERE tm.user_id = %s
          ORDER BY tm.last_used_at DESC NULLS LAST, t.name
     """, (user_id,))
     return [
-        TenantInfo(tenant_id=r[0], name=r[1], role=r[2])
+        TenantInfo(tenant_id=r[0], name=r[1], role=r[2], pigeons_can_rename=r[3])
         for r in cur.fetchall()
     ]
 

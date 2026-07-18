@@ -15,7 +15,7 @@ from datetime import datetime, timezone, timedelta
 import traceback
 
 from fastapi import APIRouter, Depends, HTTPException, status, Body, Response, UploadFile, File, Form
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,6 +23,7 @@ from backend.utils.import_picks_xlsx import import_picks_pivot_xlsx_with_engine
 from backend.utils.db import get_db
 from backend.utils.logger import debug, info, warn, error
 from backend.utils.emailer import send_bulk_email_to_all_users
+from backend.utils.validation import validate_pigeon_name
 from .auth import require_user, require_admin
 from .results import WeekPicksRow
 from .schedule import get_current_week
@@ -99,27 +100,41 @@ UPDATE_TENANT_NAME_SQL = text("""
     UPDATE tenants SET name = :name WHERE tenant_id = :tenant_id
 """)
 
+UPDATE_TENANT_RENAME_SETTING_SQL = text("""
+    UPDATE tenants SET pigeons_can_rename = :pigeons_can_rename WHERE tenant_id = :tenant_id
+""")
+
 
 class LeagueUpdate(BaseModel):
-    name: str
+    name: Optional[str] = None
+    pigeons_can_rename: Optional[bool] = None
 
 
 @router.patch(
     "/league",
     status_code=204,
-    summary="Rename this league (commissioner only)",
+    summary="Update this league's name and/or settings (commissioner only)",
 )
 async def update_league(
     update: LeagueUpdate,
     db: AsyncSession = Depends(get_db),
     me=Depends(require_admin),
 ):
-    name = update.name.strip()
-    if not name:
-        raise HTTPException(status_code=400, detail="League name cannot be empty")
-    await db.execute(UPDATE_TENANT_NAME_SQL, {"name": name, "tenant_id": me.tenant_id})
+    if update.name is not None:
+        name = update.name.strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="League name cannot be empty")
+        await db.execute(UPDATE_TENANT_NAME_SQL, {"name": name, "tenant_id": me.tenant_id})
+        info("admin: league renamed", tenant_id=me.tenant_id, name=name)
+
+    if update.pigeons_can_rename is not None:
+        await db.execute(UPDATE_TENANT_RENAME_SETTING_SQL, {
+            "pigeons_can_rename": update.pigeons_can_rename,
+            "tenant_id": me.tenant_id,
+        })
+        info("admin: pigeons_can_rename updated", tenant_id=me.tenant_id, value=update.pigeons_can_rename)
+
     await db.commit()
-    info("admin: league renamed", tenant_id=me.tenant_id, name=name)
     return Response(status_code=204)
 
 
@@ -362,11 +377,21 @@ class PigeonCreate(BaseModel):
     pigeon_name: str
     pigeon_number: Optional[int] = None  # auto-assigned if omitted
 
+    @field_validator("pigeon_name")
+    @classmethod
+    def _validate_pigeon_name(cls, v: str) -> str:
+        return validate_pigeon_name(v)
+
 
 class PigeonUpdate(BaseModel):
     pigeon_name: Optional[str] = None
     owner_email: Optional[str] = None
     season_status: Optional[str] = None
+
+    @field_validator("pigeon_name")
+    @classmethod
+    def _validate_pigeon_name(cls, v: Optional[str]) -> Optional[str]:
+        return v if v is None else validate_pigeon_name(v)
 
 
 @router.post(

@@ -13,6 +13,7 @@ from backend.routes.picks import router as picks_router
 from backend.routes.schedule import router as schedule_router
 from backend.routes.results import router as results_router
 from backend.routes.admin import router as admin_router
+from backend.routes.players import router as players_router
 from backend.utils.scheduler import start_scheduler, stop_scheduler
 
 DISABLE_SCHEDULER=True  # Set to False before the new season starts
@@ -57,3 +58,4 @@ app.include_router(picks_router)
 app.include_router(schedule_router)
 app.include_router(results_router)
 app.include_router(admin_router)
+app.include_router(players_router)
