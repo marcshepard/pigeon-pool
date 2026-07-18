@@ -9,7 +9,8 @@ The project has two test suites:
 
 Both suites run against the dev database configured in `backend/.env` and create/teardown their
 own isolated test tenants, so they never touch Tenant 1 data (except snapshot tests,
-which read-only query Tenant 1).
+which read-only query Tenant 1). For full run commands (single-file runs, snapshot
+regeneration, etc.) see [docs/contributing.md](contributing.md); this doc covers test design.
 
 ---
 

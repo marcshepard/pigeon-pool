@@ -10,7 +10,7 @@ Update the relevant doc file whenever a code change affects the documented behav
 | `docs/contributing.md` | How to run the test suite, snapshot update workflow (`pytest --update-snapshots`) |
 | `docs/frontend.md` | Frontend directory layout, key data flows (auth, results, analytics, YTD), build/type-check commands |
 | `docs/architecture.md` | Durable design decisions: multi-tenancy data model, auth/JWT, onboarding model, scheduler, known limitations |
-| `docs/deployment.md` | Temporary: production migration steps + new-season runbook. Delete after the production migration is done — do not add new durable content here, put it in `docs/architecture.md` instead |
+| `docs/preseason_testing.md` | Temporary: plan for testing against live preseason NFL data. Delete once implemented and no longer needed (planned: August) |
 
 ## Minimize changes
 

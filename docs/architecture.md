@@ -2,8 +2,7 @@
 
 Design decisions behind the multi-tenant data model, auth, and background jobs. This is
 the durable reference — for directory structure and frontend data flows see
-[docs/frontend.md](frontend.md); for the one-time production migration and season-transition
-runbook see [docs/deployment.md](deployment.md) (deleted once the migration is done).
+[docs/frontend.md](frontend.md).
 
 ## Multi-tenancy data model
 
@@ -26,11 +25,11 @@ runbook see [docs/deployment.md](deployment.md) (deleted once the migration is d
   tenant-specific, since every tenant runs the same NFL schedule but sets its own deadlines.
   A missing `tenant_weeks` row is treated as *unlocked* by the pick-lock trigger, which is why
   "Activate Season" (copying `default_lock_at` → `tenant_weeks`) is a required step before a
-  tenant's picks should be trusted as gated — see [docs/deployment.md](deployment.md).
+  tenant's picks should be trusted as gated.
 - **`players.season_status`** (`pending` / `active` / `out`) — tracks whether a returning
   pigeon is confirmed in for the season. Resets to `pending` for everyone on `reset-season`.
   Currently informational only (Roster tab display/edit) — nothing blocks a `pending` player
-  from submitting picks once their week unlocks. See backlog for the proposal to enforce it.
+  from submitting picks once their week unlocks.
 - **`tenant_payouts`** — `(tenant_id, place, points)`, one row per paying finish position.
   Commissioner-configurable via League Settings; the "top N places pay" count (rows with
   `points > 0`) is derived from this table across analytics/YTD/About.
@@ -54,7 +53,7 @@ runbook see [docs/deployment.md](deployment.md) (deleted once the migration is d
   token scoped to it, and updates `last_used_at`. The frontend's tenant switcher calls this
   then does a full `window.location.reload()` so every page re-fetches against the new
   tenant — simple and correct, but jarring; a cache-invalidation approach without the reload
-  is deferred (see [docs/backlog.md](backlog.md)).
+  is deferred.
 
 ## Tenant onboarding (curated-pool model)
 
@@ -89,10 +88,9 @@ tenant-agnostic.
 
 - **Seasons**: `weeks` (1–18) and `games` implicitly represent one NFL season shared by every
   tenant. Multiple tenants running different seasons simultaneously isn't modeled. Season
-  transition (archive → wipe → resync) is the `reset-season` CLI command — see
-  [docs/deployment.md](deployment.md). A formal `season_id` to keep multiple seasons live at
-  once is a future iteration if it's ever needed.
+  transition (archive → wipe → resync) is the `reset-season` CLI command — see the
+  [README's CLI reference](../README.md#cli-reference). A formal `season_id` to keep multiple
+  seasons live at once is a future iteration if it's ever needed.
 - **Pool size**: no formal `max_players` per tenant, even though the schema no longer caps at 68.
 - **Tenant switch reload**: see Auth & sessions above.
-- **`season_status` not enforced**: see Multi-tenancy data model above and
-  [docs/backlog.md](backlog.md).
+- **`season_status` not enforced**: see Multi-tenancy data model above.
