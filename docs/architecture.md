@@ -32,8 +32,8 @@ runbook see [docs/deployment.md](deployment.md) (deleted once the migration is d
   Currently informational only (Roster tab display/edit) — nothing blocks a `pending` player
   from submitting picks once their week unlocks. See backlog for the proposal to enforce it.
 - **`tenant_payouts`** — `(tenant_id, place, points)`, one row per paying finish position.
-  Commissioner-configurable via League Settings; the "top N places pay" count itself is still
-  hardcoded to 5 across analytics/YTD/About (see [docs/backlog.md](backlog.md)).
+  Commissioner-configurable via League Settings; the "top N places pay" count (rows with
+  `points > 0`) is derived from this table across analytics/YTD/About.
 
 ## Auth & sessions
 

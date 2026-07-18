@@ -19,7 +19,7 @@ type Player = {
   tie?: boolean;
 };
 
-export default function Top5Playground({ pigeon, week }: { pigeon: number; week: number }) {
+export default function Top5Playground({ pigeon, week, paidCount = 5 }: { pigeon: number; week: number; paidCount?: number }) {
   const [enteredScores, setEnteredScores] = useState<Record<number, EnteredScore>>({});
   const { rows, games, consensusRow } = useResults(week);
 
@@ -136,7 +136,7 @@ export default function Top5Playground({ pigeon, week }: { pigeon: number; week:
     // If all players are tied for first (all rank 1), show first 5 plus selected pigeon if not in first 5
     const allRankOne = recalculatedPlayers.length > 0 && recalculatedPlayers.every(p => p.rank === 1);
     if (allRankOne) {
-      const first5 = recalculatedPlayers.slice(0, 5);
+      const first5 = recalculatedPlayers.slice(0, paidCount);
       const isPigeonInFirst5 = first5.some(p => p.pigeon_number === pigeon);
       if (!isPigeonInFirst5 && pigeon) {
         const currentPigeon = recalculatedPlayers.find(p => p.pigeon_number === pigeon);
@@ -147,7 +147,7 @@ export default function Top5Playground({ pigeon, week }: { pigeon: number; week:
       return first5;
     }
     // Otherwise, normal logic
-    const top5 = recalculatedPlayers.slice(0, 5);
+    const top5 = recalculatedPlayers.slice(0, paidCount);
     const isPigeonInTop5 = top5.some(p => p.pigeon_number === pigeon);
     if (!isPigeonInTop5 && pigeon) {
       const currentPigeon = recalculatedPlayers.find(p => p.pigeon_number === pigeon);
@@ -156,7 +156,7 @@ export default function Top5Playground({ pigeon, week }: { pigeon: number; week:
       }
     }
     return top5;
-  }, [recalculatedPlayers, pigeon]);
+  }, [recalculatedPlayers, pigeon, paidCount]);
 
 
   const handleScoreChange = (gameId: number, team: string, margin: number) => {
@@ -184,7 +184,7 @@ export default function Top5Playground({ pigeon, week }: { pigeon: number; week:
           Your best possible rank: <strong>{bestPossibleRank}</strong>
         </Typography>
         <Typography variant="body1" align="center" sx={{ mb: 1 }}>
-          Enter scores to see the effect on the top 5 rankings
+          Enter scores to see the effect on the top {paidCount} rankings
         </Typography>
         <Typography variant="body1" fontWeight={700} gutterBottom>Scores from completed games</Typography>
         <Paper sx={{ p: 2 }}>
@@ -220,8 +220,8 @@ export default function Top5Playground({ pigeon, week }: { pigeon: number; week:
             // If all players are tied for first (all rank 1), show banner for the rest
             const allRankOne = recalculatedPlayers.length > 0 && recalculatedPlayers.every(p => p.rank === 1);
             if (allRankOne) {
-              let shown = 5;
-              const isPigeonInFirst5 = recalculatedPlayers.slice(0, 5).some(p => p.pigeon_number === pigeon);
+              let shown = paidCount;
+              const isPigeonInFirst5 = recalculatedPlayers.slice(0, paidCount).some(p => p.pigeon_number === pigeon);
               if (!isPigeonInFirst5 && pigeon) shown += 1;
               const others = recalculatedPlayers.length - shown;
               if (others > 0) {
@@ -231,9 +231,9 @@ export default function Top5Playground({ pigeon, week }: { pigeon: number; week:
                   </Typography>
                 );
               }
-            } else if (recalculatedPlayers.length > 5) {
-              // Get the top 5 players only (excluding current pigeon if added separately)
-              const top5Only = recalculatedPlayers.slice(0, 5);
+            } else if (recalculatedPlayers.length > paidCount) {
+              // Get the top paidCount players only (excluding current pigeon if added separately)
+              const top5Only = recalculatedPlayers.slice(0, paidCount);
               const lastTop5Rank = top5Only.length ? top5Only[top5Only.length - 1].rank : null;
               if (lastTop5Rank != null) {
                 // Count all players at that rank

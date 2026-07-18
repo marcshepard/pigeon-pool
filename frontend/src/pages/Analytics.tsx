@@ -10,9 +10,10 @@ import { useAuth } from "../auth/useAuth";
 import { useSchedule } from "../hooks/useSchedule";
 import RemainingGames from "./analytics/YourPicks";
 import MnfOutcomes from "./analytics/MnfOutcomes";
-import type { GameMeta } from "../hooks/useAppCache";
+import { useAppCache, type GameMeta } from "../hooks/useAppCache";
 import Top5Playground from "./analytics/Top5Playground";
 import { useResults } from "../hooks/useResults";
+import { getPayouts } from "../backend/fetch";
 
 import { PageFit, NORMAL_PAGE_MAX_WIDTH } from "../components/Layout";
 
@@ -46,6 +47,19 @@ export default function AnalyticsPage() {
   useEffect(() => {
     if (me && pigeon === "") setPigeon(me.pigeon_number);
   }, [me, pigeon]);
+
+  // Number of paid places, driven by tenant_payouts (falls back to 5 while loading)
+  const cacheGetPayouts = useAppCache((s) => s.getPayouts);
+  const cacheSetPayouts = useAppCache((s) => s.setPayouts);
+  const payouts = useAppCache((s) => s.payouts?.data ?? null);
+  useEffect(() => {
+    if (cacheGetPayouts()) return;
+    getPayouts().then((data) => cacheSetPayouts(data)).catch(() => {/* non-fatal */});
+  }, [cacheGetPayouts, cacheSetPayouts]);
+  const paidCount = useMemo(
+    () => payouts ? payouts.filter(p => p.points > 0).length : 5,
+    [payouts]
+  );
 
   // Tab state, persisted in query string
   function getTabFromQuery() {
@@ -152,7 +166,7 @@ export default function AnalyticsPage() {
       {/* Tabs */}
       <Tabs value={tab} onChange={(_, v) => setTab(v)} centered sx={{ mb: 2 }}>
         <Tab label="Your Picks" />
-        <Tab label="Top 5" />
+        <Tab label={`Top ${paidCount}`} />
       </Tabs>
 
       {/* Tab panels */}
@@ -170,9 +184,9 @@ export default function AnalyticsPage() {
             )}
             {tab === 1 && week && pigeon && (
               allSundayFinal ? (
-                <MnfOutcomes pigeon={Number(pigeon)} week={Number(week)} />
+                <MnfOutcomes pigeon={Number(pigeon)} week={Number(week)} paidCount={paidCount} />
               ) : (
-                <Top5Playground pigeon={Number(pigeon)} week={Number(week)} />
+                <Top5Playground pigeon={Number(pigeon)} week={Number(week)} paidCount={paidCount} />
               )
             )}
           </>

@@ -51,9 +51,9 @@ function allSundayGamesFinal(games: GameMeta[]): boolean {
   return sundayGames.every(g => g.status === "final");
 }
 
-type MnfOutcomesProps = { pigeon: number; week: number };
+type MnfOutcomesProps = { pigeon: number; week: number; paidCount?: number };
 
-export default function MnfOutcomes({ pigeon, week }: MnfOutcomesProps) {
+export default function MnfOutcomes({ pigeon, week, paidCount = 5 }: MnfOutcomesProps) {
   const { currentWeek, loading: scheduleLoading } = useSchedule();
   const { rows, games, loading, error } = useResults(week);
   const whatIf = useMnfOutcomes(week, rows, games);
@@ -125,6 +125,7 @@ export default function MnfOutcomes({ pigeon, week }: MnfOutcomesProps) {
           rows={whatIf.rows}
           home={whatIf.home}
           away={whatIf.away}
+          paidCount={paidCount}
         />
       )}
 
@@ -135,7 +136,7 @@ export default function MnfOutcomes({ pigeon, week }: MnfOutcomesProps) {
           xBuckets={whatIf.x.buckets}
           yBuckets={whatIf.y.buckets}
           grid={whatIf.grid}
-          others={whatIf.othersBestFinishes}
+          others={whatIf.othersBestFinishes.filter(o => o.bestRank <= paidCount)}
         />
       )}
     </Box>
@@ -154,8 +155,10 @@ function OneGameTable(props: {
   }>;
   home: string;
   away: string;
+  paidCount: number;
 }) {
-  const { rows, home, away } = props;
+  const { rows, home, away, paidCount } = props;
+  const ordinals = ["1st", "2nd", "3rd", "4th", "5th"].slice(0, paidCount);
 
   // (table now renders per-rank columns; no need for joinTop5 string)
 
@@ -166,13 +169,14 @@ function OneGameTable(props: {
     return `${away} ${Math.abs(actual)}`;
   }
 
-  // Collapse consecutive rows with identical Top 5 (names and order)
-  // Helper to get both order and tie structure for Top 5 ranks (includes all tied players at rank 5)
+  // Collapse consecutive rows with identical Top N (names and order), where N = paidCount
+  // Helper to get both order and tie structure for the paid ranks (includes all tied players at the last paid rank)
   function top5RanksKey(top5Ranks?: Array<Array<{ name: string; total: number }>>) {
     if (!top5Ranks || !top5Ranks.length) return '';
+    const ranks = top5Ranks.slice(0, paidCount);
     let key = '';
-    for (let rankIdx = 0; rankIdx < top5Ranks.length; rankIdx++) {
-      const group = top5Ranks[rankIdx];
+    for (let rankIdx = 0; rankIdx < ranks.length; rankIdx++) {
+      const group = ranks[rankIdx];
       if (rankIdx > 0) key += '>';
       // Sort names within the group for consistent comparison
       const sortedNames = group.map(p => p.name).sort();
@@ -186,7 +190,7 @@ function OneGameTable(props: {
   }
 
   // Prune both the highest and lowest margin rows for each team as described
-  // Prune only the top run and bottom run of identical Top 5 order (including ties)
+  // Prune only the top run and bottom run of identical Top N order (including ties)
   let start = 0;
   while (
     start < rows.length - 1 &&
@@ -223,21 +227,21 @@ function OneGameTable(props: {
         }
         return groups;
       })();
-      const rankCols: Array<Array<{ pn: number; name: string; total: number }>> = [[], [], [], [], []];
+      const rankCols: Array<Array<{ pn: number; name: string; total: number }>> = Array.from({ length: paidCount }, () => []);
       let pos = 1;
       for (const g of ranks) {
-        if (pos > 5) break;
+        if (pos > paidCount) break;
         rankCols[pos - 1] = g;
         pos += g.length;
       }
-      // Only add players actually shown in the table (columns 1-5)
-      for (let i = 0; i < 5; ++i) {
+      // Only add players actually shown in the table (columns 1-paidCount)
+      for (let i = 0; i < paidCount; ++i) {
         rankCols[i].forEach(p => names.add(p.name));
       }
     });
     const arr = Array.from(names).sort();
     return arr.map(name => ({ name, tag: initials(name) }));
-  }, [displayRows]);
+  }, [displayRows, paidCount]);
 
   // If only one row is displayed, show '<TEAM> any' (no margin, no '+')
   const singleRowAnyLabel = React.useMemo(() => {
@@ -254,7 +258,7 @@ function OneGameTable(props: {
   return (
     <Box sx={{ overflowX: "hidden" }}>
       <Typography variant="body1">
-        Top five finishers by MNF outcome
+        Top {paidCount} finisher{paidCount > 1 ? 's' : ''} by MNF outcome
       </Typography>
       <Box sx={{ width: "100%", maxWidth: "100%", overflowX: "auto", border: "1px solid", borderColor: "divider", borderRadius: 1, WebkitOverflowScrolling: "touch", mb: 2 }}>
         <Table size="small" sx={{
@@ -266,11 +270,9 @@ function OneGameTable(props: {
           <TableHead>
             <TableRow>
               <TableCell sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}></TableCell>
-              <TableCell sx={{ fontWeight: 600 }} align="center">1st</TableCell>
-              <TableCell sx={{ fontWeight: 600 }} align="center">2nd</TableCell>
-              <TableCell sx={{ fontWeight: 600 }} align="center">3rd</TableCell>
-              <TableCell sx={{ fontWeight: 600 }} align="center">4th</TableCell>
-              <TableCell sx={{ fontWeight: 600 }} align="center">5th</TableCell>
+              {ordinals.map(label => (
+                <TableCell key={label} sx={{ fontWeight: 600 }} align="center">{label}</TableCell>
+              ))}
             </TableRow>
           </TableHead>
           <TableBody>
@@ -299,17 +301,17 @@ function OneGameTable(props: {
               }
               return groups;
             })();
-            const rankCols: Array<Array<{ pn: number; name: string; total: number }>> = [[], [], [], [], []];
+            const rankCols: Array<Array<{ pn: number; name: string; total: number }>> = Array.from({ length: paidCount }, () => []);
             let pos = 1;
             for (const g of ranks) {
-              if (pos > 5) break;
+              if (pos > paidCount) break;
               rankCols[pos - 1] = g;
               pos += g.length; // skip subsequent positions covered by the tie
             }
             return (
               <TableRow key={r.actual}>
                 <TableCell sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>{outcome}</TableCell>
-                {[0, 1, 2, 3, 4].map(rankIdx => (
+                {rankCols.map((_, rankIdx) => (
                   <TableCell key={rankIdx} align="center">
                     {rankCols[rankIdx].length ? (
                       <Stack direction="column" spacing={0.25} alignItems="center">
