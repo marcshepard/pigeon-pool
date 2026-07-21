@@ -49,7 +49,7 @@ type RosterFormState =
   | { mode: "create" }
   | { mode: "edit"; pigeon: AdminPigeon };
 
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+$/;
 
 function emailKey(email: string): string {
   return email.trim().toLowerCase();
@@ -74,9 +74,11 @@ function errorMessage(error: unknown): string {
 
 function ManagersSummary({ pigeon }: { pigeon: AdminPigeon }) {
   if (!pigeon.owner) {
+    const count = pigeon.managers.length;
     return (
       <Typography component="span" variant="body2" color="error.main" fontWeight={600}>
         Owner required
+        {count > 0 ? ` + ${count} ${count === 1 ? "other" : "others"}` : ""}
       </Typography>
     );
   }
@@ -342,14 +344,8 @@ function PigeonFormDialog({
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  const ownerKey = emailKey(ownerEmail);
-  const managerOptions = leagueEmails.filter((email) => emailKey(email) !== ownerKey);
-
   const handleOwnerChange = (nextOwner: string) => {
     setOwnerEmail(nextOwner);
-    const nextKey = emailKey(nextOwner);
-    setManagerEmails((current) => current.filter((email) => emailKey(email) !== nextKey));
-    if (emailKey(managerDraft) === nextKey) setManagerDraft("");
     setSaveError(null);
   };
 
@@ -447,28 +443,27 @@ function PigeonFormDialog({
                 label="Owner email"
                 type="email"
                 required
-                helperText={
-                  editing
-                    ? "Changing the owner removes the former owner unless you add them below."
-                    : "The person will be added to this league if needed."
-                }
+                helperText={editing ? undefined : "The person will be added to this league if needed."}
               />
             )}
           />
           <Autocomplete
             multiple
             freeSolo
-            options={managerOptions}
+            options={leagueEmails}
             value={managerEmails}
             inputValue={managerDraft}
             onChange={(_, values) => {
-              setManagerEmails(
-                dedupeEmails(values).filter((email) => emailKey(email) !== emailKey(ownerEmail)),
-              );
+              setManagerEmails(dedupeEmails(values));
               setSaveError(null);
             }}
             onInputChange={(_, value) => setManagerDraft(value)}
             disabled={saving}
+            slotProps={{
+              chip: {
+                sx: { "& .MuiChip-label": { userSelect: "text", cursor: "text" } },
+              },
+            }}
             renderInput={(params) => (
               <TextField
                 {...params}

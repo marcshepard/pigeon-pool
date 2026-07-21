@@ -28,9 +28,9 @@ React + TypeScript + Vite + MUI application.
   while failed mutations leave displayed state unchanged. New and Delete are hidden once any week
   is locked.
 - **Roster people fields**: Owner and additional managers are edited together with free-text email
-  autocomplete over people already visible in the league roster. Selecting a manager as owner
-  removes that email from the manager list; a former owner retains access only when explicitly
-  added as a manager.
+  autocomplete over people already visible in the league roster. Email text can be copied and
+  pasted between the fields. On submission, the owner is removed from the additional-manager list;
+  a former owner retains access only when explicitly added as a manager.
 - **Default pigeon**: Users who manage more than one pigeon can choose “Set default pigeon…” from
   the avatar menu. This calls `PUT /me/primary-pigeon`; the dialog explains that the selection
   applies on the next sign-in because the current JWT is not replaced.
