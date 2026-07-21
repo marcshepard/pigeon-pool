@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type MouseEvent } from "react";
 import {
   Alert,
   Autocomplete,
@@ -468,8 +468,8 @@ function PigeonFormDialog({
             disabled={saving}
             slotProps={{
               chip: {
-                onMouseDown: (event) => event.stopPropagation(),
-                onClick: (event) => event.stopPropagation(),
+                onMouseDown: (event: MouseEvent<HTMLDivElement>) => event.stopPropagation(),
+                onClick: (event: MouseEvent<HTMLDivElement>) => event.stopPropagation(),
                 sx: { "& .MuiChip-label": { userSelect: "text", cursor: "text" } },
               },
             }}
