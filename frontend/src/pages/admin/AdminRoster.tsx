@@ -443,7 +443,14 @@ function PigeonFormDialog({
                 label="Owner email"
                 type="email"
                 required
-                helperText={editing ? undefined : "The person will be added to this league if needed."}
+                error={!ownerEmail.trim()}
+                helperText={
+                  !ownerEmail.trim()
+                    ? "Owner is required."
+                    : editing
+                      ? undefined
+                      : "The person will be added to this league if needed."
+                }
               />
             )}
           />
@@ -461,6 +468,8 @@ function PigeonFormDialog({
             disabled={saving}
             slotProps={{
               chip: {
+                onMouseDown: (event) => event.stopPropagation(),
+                onClick: (event) => event.stopPropagation(),
                 sx: { "& .MuiChip-label": { userSelect: "text", cursor: "text" } },
               },
             }}
