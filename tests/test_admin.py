@@ -2,6 +2,42 @@
 Commissioner (admin) endpoint tests.
 """
 
+import pytest
+
+
+@pytest.fixture
+def roster_cleanup(db_conn):
+    """Track aggregate-test records and remove them even when an assertion fails."""
+    tracked = {"emails": set(), "player_ids": set()}
+    yield tracked
+
+    db_conn.rollback()
+    with db_conn.cursor() as cur:
+        if tracked["emails"]:
+            cur.execute(
+                """
+                DELETE FROM tenant_members
+                WHERE user_id IN (
+                    SELECT user_id FROM users WHERE LOWER(email) = ANY(%s)
+                )
+                """,
+                (list(tracked["emails"]),),
+            )
+        if tracked["player_ids"]:
+            cur.execute("DELETE FROM players WHERE player_id = ANY(%s)", (list(tracked["player_ids"]),))
+        if tracked["emails"]:
+            cur.execute("DELETE FROM users WHERE LOWER(email) = ANY(%s)", (list(tracked["emails"]),))
+    db_conn.commit()
+
+
+def _aggregate(name, owner, managers=None, status="pending"):
+    return {
+        "pigeon_name": name,
+        "season_status": status,
+        "owner_email": owner,
+        "manager_emails": managers or [],
+    }
+
 
 # ── access control ────────────────────────────────────────────────────────────
 
@@ -21,78 +57,319 @@ def test_get_pigeons_lists_test_players(client, comm_headers, test_data):
     resp = client.get("/admin/pigeons", headers=comm_headers)
     assert resp.status_code == 200
     body = resp.json()
-    pids = {r["player_id"] for r in body}
+    by_id = {row["player_id"]: row for row in body}
+    pids = set(by_id)
     assert test_data["comm_pid"] in pids
     assert test_data["member_pid"] in pids
     assert test_data["alt_pid"] in pids
-    # Tenant B's player must NOT appear
     assert test_data["b_pid"] not in pids
 
+    commissioner = by_id[test_data["comm_pid"]]
+    assert commissioner["owner"] == {
+        "user_id": test_data["comm_uid"],
+        "email": "testcomm@example.com",
+        "is_primary": True,
+    }
+    assert commissioner["managers"] == []
 
-def test_create_pigeon(client, comm_headers, db_conn):
+    alt = by_id[test_data["alt_pid"]]
+    assert alt["owner"] is None
+    assert alt["managers"] == [{
+        "user_id": test_data["member_uid"],
+        "email": "testmember@example.com",
+        "is_primary": False,
+    }]
+
+
+def test_create_pigeon_builds_complete_aggregate_and_fills_lowest_gap(
+    client, comm_headers, test_data, db_conn, roster_cleanup
+):
+    owner_email = "aggregate-owner@example.com"
+    manager_email = "aggregate-manager@example.com"
+    roster_cleanup["emails"].update({owner_email, manager_email})
+
+    # A row at #5 distinguishes the smallest-gap rule from MAX(number) + 1.
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO players (tenant_id, pigeon_number, pigeon_name, season_status)
+            VALUES (%s, 5, '_AggregateGapSentinel', 'pending')
+            RETURNING player_id
+            """,
+            (test_data["tenant_a_id"],),
+        )
+        roster_cleanup["player_ids"].add(cur.fetchone()[0])
+    db_conn.commit()
+
     resp = client.post(
         "/admin/pigeons",
-        json={"pigeon_name": "_TmpPigeon"},
+        json=_aggregate("_AggregateCreated", owner_email, [manager_email], "active"),
         headers=comm_headers,
     )
-    assert resp.status_code == 201
+    assert resp.status_code == 201, resp.text
     body = resp.json()
-    assert body["pigeon_name"] == "_TmpPigeon"
-    player_id = body["player_id"]
+    roster_cleanup["player_ids"].add(body["player_id"])
 
-    # Cleanup
+    assert body["pigeon_number"] == 4
+    assert body["pigeon_name"] == "_AggregateCreated"
+    assert body["season_status"] == "active"
+    assert body["owner"]["email"] == owner_email
+    assert body["owner"]["is_primary"] is True
+    assert [manager["email"] for manager in body["managers"]] == [manager_email]
+    assert body["managers"][0]["is_primary"] is True
+
     with db_conn.cursor() as cur:
-        cur.execute("DELETE FROM players WHERE player_id = %s", (player_id,))
-    db_conn.commit()
-
-
-def test_update_pigeon_name(client, comm_headers, test_data, db_conn):
-    pid = test_data["alt_pid"]
-    resp = client.patch(
-        f"/admin/pigeons/{pid}",
-        json={"pigeon_name": "_TestAltRenamed"},
-        headers=comm_headers,
-    )
-    assert resp.status_code == 200
-
-    # Restore original name
-    with db_conn.cursor() as cur:
-        cur.execute("UPDATE players SET pigeon_name = '_TestAlt' WHERE player_id = %s", (pid,))
-    db_conn.commit()
-
-
-def test_update_pigeon_season_status(client, comm_headers, test_data):
-    pid = test_data["member_pid"]
-    for status in ("active", "out", "pending"):
-        resp = client.patch(
-            f"/admin/pigeons/{pid}",
-            json={"season_status": status},
-            headers=comm_headers,
+        cur.execute(
+            """
+            SELECT u.email, up.role, tm.role, tm.primary_player_id
+            FROM users u
+            JOIN user_players up ON up.user_id = u.user_id
+            JOIN tenant_members tm
+              ON tm.user_id = u.user_id
+             AND tm.tenant_id = %s
+            WHERE up.player_id = %s
+            ORDER BY u.email
+            """,
+            (test_data["tenant_a_id"], body["player_id"]),
         )
-        assert resp.status_code == 200
+        rows = cur.fetchall()
+    assert rows == [
+        (manager_email, "manager", "member", body["player_id"]),
+        (owner_email, "owner", "member", body["player_id"]),
+    ]
 
-    pigeons = client.get("/admin/pigeons", headers=comm_headers).json()
-    member_row = next(r for r in pigeons if r["player_id"] == pid)
-    assert member_row["season_status"] == "pending"
 
+def test_create_pigeon_links_existing_global_user_without_touching_other_tenant(
+    client, comm_headers, test_data, db_conn, roster_cleanup
+):
+    email = "aggregate-existing@example.com"
+    roster_cleanup["emails"].add(email)
+    with db_conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO users (email, password_hash) VALUES (%s, 'x') RETURNING user_id",
+            (email,),
+        )
+        user_id = cur.fetchone()[0]
+        cur.execute(
+            "INSERT INTO user_players (user_id, player_id, role) VALUES (%s, %s, 'manager')",
+            (user_id, test_data["b_pid"]),
+        )
+        cur.execute(
+            """
+            INSERT INTO tenant_members (tenant_id, user_id, role, primary_player_id)
+            VALUES (%s, %s, 'member', %s)
+            """,
+            (test_data["tenant_b_id"], user_id, test_data["b_pid"]),
+        )
+    db_conn.commit()
 
-def test_update_pigeon_invalid_season_status(client, comm_headers, test_data):
-    resp = client.patch(
-        f"/admin/pigeons/{test_data['member_pid']}",
-        json={"season_status": "injured"},
+    resp = client.post(
+        "/admin/pigeons",
+        json=_aggregate("_AggregateExisting", email),
         headers=comm_headers,
     )
-    assert resp.status_code == 400
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    roster_cleanup["player_ids"].add(body["player_id"])
+    assert body["owner"]["user_id"] == user_id
+
+    with db_conn.cursor() as cur:
+        cur.execute("SELECT COUNT(*) FROM users WHERE LOWER(email) = LOWER(%s)", (email,))
+        assert cur.fetchone()[0] == 1
+        cur.execute(
+            "SELECT role, primary_player_id FROM tenant_members WHERE tenant_id = %s AND user_id = %s",
+            (test_data["tenant_b_id"], user_id),
+        )
+        assert cur.fetchone() == ("member", test_data["b_pid"])
+        cur.execute(
+            "SELECT role FROM user_players WHERE user_id = %s AND player_id = %s",
+            (user_id, test_data["b_pid"]),
+        )
+        assert cur.fetchone()[0] == "manager"
 
 
-def test_update_pigeon_from_other_tenant_404(client, comm_headers, test_data):
-    """Cannot patch a player that belongs to a different tenant."""
-    resp = client.patch(
+def test_update_pigeon_replaces_roles_and_repairs_primary(
+    client, comm_headers, test_data, db_conn, roster_cleanup
+):
+    first_owner = "aggregate-first@example.com"
+    second_owner = "aggregate-second@example.com"
+    replacement_owner = "aggregate-replacement@example.com"
+    roster_cleanup["emails"].update({first_owner, second_owner, replacement_owner})
+
+    first = client.post(
+        "/admin/pigeons",
+        json=_aggregate("_AggregateFirst", first_owner),
+        headers=comm_headers,
+    ).json()
+    second = client.post(
+        "/admin/pigeons",
+        json=_aggregate("_AggregateSecond", second_owner, [first_owner]),
+        headers=comm_headers,
+    ).json()
+    roster_cleanup["player_ids"].update({first["player_id"], second["player_id"]})
+
+    resp = client.put(
+        f"/admin/pigeons/{first['player_id']}",
+        json=_aggregate("_AggregateFirstRenamed", replacement_owner, [], "out"),
+        headers=comm_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["pigeon_name"] == "_AggregateFirstRenamed"
+    assert body["season_status"] == "out"
+    assert body["owner"]["email"] == replacement_owner
+    assert body["managers"] == []
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT tm.primary_player_id
+            FROM tenant_members tm
+            JOIN users u ON u.user_id = tm.user_id
+            WHERE tm.tenant_id = %s AND LOWER(u.email) = LOWER(%s)
+            """,
+            (test_data["tenant_a_id"], first_owner),
+        )
+        assert cur.fetchone()[0] == second["player_id"]
+
+    # Removing the person's final remaining assignment removes only membership.
+    resp = client.put(
+        f"/admin/pigeons/{second['player_id']}",
+        json=_aggregate("_AggregateSecond", second_owner),
+        headers=comm_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT COUNT(*)
+            FROM tenant_members tm
+            JOIN users u ON u.user_id = tm.user_id
+            WHERE tm.tenant_id = %s AND LOWER(u.email) = LOWER(%s)
+            """,
+            (test_data["tenant_a_id"], first_owner),
+        )
+        assert cur.fetchone()[0] == 0
+        cur.execute("SELECT COUNT(*) FROM users WHERE LOWER(email) = LOWER(%s)", (first_owner,))
+        assert cur.fetchone()[0] == 1
+
+
+def test_update_pigeon_rolls_back_accounts_and_assignments_on_conflict(
+    client, comm_headers, test_data, db_conn, roster_cleanup
+):
+    email = "aggregate-rollback@example.com"
+    roster_cleanup["emails"].add(email)
+
+    resp = client.put(
+        f"/admin/pigeons/{test_data['alt_pid']}",
+        json=_aggregate("_TestMember", email),
+        headers=comm_headers,
+    )
+    assert resp.status_code == 409
+
+    roster = client.get("/admin/pigeons", headers=comm_headers).json()
+    alt = next(row for row in roster if row["player_id"] == test_data["alt_pid"])
+    assert alt["pigeon_name"] == "_TestAlt"
+    assert alt["owner"] is None
+    assert [manager["email"] for manager in alt["managers"]] == ["testmember@example.com"]
+    with db_conn.cursor() as cur:
+        cur.execute("SELECT COUNT(*) FROM users WHERE LOWER(email) = LOWER(%s)", (email,))
+        assert cur.fetchone()[0] == 0
+
+
+def test_update_rejects_removing_a_commissioners_final_assignment(
+    client, comm_headers, test_data, db_conn, roster_cleanup
+):
+    email = "aggregate-would-replace-commissioner@example.com"
+    roster_cleanup["emails"].add(email)
+    resp = client.put(
+        f"/admin/pigeons/{test_data['comm_pid']}",
+        json=_aggregate("_TestComm", email),
+        headers=comm_headers,
+    )
+    assert resp.status_code == 409
+    assert "Commissioner" in resp.json()["detail"]
+
+    row = next(
+        item
+        for item in client.get("/admin/pigeons", headers=comm_headers).json()
+        if item["player_id"] == test_data["comm_pid"]
+    )
+    assert row["owner"]["email"] == "testcomm@example.com"
+    with db_conn.cursor() as cur:
+        cur.execute("SELECT COUNT(*) FROM users WHERE LOWER(email) = LOWER(%s)", (email,))
+        assert cur.fetchone()[0] == 0
+
+
+def test_delete_pigeon_repairs_primary_then_removes_final_tenant_membership(
+    client, comm_headers, test_data, db_conn, roster_cleanup
+):
+    first_owner = "aggregate-delete-first@example.com"
+    second_owner = "aggregate-delete-second@example.com"
+    roster_cleanup["emails"].update({first_owner, second_owner})
+    first = client.post(
+        "/admin/pigeons",
+        json=_aggregate("_AggregateDeleteFirst", first_owner),
+        headers=comm_headers,
+    ).json()
+    second = client.post(
+        "/admin/pigeons",
+        json=_aggregate("_AggregateDeleteSecond", second_owner, [first_owner]),
+        headers=comm_headers,
+    ).json()
+    roster_cleanup["player_ids"].update({first["player_id"], second["player_id"]})
+
+    resp = client.delete(f"/admin/pigeons/{first['player_id']}", headers=comm_headers)
+    assert resp.status_code == 204, resp.text
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT tm.primary_player_id
+            FROM tenant_members tm
+            JOIN users u ON u.user_id = tm.user_id
+            WHERE tm.tenant_id = %s AND LOWER(u.email) = LOWER(%s)
+            """,
+            (test_data["tenant_a_id"], first_owner),
+        )
+        assert cur.fetchone()[0] == second["player_id"]
+
+    resp = client.delete(f"/admin/pigeons/{second['player_id']}", headers=comm_headers)
+    assert resp.status_code == 204, resp.text
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT COUNT(*)
+            FROM tenant_members tm
+            JOIN users u ON u.user_id = tm.user_id
+            WHERE tm.tenant_id = %s AND LOWER(u.email) IN (LOWER(%s), LOWER(%s))
+            """,
+            (test_data["tenant_a_id"], first_owner, second_owner),
+        )
+        assert cur.fetchone()[0] == 0
+        cur.execute(
+            "SELECT COUNT(*) FROM users WHERE LOWER(email) IN (LOWER(%s), LOWER(%s))",
+            (first_owner, second_owner),
+        )
+        assert cur.fetchone()[0] == 2
+
+
+def test_update_other_tenant_pigeon_is_not_found(client, comm_headers, test_data):
+    resp = client.put(
         f"/admin/pigeons/{test_data['b_pid']}",
-        json={"pigeon_name": "HijackAttempt"},
+        json=_aggregate("HijackAttempt", "testcomm@example.com"),
         headers=comm_headers,
     )
     assert resp.status_code == 404
+
+
+def test_obsolete_admin_pigeon_patch_and_user_routes_are_removed(client, comm_headers, test_data):
+    patch = client.patch(
+        f"/admin/pigeons/{test_data['alt_pid']}",
+        json={"pigeon_name": "NoLongerSupported"},
+        headers=comm_headers,
+    )
+    assert patch.status_code == 405
+    assert client.get("/admin/users", headers=comm_headers).status_code == 404
 
 
 # ── league rename ─────────────────────────────────────────────────────────────
@@ -133,25 +410,59 @@ def test_update_pigeons_can_rename_setting(client, comm_headers, test_data, db_c
 # ── pigeon name validation ───────────────────────────────────────────────────
 
 def test_create_pigeon_name_too_long_rejected(client, comm_headers):
-    resp = client.post("/admin/pigeons", json={"pigeon_name": "x" * 31}, headers=comm_headers)
+    resp = client.post(
+        "/admin/pigeons",
+        json=_aggregate("x" * 31, "valid-owner@example.com"),
+        headers=comm_headers,
+    )
     assert resp.status_code == 422
 
 
 def test_create_pigeon_name_empty_rejected(client, comm_headers):
-    resp = client.post("/admin/pigeons", json={"pigeon_name": "   "}, headers=comm_headers)
+    resp = client.post(
+        "/admin/pigeons",
+        json=_aggregate("   ", "valid-owner@example.com"),
+        headers=comm_headers,
+    )
     assert resp.status_code == 422
 
 
 def test_create_pigeon_name_control_char_rejected(client, comm_headers):
-    resp = client.post("/admin/pigeons", json={"pigeon_name": "Bad\nName"}, headers=comm_headers)
+    resp = client.post(
+        "/admin/pigeons",
+        json=_aggregate("Bad\nName", "valid-owner@example.com"),
+        headers=comm_headers,
+    )
     assert resp.status_code == 422
 
 
 def test_update_pigeon_name_too_long_rejected(client, comm_headers, test_data):
-    resp = client.patch(
-        f"/admin/pigeons/{test_data['alt_pid']}", json={"pigeon_name": "x" * 31}, headers=comm_headers
+    resp = client.put(
+        f"/admin/pigeons/{test_data['alt_pid']}",
+        json=_aggregate("x" * 31, "testmember@example.com"),
+        headers=comm_headers,
     )
     assert resp.status_code == 422
+
+
+def test_duplicate_and_overlapping_manager_emails_are_rejected(client, comm_headers):
+    duplicate = client.post(
+        "/admin/pigeons",
+        json=_aggregate(
+            "_DuplicateManagers",
+            "owner@example.com",
+            ["manager@example.com", "MANAGER@example.com"],
+        ),
+        headers=comm_headers,
+    )
+    assert duplicate.status_code == 422
+
+    overlap = client.post(
+        "/admin/pigeons",
+        json=_aggregate("_OverlappingOwner", "owner@example.com", ["OWNER@example.com"]),
+        headers=comm_headers,
+    )
+    assert overlap.status_code == 422
 
 
 # ── payouts ───────────────────────────────────────────────────────────────────
@@ -192,13 +503,3 @@ def test_member_can_get_payouts(client, member_headers):
 def test_member_cannot_put_payouts(client, member_headers):
     resp = client.put("/admin/payouts", json=[{"place": 1, "points": 999}], headers=member_headers)
     assert resp.status_code == 403
-
-
-# ── user management ───────────────────────────────────────────────────────────
-
-def test_get_users_lists_tenant_members(client, comm_headers):
-    resp = client.get("/admin/users", headers=comm_headers)
-    assert resp.status_code == 200
-    emails = {r["email"] for r in resp.json()}
-    assert "testcomm@example.com" in emails
-    assert "testmember@example.com" in emails

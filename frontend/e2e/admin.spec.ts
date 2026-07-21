@@ -10,8 +10,9 @@ test.describe("league settings (admin)", () => {
   });
 
   test("admin pages are accessible to commissioner", async ({ page }) => {
-    await page.goto("/admin/settings");
+    await page.goto("/admin");
     await expect(page).not.toHaveURL(/login/);
+    await expect(page).toHaveURL(/\/admin\/settings$/);
     await expect(page.getByText(/league settings|settings/i).first()).toBeVisible();
   });
 
@@ -45,9 +46,8 @@ test.describe("league settings (admin)", () => {
 
   test("roster tab shows the test player", async ({ page }) => {
     await page.goto("/admin/pigeons");
-    // Player names live inside the "Select pigeon" Autocomplete dropdown; open it first.
-    await page.getByLabel("Select pigeon").click({ timeout: 10_000 });
-    await expect(page.getByRole("option", { name: /_TestFE/ })).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByRole("heading", { name: "Roster" })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/_TestFE/).first()).toBeVisible({ timeout: 5_000 });
   });
 
   test("non-admin route returns 403 from API", async ({ page }) => {

@@ -486,26 +486,49 @@ export class AdminWeekLock {
   }
 }
 
-/** Row from GET /admin/pigeons and response from POST /admin/pigeons */
+export type PigeonSeasonStatus = "pending" | "active" | "out";
+
+/** A user assigned to a pigeon in the commissioner roster. */
+export class AdminPigeonManager {
+  user_id: number;
+  email: string;
+  is_primary: boolean;
+
+  constructor(data: unknown) {
+    if (!isRecord(data)) throw new DataValidationError("Invalid AdminPigeonManager (not an object)");
+    const { user_id, email, is_primary } = data;
+    if (!isNumber(user_id)) throw new DataValidationError("manager.user_id must be number");
+    if (!isString(email)) throw new DataValidationError("manager.email must be string");
+    if (!isBoolean(is_primary)) throw new DataValidationError("manager.is_primary must be boolean");
+
+    this.user_id = user_id;
+    this.email = email;
+    this.is_primary = is_primary;
+  }
+}
+
+/** Row from GET /admin/pigeons and response from POST/PUT /admin/pigeons. */
 export class AdminPigeon {
   player_id: number;
   pigeon_number: number;
   pigeon_name: string;
-  /** May be null/undefined if unassigned */
-  owner_email: string | null;
-  season_status: "pending" | "active" | "out";
+  /** Null only for legacy data that needs an owner assigned. */
+  owner: AdminPigeonManager | null;
+  managers: AdminPigeonManager[];
+  season_status: PigeonSeasonStatus;
 
   constructor(data: unknown) {
     if (!isRecord(data)) throw new DataValidationError("Invalid AdminPigeon (not an object)");
-    const { player_id, pigeon_number, pigeon_name, owner_email, season_status } = data;
+    const { player_id, pigeon_number, pigeon_name, owner, managers, season_status } = data;
 
     if (!isNumber(player_id)) throw new DataValidationError("player_id must be number");
     if (!isNumber(pigeon_number)) throw new DataValidationError("pigeon_number must be number");
     if (!isString(pigeon_name)) throw new DataValidationError("pigeon_name must be string");
-    if (!(owner_email === null || owner_email === undefined || isString(owner_email))) {
-      throw new DataValidationError("owner_email must be string|null|undefined");
+    if (owner !== null && owner !== undefined && !isRecord(owner)) {
+      throw new DataValidationError("owner must be object|null");
     }
-    const ss = (season_status as string) ?? "pending";
+    if (!Array.isArray(managers)) throw new DataValidationError("managers must be array");
+    const ss = season_status as string;
     if (!["pending", "active", "out"].includes(ss)) {
       throw new DataValidationError("season_status must be pending|active|out");
     }
@@ -513,8 +536,9 @@ export class AdminPigeon {
     this.player_id = player_id;
     this.pigeon_number = pigeon_number;
     this.pigeon_name = pigeon_name;
-    this.owner_email = (owner_email ?? null) as string | null;
-    this.season_status = ss as "pending" | "active" | "out";
+    this.owner = owner == null ? null : new AdminPigeonManager(owner);
+    this.managers = managers.map((manager) => new AdminPigeonManager(manager));
+    this.season_status = ss as PigeonSeasonStatus;
   }
 }
 
@@ -526,111 +550,13 @@ export interface PayoutRow {
 /** Payload for POST /admin/pigeons */
 export interface AdminPigeonCreateIn {
   pigeon_name: string;
-  pigeon_number?: number;
+  season_status: PigeonSeasonStatus;
+  owner_email: string;
+  manager_emails: string[];
 }
 
-/**
- * Payload for PATCH /admin/pigeons/{player_id}
- * - Omit a field to leave it unchanged
- * - Send owner_email: null to unassign the owner
- */
-export class AdminPigeonUpdateIn {
-  pigeon_name?: string;
-  owner_email?: string | null;
-  season_status?: string;
-
-  constructor(data: unknown) {
-    if (!isRecord(data)) throw new DataValidationError("Invalid AdminPigeonUpdateIn (not an object)");
-    const { pigeon_name, owner_email, season_status } = data;
-
-    if (pigeon_name !== undefined && !isString(pigeon_name)) {
-      throw new DataValidationError("pigeon_name must be string if provided");
-    }
-    if (owner_email !== undefined && !(owner_email === null || isString(owner_email))) {
-      throw new DataValidationError("owner_email must be string|null if provided");
-    }
-    if (season_status !== undefined && !isString(season_status)) {
-      throw new DataValidationError("season_status must be string if provided");
-    }
-
-    this.pigeon_name = pigeon_name as string | undefined;
-    this.owner_email = (owner_email as string | null | undefined);
-    this.season_status = season_status as string | undefined;
-  }
-}
-
-/** Row from GET /admin/users and response from POST /admin/users */
-export class AdminUser {
-  email: string;
-  /** May be null if the user has no primary pigeon */
-  primary_pigeon: number | null;
-  /** List of non-primary pigeons the user can manage (manager/viewer) */
-  secondary_pigeons: number[];
-
-  constructor(data: unknown) {
-    if (!isRecord(data)) throw new DataValidationError("Invalid AdminUser (not an object)");
-    const { email, primary_pigeon, secondary_pigeons } = data;
-
-    if (!isString(email)) throw new DataValidationError("email must be string");
-    if (!(primary_pigeon === null || isNumber(primary_pigeon))) {
-      throw new DataValidationError("primary_pigeon must be number|null");
-    }
-    if (!Array.isArray(secondary_pigeons)) {
-      throw new DataValidationError("secondary_pigeons must be array");
-    }
-    for (const n of secondary_pigeons) {
-      if (!isNumber(n)) throw new DataValidationError("secondary_pigeons[] must be number");
-    }
-
-    this.email = email;
-    this.primary_pigeon = (primary_pigeon ?? null) as number | null;
-    this.secondary_pigeons = [...secondary_pigeons] as number[];
-  }
-}
-
-/** Payload for POST /admin/users */
-export class AdminUserCreateIn {
-  email: string;
-  primary_pigeon: number;
-
-  constructor(data: unknown) {
-    if (!isRecord(data) || !isString(data.email) || !isNumber(data.primary_pigeon)) {
-      throw new DataValidationError("Invalid AdminUserCreateIn (email and primary_pigeon required)");
-    }
-    this.email = data.email;
-    this.primary_pigeon = data.primary_pigeon;
-  }
-}
-
-/**
- * Payload for PUT /admin/users/{email}
- * Replaces all existing assignments for the user.
- * - Omit primary_pigeon to leave user without a primary
- * - Set secondary_pigeons to [] to clear all secondaries
- */
-export class AdminUserUpdateIn {
-  primary_pigeon?: number | null;
-  secondary_pigeons: number[];
-
-  constructor(data: unknown) {
-    if (!isRecord(data)) throw new DataValidationError("Invalid AdminUserUpdateIn (not an object)");
-
-    const { primary_pigeon, secondary_pigeons } = data;
-
-    if (primary_pigeon !== undefined && !(primary_pigeon === null || isNumber(primary_pigeon))) {
-      throw new DataValidationError("primary_pigeon must be number|null if provided");
-    }
-    if (!Array.isArray(secondary_pigeons)) {
-      throw new DataValidationError("secondary_pigeons must be array");
-    }
-    for (const n of secondary_pigeons) {
-      if (!isNumber(n)) throw new DataValidationError("secondary_pigeons[] must be number");
-    }
-
-    this.primary_pigeon = (primary_pigeon as number | null | undefined);
-    this.secondary_pigeons = [...(secondary_pigeons as number[])];
-  }
-}
+/** Complete replacement payload for PUT /admin/pigeons/{player_id}. */
+export type AdminPigeonUpdateIn = AdminPigeonCreateIn;
 
 /**
  * Payload for PATCH /admin/weeks/{week}/lock

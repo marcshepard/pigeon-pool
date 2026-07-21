@@ -18,7 +18,11 @@ the durable reference — for directory structure and frontend data flows see
   (`CHECK (pigeon_number >= 1)` only) — tenants can size their pool however they like, though
   there's no formal `max_players` setting to enforce a chosen size.
 - **`user_players`** — links a login (`user_id`) to the player(s) it controls, with
-  `role IN ('owner', 'manager', 'viewer')` for alt-pigeon management.
+  `role IN ('owner', 'manager', 'viewer')` for alt-pigeon management. Every pigeon must have
+  exactly one owner and may have additional managers. Owner and manager currently grant the
+  same application access; owner identifies the primary administrative contact. The database's
+  partial unique index enforces at most one owner, while the roster API enforces that an owner is
+  always supplied. The unused `viewer` role is preserved but is not exposed by roster management.
 - **`picks`** — keyed by `player_id` (not `pigeon_number`).
 - **`tenant_weeks`** — per-tenant lock time for each of the 18 global `weeks`. `weeks` itself
   (the week numbers and `default_lock_at` template) stays global — only lock time is
@@ -54,6 +58,56 @@ the durable reference — for directory structure and frontend data flows see
   then does a full `window.location.reload()` so every page re-fetches against the new
   tenant — simple and correct, but jarring; a cache-invalidation approach without the reload
   is deferred.
+- `PUT /me/primary-pigeon` lets a user choose another pigeon they own or manage as the default
+  for future sessions. It updates `tenant_members.primary_player_id` but deliberately does not
+  replace existing JWTs, so an already-open session may continue using its current pigeon.
+
+## Roster administration
+
+Commissioner roster changes use a pigeon aggregate rather than separate pigeon and user
+workflows:
+
+| Method | Endpoint | Behavior |
+|--------|----------|----------|
+| `GET` | `/admin/pigeons` | Returns each pigeon with its owner, additional managers, status, and per-person primary flags. |
+| `POST` | `/admin/pigeons` | Creates a pigeon plus all owner/manager relationships in one transaction. |
+| `PUT` | `/admin/pigeons/{player_id}` | Replaces the pigeon's name, status, owner, and manager set in one transaction. |
+| `DELETE` | `/admin/pigeons/{player_id}` | Deletes a preseason pigeon and repairs affected memberships and primaries. |
+
+Pigeon numbers are display/order values assigned by the server. Creation fills the lowest
+available positive number; deletion leaves a gap until a later create fills it. Mutation routes
+always use stable `player_id` values.
+
+Owner and manager emails are resolved against the global case-insensitive user identity. A new
+account is created when there is no match; otherwise the existing account is linked into the
+active tenant. New memberships receive the `member` role, while an existing role—including
+`commissioner`—is preserved. Roster operations never delete global `users` rows or relationships
+in another tenant.
+
+The submitted owner and manager lists are the complete desired state. Changing the owner does not
+implicitly preserve the former owner as a manager. If the new owner was an additional manager,
+that relationship becomes owner so the person is not listed twice.
+
+After each mutation, a user's existing primary remains unchanged if it is still assigned. If it
+was removed, the lowest-numbered remaining owned/managed pigeon becomes primary. An ordinary
+member with no remaining assignment is removed from that tenant only. A mutation that would
+remove any commissioner's final pigeon assignment is rejected. Each mutation is atomic and
+tenant-scoped; simultaneous edits of the same pigeon use last-write-wins behavior.
+
+The obsolete split `/admin/users` workflow and partial admin pigeon `PATCH` endpoint were removed.
+The member-facing pigeon-name endpoint remains separate because it has different authorization.
+
+Before deploying roster changes, run the read-only integrity validator:
+
+```bash
+python -m backend.cli validate-rosters
+python -m backend.cli validate-rosters --tenant 2
+python -m backend.cli validate-rosters --json
+```
+
+It reports invalid owner counts, memberships, assignments, primary pigeons, roles, pigeon fields,
+and missing commissioners. Orphaned global users are informational warnings only. The command
+never repairs or deletes data and exits nonzero only when integrity errors are present.
 
 ## Tenant onboarding (curated-pool model)
 

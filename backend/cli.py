@@ -7,6 +7,7 @@ Commands:
 - sync-kickoffs  : Refresh kickoff times for a specific week, called infrequently
 - reset-season   : Archive picks, wipe games/picks, reset season status, sync new schedule
 - list-leagues   : Show all tenants with member/player counts
+- validate-rosters : Read-only roster integrity checks across one or all tenants
 - create-league  : Create a new league/tenant and assign a commissioner
 - delete-league  : Permanently delete a league and its data
 - run-sql        : Execute a SQL migration file using the app's DB connection
@@ -22,6 +23,7 @@ Example usage:
 - python -m backend.cli import-picks-xlsx C:/path/to/picks.xlsx --max-week 6
 - python -m backend.cli reset-season --year 2024
 - python -m backend.cli list-leagues
+- python -m backend.cli validate-rosters --json
 - python -m backend.cli create-league --name "My Pool" --commissioner-email admin@example.com
 - python -m backend.cli delete-league 2 --yes
 - python -m backend.cli run-sql database/migration_stage11.sql
@@ -31,9 +33,11 @@ Example usage:
 from __future__ import annotations
 
 import argparse
+from contextlib import nullcontext, redirect_stdout
 import csv
 import json
 import os
+import sys
 from typing import Any, Dict, Callable, Awaitable, NoReturn
 import asyncio
 
@@ -41,18 +45,24 @@ import psycopg
 from passlib.hash import bcrypt as _bcrypt
 from sqlalchemy import text
 
-from backend.routes.auth import make_session_token
-from backend.utils.db import AsyncSessionLocal
-from backend.utils.score_sync import ScoreSync
-from backend.utils.settings import get_settings
-from backend.utils.scheduled_jobs import (
-    run_kickoff_sync,
-    run_poll_scores,
-    run_email_sun,
-    run_email_mon,
-    run_email_tue_warn,
-    get_all_player_emails,
-)
+# Settings currently announce loaded env files on stdout during imports.  Keep
+# stdout machine-readable for `validate-rosters --json` by sending only those
+# import-time diagnostics to stderr for that invocation.
+_json_validation_mode = "validate-rosters" in sys.argv and "--json" in sys.argv
+with redirect_stdout(sys.stderr) if _json_validation_mode else nullcontext():
+    from backend.routes.auth import make_session_token
+    from backend.utils.db import AsyncSessionLocal
+    from backend.utils.score_sync import ScoreSync
+    from backend.utils.roster_validation import format_roster_validation_report, validate_rosters
+    from backend.utils.settings import get_settings
+    from backend.utils.scheduled_jobs import (
+        run_kickoff_sync,
+        run_poll_scores,
+        run_email_sun,
+        run_email_mon,
+        run_email_tue_warn,
+        get_all_player_emails,
+    )
 from .utils.import_picks_xlsx import import_picks_pivot_xlsx
 
 # Mapping of scheduled job names to their runner functions
@@ -341,6 +351,20 @@ def cmd_list_leagues(_: argparse.Namespace) -> int:
     for r in rows:
         print(f"{r[0]:>4}  {r[1]:<30}  {r[2]:>7}  {r[3]:>7}")
     return 0
+
+
+def cmd_validate_rosters(args: argparse.Namespace) -> int:
+    """Run read-only roster integrity checks for one or all tenants."""
+    settings = get_settings()
+    cfg = settings.psycopg_kwargs()
+    with get_connection(cfg) as conn:
+        report = validate_rosters(conn, tenant_id=args.tenant_id)
+
+    if args.as_json:
+        print(json.dumps(report.to_dict(), indent=2, sort_keys=True))
+    else:
+        print(format_roster_validation_report(report))
+    return 0 if report.is_valid else 1
 
 
 def cmd_create_league(args: argparse.Namespace) -> int:
@@ -916,6 +940,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="Show all leagues (tenants) with member and player counts.",
     )
     p_list.set_defaults(func=cmd_list_leagues)
+
+    # validate-rosters
+    p_validate = sub.add_parser(
+        "validate-rosters",
+        help="Validate roster integrity without changing data.",
+        description=(
+            "Checks roster, membership, primary-pigeon, and tenant-isolation invariants. "
+            "Orphaned global users are informational warnings only."
+        ),
+    )
+    p_validate.add_argument("--tenant", dest="tenant_id", type=int,
+                            help="Validate only this tenant_id (global orphan warnings are still reported)")
+    p_validate.add_argument("--json", dest="as_json", action="store_true",
+                            help="Emit a machine-readable JSON report")
+    p_validate.set_defaults(func=cmd_validate_rosters)
 
     # create-league
     p_create = sub.add_parser(

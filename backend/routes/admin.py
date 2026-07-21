@@ -10,18 +10,18 @@ import os
 import secrets
 import string
 import tempfile
-from typing import List, Optional
+from typing import List, Optional, Literal
 from datetime import datetime, timezone, timedelta
-import traceback
 
 from fastapi import APIRouter, Depends, HTTPException, status, Body, Response, UploadFile, File, Form
-from pydantic import BaseModel, EmailStr, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.utils.import_picks_xlsx import import_picks_pivot_xlsx_with_engine
 from backend.utils.db import get_db
-from backend.utils.logger import debug, info, warn, error
+from backend.utils.logger import debug, info, warn
 from backend.utils.emailer import send_bulk_email_to_all_users
 from backend.utils.validation import validate_pigeon_name
 from .auth import require_user, require_admin
@@ -297,101 +297,423 @@ async def activate_season(
 # Player (pigeon) management
 # ---------------------------------------------------------------------------
 
-GET_PLAYERS_SQL = text("""
+GET_ROSTER_SQL = text("""
     SELECT
         p.player_id,
         p.pigeon_number,
         p.pigeon_name,
-        u.email AS owner_email,
-        p.season_status
+        p.season_status,
+        u.user_id,
+        u.email,
+        up.role,
+        COALESCE(tm.primary_player_id = p.player_id, FALSE) AS is_primary
     FROM players p
-    LEFT JOIN user_players up ON up.player_id = p.player_id AND up.role = 'owner'
+    LEFT JOIN user_players up
+      ON up.player_id = p.player_id
+     AND up.role IN ('owner', 'manager')
     LEFT JOIN users u ON u.user_id = up.user_id
+    LEFT JOIN tenant_members tm
+      ON tm.tenant_id = p.tenant_id
+     AND tm.user_id = up.user_id
     WHERE p.tenant_id = :tenant_id
-    ORDER BY p.pigeon_number
+    ORDER BY
+        p.pigeon_number,
+        CASE up.role WHEN 'owner' THEN 0 ELSE 1 END,
+        LOWER(u.email)
 """)
 
-UPDATE_PLAYER_NAME_SQL = text("""
-    UPDATE players
-    SET pigeon_name = :pigeon_name
+GET_PLAYER_FOR_UPDATE_SQL = text("""
+    SELECT player_id
+    FROM players
     WHERE player_id = :player_id AND tenant_id = :tenant_id
-""")
-
-UPDATE_PLAYER_STATUS_SQL = text("""
-    UPDATE players
-    SET season_status = :season_status
-    WHERE player_id = :player_id AND tenant_id = :tenant_id
-""")
-
-GET_USER_ID_BY_EMAIL_SQL = text("""
-    SELECT user_id FROM users WHERE LOWER(email) = LOWER(:email)
-""")
-
-DELETE_PLAYER_OWNER_SQL = text("""
-    DELETE FROM user_players
-    WHERE player_id = :player_id AND role = 'owner'
-""")
-
-INSERT_PLAYER_OWNER_SQL = text("""
-    INSERT INTO user_players (user_id, player_id, role)
-    VALUES (:user_id, :player_id, 'owner')
-    ON CONFLICT (user_id, player_id) DO UPDATE SET role = 'owner'
-""")
-
-CHECK_PLAYER_EXISTS_SQL = text("""
-    SELECT 1 FROM players WHERE player_id = :player_id AND tenant_id = :tenant_id
-""")
-
-CHECK_PLAYER_IS_PRIMARY_SQL = text("""
-    SELECT u.email
-    FROM tenant_members tm
-    JOIN users u ON u.user_id = tm.user_id
-    WHERE tm.primary_player_id = :player_id AND tm.tenant_id = :tenant_id
-""")
-
-DELETE_PLAYER_SQL = text("""
-    DELETE FROM players WHERE player_id = :player_id AND tenant_id = :tenant_id
-""")
-
-
-CREATE_PLAYER_SQL = text("""
-    INSERT INTO players (tenant_id, pigeon_number, pigeon_name)
-    VALUES (:tenant_id, :pigeon_number, :pigeon_name)
-    RETURNING player_id
+    FOR UPDATE
 """)
 
 NEXT_PIGEON_NUMBER_SQL = text("""
-    SELECT COALESCE(MAX(pigeon_number), 0) + 1 FROM players WHERE tenant_id = :tenant_id
+    SELECT candidate
+    FROM generate_series(
+        1,
+        (SELECT COUNT(*) + 1 FROM players WHERE tenant_id = :tenant_id)
+    ) AS numbers(candidate)
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM players p
+        WHERE p.tenant_id = :tenant_id
+          AND p.pigeon_number = candidate
+    )
+    ORDER BY candidate
+    LIMIT 1
 """)
 
+CREATE_PLAYER_SQL = text("""
+    INSERT INTO players (
+        tenant_id,
+        pigeon_number,
+        pigeon_name,
+        season_status
+    )
+    VALUES (
+        :tenant_id,
+        :pigeon_number,
+        :pigeon_name,
+        :season_status
+    )
+    ON CONFLICT (tenant_id, pigeon_number) DO NOTHING
+    RETURNING player_id
+""")
+
+UPDATE_PLAYER_SQL = text("""
+    UPDATE players
+    SET pigeon_name = :pigeon_name,
+        season_status = :season_status
+    WHERE player_id = :player_id AND tenant_id = :tenant_id
+""")
+
+DELETE_PLAYER_SQL = text("""
+    DELETE FROM players
+    WHERE player_id = :player_id AND tenant_id = :tenant_id
+""")
+
+GET_USER_BY_EMAIL_SQL = text("""
+    SELECT user_id, email
+    FROM users
+    WHERE LOWER(email) = LOWER(:email)
+""")
+
+INSERT_USER_SQL = text("""
+    INSERT INTO users (email, password_hash)
+    VALUES (:email, :password_hash)
+    ON CONFLICT DO NOTHING
+    RETURNING user_id, email
+""")
+
+GET_ACTIVE_PLAYER_ASSIGNMENTS_SQL = text("""
+    SELECT up.user_id, up.role
+    FROM user_players up
+    WHERE up.player_id = :player_id
+      AND up.role IN ('owner', 'manager')
+""")
+
+UPSERT_PLAYER_ASSIGNMENT_SQL = text("""
+    INSERT INTO user_players (user_id, player_id, role)
+    VALUES (:user_id, :player_id, :role)
+    ON CONFLICT (user_id, player_id) DO UPDATE SET role = EXCLUDED.role
+""")
+
+DELETE_PLAYER_ASSIGNMENT_SQL = text("""
+    DELETE FROM user_players
+    WHERE user_id = :user_id
+      AND player_id = :player_id
+      AND role IN ('owner', 'manager')
+""")
+
+GET_PRIMARY_USERS_FOR_PLAYER_SQL = text("""
+    SELECT user_id
+    FROM tenant_members
+    WHERE tenant_id = :tenant_id
+      AND primary_player_id = :player_id
+""")
+
+GET_ALL_PLAYER_USERS_SQL = text("""
+    SELECT user_id
+    FROM user_players
+    WHERE player_id = :player_id
+    UNION
+    SELECT user_id
+    FROM tenant_members
+    WHERE tenant_id = :tenant_id
+      AND primary_player_id = :player_id
+""")
+
+GET_TENANT_MEMBER_SQL = text("""
+    SELECT tm.role, tm.primary_player_id, u.email
+    FROM tenant_members tm
+    JOIN users u ON u.user_id = tm.user_id
+    WHERE tm.tenant_id = :tenant_id
+      AND tm.user_id = :user_id
+""")
+
+GET_USER_ACTIVE_ASSIGNMENTS_SQL = text("""
+    SELECT p.player_id, p.pigeon_number
+    FROM user_players up
+    JOIN players p ON p.player_id = up.player_id
+    WHERE up.user_id = :user_id
+      AND p.tenant_id = :tenant_id
+      AND up.role IN ('owner', 'manager')
+    ORDER BY p.pigeon_number, p.player_id
+""")
+
+GET_USER_ACTIVE_ASSIGNMENTS_EXCLUDING_SQL = text("""
+    SELECT p.player_id, p.pigeon_number
+    FROM user_players up
+    JOIN players p ON p.player_id = up.player_id
+    WHERE up.user_id = :user_id
+      AND p.tenant_id = :tenant_id
+      AND p.player_id <> :exclude_player_id
+      AND up.role IN ('owner', 'manager')
+    ORDER BY p.pigeon_number, p.player_id
+""")
+
+GET_USER_VIEWER_ASSIGNMENT_SQL = text("""
+    SELECT 1
+    FROM user_players up
+    JOIN players p ON p.player_id = up.player_id
+    WHERE up.user_id = :user_id
+      AND p.tenant_id = :tenant_id
+      AND up.role = 'viewer'
+    LIMIT 1
+""")
+
+GET_USER_VIEWER_ASSIGNMENT_EXCLUDING_SQL = text("""
+    SELECT 1
+    FROM user_players up
+    JOIN players p ON p.player_id = up.player_id
+    WHERE up.user_id = :user_id
+      AND p.tenant_id = :tenant_id
+      AND p.player_id <> :exclude_player_id
+      AND up.role = 'viewer'
+    LIMIT 1
+""")
+
+INSERT_TENANT_MEMBER_SQL = text("""
+    INSERT INTO tenant_members (tenant_id, user_id, role, primary_player_id)
+    VALUES (:tenant_id, :user_id, 'member', :primary_player_id)
+    ON CONFLICT (tenant_id, user_id) DO NOTHING
+""")
+
+UPDATE_TENANT_MEMBER_PRIMARY_SQL = text("""
+    UPDATE tenant_members
+    SET primary_player_id = :primary_player_id
+    WHERE tenant_id = :tenant_id
+      AND user_id = :user_id
+""")
+
+DELETE_TENANT_MEMBER_SQL = text("""
+    DELETE FROM tenant_members
+    WHERE tenant_id = :tenant_id
+      AND user_id = :user_id
+""")
+
+
+class PigeonPerson(BaseModel):
+    user_id: int
+    email: EmailStr
+    is_primary: bool
 
 class PigeonRow(BaseModel):
     player_id: int
     pigeon_number: int
     pigeon_name: str
-    owner_email: Optional[str]
-    season_status: str = "pending"
+    season_status: Literal["pending", "active", "out"]
+    owner: Optional[PigeonPerson]
+    managers: List[PigeonPerson] = Field(default_factory=list)
 
 
-class PigeonCreate(BaseModel):
+class PigeonAggregateIn(BaseModel):
     pigeon_name: str
-    pigeon_number: Optional[int] = None  # auto-assigned if omitted
+    owner_email: EmailStr
+    manager_emails: List[EmailStr] = Field(default_factory=list)
 
     @field_validator("pigeon_name")
     @classmethod
     def _validate_pigeon_name(cls, v: str) -> str:
         return validate_pigeon_name(v)
 
+    @model_validator(mode="after")
+    def _validate_people(self):
+        owner = str(self.owner_email).strip().casefold()
+        managers = [str(email).strip().casefold() for email in self.manager_emails]
+        if len(managers) != len(set(managers)):
+            raise ValueError("Additional manager emails must be unique")
+        if owner in managers:
+            raise ValueError("Owner cannot also be an additional manager")
+        return self
 
-class PigeonUpdate(BaseModel):
-    pigeon_name: Optional[str] = None
-    owner_email: Optional[str] = None
-    season_status: Optional[str] = None
 
-    @field_validator("pigeon_name")
-    @classmethod
-    def _validate_pigeon_name(cls, v: Optional[str]) -> Optional[str]:
-        return v if v is None else validate_pigeon_name(v)
+class PigeonCreate(PigeonAggregateIn):
+    season_status: Literal["pending", "active", "out"] = "pending"
+
+
+class PigeonUpdate(PigeonAggregateIn):
+    season_status: Literal["pending", "active", "out"]
+
+
+def _random_password_hash(length: int = 16) -> str:
+    alphabet = string.ascii_letters + string.digits + string.punctuation
+    return "".join(secrets.choice(alphabet) for _ in range(length))
+
+
+def _normalize_email(email: EmailStr | str) -> str:
+    return str(email).strip().casefold()
+
+
+def _build_roster(rows) -> List[PigeonRow]:
+    pigeons: dict[int, dict] = {}
+    for row in rows:
+        player_id = row[0]
+        if player_id not in pigeons:
+            pigeons[player_id] = {
+                "player_id": player_id,
+                "pigeon_number": row[1],
+                "pigeon_name": row[2],
+                "season_status": row[3],
+                "owner": None,
+                "managers": [],
+            }
+        if row[4] is None:
+            continue
+        person = PigeonPerson(user_id=row[4], email=row[5], is_primary=bool(row[7]))
+        if row[6] == "owner":
+            pigeons[player_id]["owner"] = person
+        elif row[6] == "manager":
+            pigeons[player_id]["managers"].append(person)
+    return [PigeonRow(**pigeon) for pigeon in pigeons.values()]
+
+
+async def _load_roster(db: AsyncSession, tenant_id: int) -> List[PigeonRow]:
+    rows = (await db.execute(GET_ROSTER_SQL, {"tenant_id": tenant_id})).fetchall()
+    return _build_roster(rows)
+
+
+async def _load_pigeon(db: AsyncSession, tenant_id: int, player_id: int) -> Optional[PigeonRow]:
+    return next(
+        (pigeon for pigeon in await _load_roster(db, tenant_id) if pigeon.player_id == player_id),
+        None,
+    )
+
+
+async def _find_or_create_user(db: AsyncSession, email: EmailStr | str) -> tuple[int, str]:
+    normalized = _normalize_email(email)
+    existing = (await db.execute(GET_USER_BY_EMAIL_SQL, {"email": normalized})).first()
+    if existing:
+        return existing[0], existing[1]
+
+    created = (await db.execute(INSERT_USER_SQL, {
+        "email": normalized,
+        "password_hash": _random_password_hash(),
+    })).first()
+    if created:
+        return created[0], created[1]
+
+    # Another tenant may have created this global identity concurrently.
+    existing = (await db.execute(GET_USER_BY_EMAIL_SQL, {"email": normalized})).first()
+    if not existing:
+        raise RuntimeError(f"Unable to find or create user {normalized}")
+    return existing[0], existing[1]
+
+
+async def _repair_tenant_membership(
+    db: AsyncSession,
+    tenant_id: int,
+    user_id: int,
+    *,
+    preferred_player_id: Optional[int] = None,
+    exclude_player_id: Optional[int] = None,
+) -> None:
+    params = {"tenant_id": tenant_id, "user_id": user_id}
+    if exclude_player_id is None:
+        assignment_rows = (await db.execute(GET_USER_ACTIVE_ASSIGNMENTS_SQL, params)).fetchall()
+        viewer = (await db.execute(GET_USER_VIEWER_ASSIGNMENT_SQL, params)).first()
+    else:
+        params["exclude_player_id"] = exclude_player_id
+        assignment_rows = (await db.execute(GET_USER_ACTIVE_ASSIGNMENTS_EXCLUDING_SQL, params)).fetchall()
+        viewer = (await db.execute(GET_USER_VIEWER_ASSIGNMENT_EXCLUDING_SQL, params)).first()
+
+    membership = (await db.execute(GET_TENANT_MEMBER_SQL, {
+        "tenant_id": tenant_id,
+        "user_id": user_id,
+    })).first()
+
+    if not assignment_rows:
+        if not membership:
+            return
+        if membership[0] == "commissioner":
+            raise HTTPException(
+                status_code=409,
+                detail=f"Commissioner {membership[2]} must remain assigned to at least one pigeon",
+            )
+        if viewer:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Cannot remove {membership[2]}'s final managed pigeon while viewer assignments remain",
+            )
+        await db.execute(DELETE_TENANT_MEMBER_SQL, {"tenant_id": tenant_id, "user_id": user_id})
+        return
+
+    assignment_ids = [row[0] for row in assignment_rows]
+    if not membership:
+        primary_player_id = (
+            preferred_player_id
+            if preferred_player_id in assignment_ids
+            else assignment_ids[0]
+        )
+        await db.execute(INSERT_TENANT_MEMBER_SQL, {
+            "tenant_id": tenant_id,
+            "user_id": user_id,
+            "primary_player_id": primary_player_id,
+        })
+        return
+
+    if membership[1] not in assignment_ids:
+        await db.execute(UPDATE_TENANT_MEMBER_PRIMARY_SQL, {
+            "tenant_id": tenant_id,
+            "user_id": user_id,
+            "primary_player_id": assignment_ids[0],
+        })
+
+
+async def _replace_player_assignments(
+    db: AsyncSession,
+    player_id: int,
+    desired_roles: dict[int, str],
+) -> set[int]:
+    rows = (await db.execute(GET_ACTIVE_PLAYER_ASSIGNMENTS_SQL, {"player_id": player_id})).fetchall()
+    existing_roles = {row[0]: row[1] for row in rows}
+    affected_user_ids = set(existing_roles) | set(desired_roles)
+
+    existing_owner_id = next(
+        (user_id for user_id, role in existing_roles.items() if role == "owner"),
+        None,
+    )
+    desired_owner_id = next(user_id for user_id, role in desired_roles.items() if role == "owner")
+
+    # Release the partial single-owner constraint before promoting a new owner.
+    if existing_owner_id is not None and existing_owner_id != desired_owner_id:
+        if desired_roles.get(existing_owner_id) == "manager":
+            await db.execute(UPSERT_PLAYER_ASSIGNMENT_SQL, {
+                "user_id": existing_owner_id,
+                "player_id": player_id,
+                "role": "manager",
+            })
+        else:
+            await db.execute(DELETE_PLAYER_ASSIGNMENT_SQL, {
+                "user_id": existing_owner_id,
+                "player_id": player_id,
+            })
+
+    for user_id, role in existing_roles.items():
+        if role == "manager" and user_id not in desired_roles:
+            await db.execute(DELETE_PLAYER_ASSIGNMENT_SQL, {
+                "user_id": user_id,
+                "player_id": player_id,
+            })
+
+    for user_id, role in desired_roles.items():
+        if existing_roles.get(user_id) != role:
+            await db.execute(UPSERT_PLAYER_ASSIGNMENT_SQL, {
+                "user_id": user_id,
+                "player_id": player_id,
+                "role": role,
+            })
+
+    return affected_user_ids
+
+
+def _roster_conflict(exc: IntegrityError) -> HTTPException:
+    detail = str(exc.orig).lower()
+    if "pigeon_name" in detail or "players_tenant_id_pigeon_name_key" in detail:
+        return HTTPException(status_code=409, detail="That pigeon name is already in use")
+    return HTTPException(status_code=409, detail="Roster change conflicts with existing data")
 
 
 @router.post(
@@ -405,31 +727,61 @@ async def create_pigeon(
     db: AsyncSession = Depends(get_db),
     me=Depends(require_admin),
 ):
-    """
-    Create a new player in this tenant.
-    pigeon_number is auto-assigned (next available) if not provided.
-    """
+    """Atomically create a pigeon with its required owner and optional managers."""
     debug("admin: create_pigeon called", tenant_id=me.tenant_id, name=pigeon.pigeon_name)
-    current = await get_current_week(db, me)
-    if current.any_locked:
-        raise HTTPException(status_code=409, detail="Season has started; pigeons can no longer be added")
-    pn = pigeon.pigeon_number
-    if pn is None:
-        row = (await db.execute(NEXT_PIGEON_NUMBER_SQL, {"tenant_id": me.tenant_id})).first()
-        pn = row[0]
+
     try:
-        result = (await db.execute(CREATE_PLAYER_SQL, {
-            "tenant_id": me.tenant_id,
-            "pigeon_number": pn,
-            "pigeon_name": pigeon.pigeon_name,
-        })).first()
-        await db.commit()
-    except Exception as exc:
-        await db.rollback()
-        raise HTTPException(status_code=409, detail=f"Pigeon #{pn} already exists in this tenant") from exc
-    player_id = result[0]
-    info("admin: pigeon created", tenant_id=me.tenant_id, player_id=player_id, pigeon_number=pn)
-    return PigeonRow(player_id=player_id, pigeon_number=pn, pigeon_name=pigeon.pigeon_name, owner_email=None, season_status="pending")
+        async with db.begin():
+            current = await get_current_week(db, me)
+            if current.any_locked:
+                raise HTTPException(status_code=409, detail="Season has started; pigeons can no longer be added")
+
+            player_id = None
+            pigeon_number = None
+            for _ in range(3):
+                number_row = (await db.execute(NEXT_PIGEON_NUMBER_SQL, {"tenant_id": me.tenant_id})).first()
+                if number_row is None:
+                    continue
+                pigeon_number = number_row[0]
+                created = (await db.execute(CREATE_PLAYER_SQL, {
+                    "tenant_id": me.tenant_id,
+                    "pigeon_number": pigeon_number,
+                    "pigeon_name": pigeon.pigeon_name,
+                    "season_status": pigeon.season_status,
+                })).first()
+                if created:
+                    player_id = created[0]
+                    break
+            if player_id is None:
+                raise HTTPException(status_code=409, detail="Could not allocate a pigeon number; please retry")
+
+            owner_id, _ = await _find_or_create_user(db, pigeon.owner_email)
+            desired_roles = {owner_id: "owner"}
+            for manager_email in pigeon.manager_emails:
+                manager_id, _ = await _find_or_create_user(db, manager_email)
+                desired_roles[manager_id] = "manager"
+
+            for user_id, role in desired_roles.items():
+                await db.execute(UPSERT_PLAYER_ASSIGNMENT_SQL, {
+                    "user_id": user_id,
+                    "player_id": player_id,
+                    "role": role,
+                })
+                await _repair_tenant_membership(
+                    db,
+                    me.tenant_id,
+                    user_id,
+                    preferred_player_id=player_id,
+                )
+
+            created_pigeon = await _load_pigeon(db, me.tenant_id, player_id)
+            if created_pigeon is None:
+                raise RuntimeError("Created pigeon could not be reloaded")
+    except IntegrityError as exc:
+        raise _roster_conflict(exc) from exc
+
+    info("admin: pigeon created", tenant_id=me.tenant_id, player_id=player_id, pigeon_number=pigeon_number)
+    return created_pigeon
 
 
 @router.get(
@@ -442,18 +794,16 @@ async def get_pigeons(
     me=Depends(require_admin),
 ):
     debug("admin: get_pigeons called", tenant_id=me.tenant_id)
-    rows = (await db.execute(GET_PLAYERS_SQL, {"tenant_id": me.tenant_id})).fetchall()
-    info("admin: pigeons retrieved", count=len(rows))
-    return [
-        PigeonRow(player_id=r[0], pigeon_number=r[1], pigeon_name=r[2], owner_email=r[3], season_status=r[4])
-        for r in rows
-    ]
+    pigeons = await _load_roster(db, me.tenant_id)
+    info("admin: pigeons retrieved", count=len(pigeons))
+    return pigeons
 
 
-@router.patch(
+@router.put(
     "/pigeons/{player_id}",
     status_code=200,
-    summary="Update player name and/or owner (commissioner only)",
+    response_model=PigeonRow,
+    summary="Replace a pigeon's roster aggregate (commissioner only)",
 )
 async def update_pigeon(
     player_id: int,
@@ -462,43 +812,55 @@ async def update_pigeon(
     me=Depends(require_admin),
 ):
     debug("admin: update_pigeon called", tenant_id=me.tenant_id, player_id=player_id)
+    try:
+        async with db.begin():
+            exists = (await db.execute(GET_PLAYER_FOR_UPDATE_SQL, {
+                "player_id": player_id,
+                "tenant_id": me.tenant_id,
+            })).first()
+            if not exists:
+                raise HTTPException(status_code=404, detail=f"Player {player_id} not found in this tenant")
 
-    exists = (await db.execute(CHECK_PLAYER_EXISTS_SQL, {"player_id": player_id, "tenant_id": me.tenant_id})).first()
-    if not exists:
-        raise HTTPException(status_code=404, detail=f"Player {player_id} not found in this tenant")
+            existing_rows = (await db.execute(GET_ACTIVE_PLAYER_ASSIGNMENTS_SQL, {
+                "player_id": player_id,
+            })).fetchall()
+            affected_user_ids = {row[0] for row in existing_rows}
+            primary_rows = (await db.execute(GET_PRIMARY_USERS_FOR_PLAYER_SQL, {
+                "tenant_id": me.tenant_id,
+                "player_id": player_id,
+            })).fetchall()
+            affected_user_ids.update(row[0] for row in primary_rows)
 
-    if update.pigeon_name is not None:
-        await db.execute(UPDATE_PLAYER_NAME_SQL, {
-            "pigeon_name": update.pigeon_name,
-            "player_id": player_id,
-            "tenant_id": me.tenant_id,
-        })
-        info("admin: player name updated", player_id=player_id, name=update.pigeon_name)
+            owner_id, _ = await _find_or_create_user(db, update.owner_email)
+            desired_roles = {owner_id: "owner"}
+            for manager_email in update.manager_emails:
+                manager_id, _ = await _find_or_create_user(db, manager_email)
+                desired_roles[manager_id] = "manager"
 
-    if update.season_status is not None:
-        if update.season_status not in ("pending", "active", "out"):
-            raise HTTPException(status_code=400, detail="season_status must be pending, active, or out")
-        await db.execute(UPDATE_PLAYER_STATUS_SQL, {
-            "season_status": update.season_status,
-            "player_id": player_id,
-            "tenant_id": me.tenant_id,
-        })
-        info("admin: player season_status updated", player_id=player_id, season_status=update.season_status)
+            affected_user_ids.update(await _replace_player_assignments(db, player_id, desired_roles))
+            await db.execute(UPDATE_PLAYER_SQL, {
+                "tenant_id": me.tenant_id,
+                "player_id": player_id,
+                "pigeon_name": update.pigeon_name,
+                "season_status": update.season_status,
+            })
 
-    if "owner_email" in (update.model_fields_set or set()):
-        await db.execute(DELETE_PLAYER_OWNER_SQL, {"player_id": player_id})
-        if update.owner_email:
-            user_row = (await db.execute(GET_USER_ID_BY_EMAIL_SQL, {"email": update.owner_email})).first()
-            if not user_row:
-                await db.rollback()
-                raise HTTPException(status_code=404, detail=f"User {update.owner_email} not found")
-            await db.execute(INSERT_PLAYER_OWNER_SQL, {"user_id": user_row[0], "player_id": player_id})
-            info("admin: player owner updated", player_id=player_id, owner=update.owner_email)
-        else:
-            info("admin: player owner removed", player_id=player_id)
+            for user_id in affected_user_ids:
+                await _repair_tenant_membership(
+                    db,
+                    me.tenant_id,
+                    user_id,
+                    preferred_player_id=player_id if user_id in desired_roles else None,
+                )
 
-    await db.commit()
-    return Response(status_code=200)
+            updated_pigeon = await _load_pigeon(db, me.tenant_id, player_id)
+            if updated_pigeon is None:
+                raise RuntimeError("Updated pigeon could not be reloaded")
+    except IntegrityError as exc:
+        raise _roster_conflict(exc) from exc
+
+    info("admin: pigeon updated", tenant_id=me.tenant_id, player_id=player_id)
+    return updated_pigeon
 
 
 @router.delete(
@@ -511,27 +873,35 @@ async def delete_pigeon(
     db: AsyncSession = Depends(get_db),
     me=Depends(require_admin),
 ):
-    """Delete a pigeon. Blocked once the season has started, or if the pigeon
-    is a user's primary player. Cascades to that pigeon's picks and user_players rows."""
+    """Atomically delete a preseason pigeon and repair affected memberships."""
     debug("admin: delete_pigeon called", tenant_id=me.tenant_id, player_id=player_id)
 
-    current = await get_current_week(db, me)
-    if current.any_locked:
-        raise HTTPException(status_code=409, detail="Season has started; pigeons can no longer be deleted")
+    async with db.begin():
+        current = await get_current_week(db, me)
+        if current.any_locked:
+            raise HTTPException(status_code=409, detail="Season has started; pigeons can no longer be deleted")
 
-    exists = (await db.execute(CHECK_PLAYER_EXISTS_SQL, {"player_id": player_id, "tenant_id": me.tenant_id})).first()
-    if not exists:
-        raise HTTPException(status_code=404, detail=f"Player {player_id} not found in this tenant")
+        exists = (await db.execute(GET_PLAYER_FOR_UPDATE_SQL, {
+            "player_id": player_id,
+            "tenant_id": me.tenant_id,
+        })).first()
+        if not exists:
+            raise HTTPException(status_code=404, detail=f"Player {player_id} not found in this tenant")
 
-    primary_for = (await db.execute(CHECK_PLAYER_IS_PRIMARY_SQL, {"player_id": player_id, "tenant_id": me.tenant_id})).first()
-    if primary_for:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Pigeon is the primary player for {primary_for[0]}. Reassign their primary player first.",
-        )
+        affected_rows = (await db.execute(GET_ALL_PLAYER_USERS_SQL, {
+            "tenant_id": me.tenant_id,
+            "player_id": player_id,
+        })).fetchall()
+        for row in affected_rows:
+            await _repair_tenant_membership(
+                db,
+                me.tenant_id,
+                row[0],
+                exclude_player_id=player_id,
+            )
 
-    await db.execute(DELETE_PLAYER_SQL, {"player_id": player_id, "tenant_id": me.tenant_id})
-    await db.commit()
+        await db.execute(DELETE_PLAYER_SQL, {"player_id": player_id, "tenant_id": me.tenant_id})
+
     info("admin: pigeon deleted", tenant_id=me.tenant_id, player_id=player_id)
     return Response(status_code=204)
 
@@ -598,272 +968,6 @@ async def put_payouts(
 
 
 # ---------------------------------------------------------------------------
-# User management
-# ---------------------------------------------------------------------------
-
-GET_USERS_SQL = text("""
-    SELECT
-        u.user_id,
-        u.email,
-        tm.primary_player_id,
-        p_primary.pigeon_number AS primary_pigeon,
-        COALESCE(
-            json_agg(p_sec.pigeon_number ORDER BY p_sec.pigeon_number)
-            FILTER (WHERE p_sec.pigeon_number IS NOT NULL),
-            '[]'
-        ) AS secondary_pigeons
-    FROM tenant_members tm
-    JOIN users u ON u.user_id = tm.user_id
-    LEFT JOIN players p_primary ON p_primary.player_id = tm.primary_player_id
-    LEFT JOIN user_players up_sec
-        ON up_sec.user_id = tm.user_id
-       AND up_sec.role IN ('manager', 'viewer')
-    LEFT JOIN players p_sec
-        ON p_sec.player_id = up_sec.player_id
-       AND p_sec.tenant_id = :tenant_id
-       AND p_sec.player_id <> tm.primary_player_id
-    WHERE tm.tenant_id = :tenant_id
-    GROUP BY u.user_id, u.email, tm.primary_player_id, p_primary.pigeon_number
-    ORDER BY u.email
-""")
-
-DELETE_USER_SQL = text("DELETE FROM users WHERE LOWER(email) = LOWER(:email)")
-
-CHECK_USER_OWNS_PLAYER_SQL = text("""
-    SELECT p.pigeon_number
-    FROM user_players up
-    JOIN players p ON p.player_id = up.player_id
-    WHERE up.user_id = (SELECT user_id FROM users WHERE LOWER(email) = LOWER(:email))
-      AND up.role = 'owner'
-      AND p.tenant_id = :tenant_id
-    LIMIT 1
-""")
-
-DELETE_USER_TENANT_PLAYERS_SQL = text("""
-    DELETE FROM user_players
-    WHERE user_id = (SELECT user_id FROM users WHERE LOWER(email) = LOWER(:email))
-      AND player_id IN (SELECT player_id FROM players WHERE tenant_id = :tenant_id)
-""")
-
-GET_PLAYER_BY_NUMBER_SQL = text("""
-    SELECT player_id FROM players WHERE tenant_id = :tenant_id AND pigeon_number = :pigeon_number
-""")
-
-INSERT_USER_PRIMARY_SQL = text("""
-    INSERT INTO user_players (user_id, player_id, role)
-    VALUES (
-        (SELECT user_id FROM users WHERE LOWER(email) = LOWER(:email)),
-        :player_id,
-        'manager'
-    )
-    ON CONFLICT (user_id, player_id) DO UPDATE SET role = 'manager'
-""")
-
-UPDATE_TENANT_MEMBER_PRIMARY_SQL = text("""
-    INSERT INTO tenant_members (tenant_id, user_id, role, primary_player_id)
-    VALUES (:tenant_id, (SELECT user_id FROM users WHERE LOWER(email) = LOWER(:email)), 'member', :player_id)
-    ON CONFLICT (tenant_id, user_id) DO UPDATE SET primary_player_id = EXCLUDED.primary_player_id
-""")
-
-INSERT_USER_SECONDARY_SQL = text("""
-    INSERT INTO user_players (user_id, player_id, role)
-    VALUES (
-        (SELECT user_id FROM users WHERE LOWER(email) = LOWER(:email)),
-        :player_id,
-        'manager'
-    )
-    ON CONFLICT (user_id, player_id) DO UPDATE SET role = 'manager'
-""")
-
-INSERT_USER_SQL = text("""
-    INSERT INTO users (email, password_hash)
-    VALUES (:email, :password_hash)
-    RETURNING user_id
-""")
-
-
-class UserRow(BaseModel):
-    email: str
-    primary_pigeon: Optional[int]
-    secondary_pigeons: List[int]
-
-
-class UserUpdate(BaseModel):
-    primary_pigeon: Optional[int] = None
-    secondary_pigeons: List[int] = []
-
-
-class UserCreate(BaseModel):
-    email: EmailStr
-    primary_pigeon: int  # pigeon_number within this tenant; player must exist before creating user
-
-
-def _random_password_hash(length: int = 16) -> str:
-    alphabet = string.ascii_letters + string.digits + string.punctuation
-    return "".join(secrets.choice(alphabet) for _ in range(length))
-
-
-@router.get(
-    "/users",
-    response_model=List[UserRow],
-    summary="List all users in this tenant (commissioner only)",
-)
-async def get_users(
-    db: AsyncSession = Depends(get_db),
-    me=Depends(require_admin),
-):
-    debug("admin: get_users called", tenant_id=me.tenant_id)
-    rows = (await db.execute(GET_USERS_SQL, {"tenant_id": me.tenant_id})).fetchall()
-    info("admin: users retrieved", count=len(rows))
-    return [
-        UserRow(email=r[1], primary_pigeon=r[3], secondary_pigeons=r[4] or [])
-        for r in rows
-    ]
-
-
-@router.post(
-    "/users",
-    status_code=201,
-    response_model=UserRow,
-    summary="Create a new user and assign their primary pigeon (commissioner only)",
-)
-async def create_user(
-    user: UserCreate,
-    db: AsyncSession = Depends(get_db),
-    me=Depends(require_admin),
-):
-    """
-    Atomically adds the user to this tenant with the given primary pigeon. If the email
-    belongs to an existing user (e.g. a member of another tenant), that account is linked
-    into this tenant rather than creating a duplicate. Otherwise a new user account is
-    created with a random placeholder password; the user must use password-reset before
-    first login. The pigeon must already exist in this tenant.
-    """
-    debug("admin: create_user called", tenant_id=me.tenant_id, email=user.email)
-
-    existing = (await db.execute(GET_USER_ID_BY_EMAIL_SQL, {"email": user.email})).first()
-
-    player_row = (await db.execute(GET_PLAYER_BY_NUMBER_SQL, {
-        "tenant_id": me.tenant_id,
-        "pigeon_number": user.primary_pigeon,
-    })).first()
-    if not player_row:
-        raise HTTPException(status_code=404, detail=f"Pigeon #{user.primary_pigeon} not found in this tenant")
-    player_id = player_row[0]
-
-    if existing:
-        uid = existing[0]
-        already_member = (await db.execute(text("""
-            SELECT 1 FROM tenant_members WHERE tenant_id = :tenant_id AND user_id = :uid
-        """), {"tenant_id": me.tenant_id, "uid": uid})).first()
-        if already_member:
-            raise HTTPException(status_code=409, detail=f"User {user.email} already exists in this league")
-    else:
-        result = (await db.execute(INSERT_USER_SQL, {
-            "email": user.email,
-            "password_hash": _random_password_hash(),
-        })).first()
-        uid = result[0]
-
-    await db.execute(INSERT_PLAYER_OWNER_SQL, {"user_id": uid, "player_id": player_id})
-
-    await db.execute(text("""
-        INSERT INTO tenant_members (tenant_id, user_id, role, primary_player_id)
-        VALUES (:tenant_id, :uid, 'member', :player_id)
-    """), {"tenant_id": me.tenant_id, "uid": uid, "player_id": player_id})
-
-    await db.commit()
-    info("admin: user created", email=user.email, player_id=player_id)
-    return UserRow(email=user.email, primary_pigeon=user.primary_pigeon, secondary_pigeons=[])
-
-
-@router.put(
-    "/users/{email}",
-    status_code=200,
-    summary="Update a user's player assignments within this tenant (commissioner only)",
-)
-async def update_user(
-    email: str,
-    update: UserUpdate,
-    db: AsyncSession = Depends(get_db),
-    me=Depends(require_admin),
-):
-    """Replace all player assignments for this user within the active tenant."""
-    debug("admin: update_user called", tenant_id=me.tenant_id, email=email)
-
-    user_row = (await db.execute(GET_USER_ID_BY_EMAIL_SQL, {"email": email})).first()
-    if not user_row:
-        raise HTTPException(status_code=404, detail=f"User {email} not found")
-
-    # Remove all existing assignments within this tenant
-    await db.execute(DELETE_USER_TENANT_PLAYERS_SQL, {"email": email, "tenant_id": me.tenant_id})
-
-    primary_player_id = None
-
-    if update.primary_pigeon is not None:
-        row = (await db.execute(GET_PLAYER_BY_NUMBER_SQL, {
-            "tenant_id": me.tenant_id,
-            "pigeon_number": update.primary_pigeon,
-        })).first()
-        if not row:
-            await db.rollback()
-            raise HTTPException(status_code=404, detail=f"Pigeon #{update.primary_pigeon} not found in this tenant")
-        primary_player_id = row[0]
-        await db.execute(INSERT_USER_PRIMARY_SQL, {"email": email, "player_id": primary_player_id})
-        await db.execute(UPDATE_TENANT_MEMBER_PRIMARY_SQL, {
-            "tenant_id": me.tenant_id,
-            "email": email,
-            "player_id": primary_player_id,
-        })
-        info("admin: user primary player set", email=email, player_id=primary_player_id)
-
-    for pigeon_num in update.secondary_pigeons:
-        row = (await db.execute(GET_PLAYER_BY_NUMBER_SQL, {
-            "tenant_id": me.tenant_id,
-            "pigeon_number": pigeon_num,
-        })).first()
-        if not row:
-            warn("admin: secondary pigeon not found", pigeon=pigeon_num, tenant_id=me.tenant_id)
-            continue
-        await db.execute(INSERT_USER_SECONDARY_SQL, {"email": email, "player_id": row[0]})
-
-    if update.secondary_pigeons:
-        info("admin: user secondary pigeons set", email=email, pigeons=update.secondary_pigeons)
-
-    await db.commit()
-    return Response(status_code=200)
-
-
-@router.delete(
-    "/users/{email}",
-    status_code=204,
-    summary="Delete a user (commissioner only)",
-)
-async def delete_user(
-    email: str,
-    db: AsyncSession = Depends(get_db),
-    me=Depends(require_admin),
-):
-    """Delete a user. Returns 409 if the user owns a player in this tenant."""
-    debug("admin: delete_user called", tenant_id=me.tenant_id, email=email)
-
-    owned = (await db.execute(CHECK_USER_OWNS_PLAYER_SQL, {"email": email, "tenant_id": me.tenant_id})).first()
-    if owned:
-        raise HTTPException(
-            status_code=409,
-            detail=f"User owns pigeon #{owned[0]}. Reassign ownership first.",
-        )
-
-    result = await db.execute(DELETE_USER_SQL, {"email": email})
-    if result.rowcount == 0:
-        raise HTTPException(status_code=404, detail=f"User {email} not found")
-
-    await db.commit()
-    info("admin: user deleted", email=email)
-    return Response(status_code=204)
-
-
-# ---------------------------------------------------------------------------
 # Bulk email
 # ---------------------------------------------------------------------------
 
@@ -913,8 +1017,8 @@ async def send_bulk_email(
 async def import_picks_xlsx_api(
     week: int = Form(...),
     file: UploadFile = File(...),
-    db: AsyncSession = Depends(get_db),
-    _=Depends(require_admin),
+    _: AsyncSession = Depends(get_db),
+    me=Depends(require_admin),
 ):
     """
     Import picks from an XLSX workbook. Only available for the original league (tenant 1);

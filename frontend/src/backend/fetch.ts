@@ -4,10 +4,6 @@
 
 import {
   AdminPigeon,
-  AdminPigeonUpdateIn,
-  AdminUser,
-  AdminUserCreateIn,
-  AdminUserUpdateIn,
   AdminWeekLock,
   Me,
   Ok,
@@ -24,7 +20,7 @@ import {
   type AdminBulkEmailRequest,
   type PayoutRow,
 } from "./types";
-import type { AdminPigeonCreateIn } from "./types";
+import type { AdminPigeonCreateIn, AdminPigeonUpdateIn } from "./types";
 
 // Base URL for API calls, from env or default to relative /api (for dev with proxy)
 const BASE = import.meta.env.VITE_API_URL as string;
@@ -181,6 +177,15 @@ export async function apiLogout(): Promise<void> {
     });
   } catch { /* ignore */ }
   setToken(null);
+}
+
+/** Store the signed-in user's default pigeon for future sessions. */
+export function setPrimaryPigeon(player_id: number): Promise<void> {
+  return apiFetch("/me/primary-pigeon", {
+    method: "PUT",
+    body: JSON.stringify({ player_id }),
+    factory: () => undefined,
+  });
 }
 
 export async function apiRequestPasswordReset(p: PasswordResetRequest): Promise<Ok> {
@@ -386,7 +391,7 @@ export async function adminAdjustWeekLock(week: number, lock_at: Date): Promise<
   });
 }
 
-/** List all pigeons with their (optional) owners. */
+/** List the complete pigeon-centric roster for the current tenant. */
 export function adminGetPigeons(): Promise<AdminPigeon[]> {
   return apiFetch("/admin/pigeons", {
     method: "GET",
@@ -397,7 +402,7 @@ export function adminGetPigeons(): Promise<AdminPigeon[]> {
   });
 }
 
-/** Create a new pigeon in the current tenant. pigeon_number is auto-assigned if omitted. */
+/** Atomically create a pigeon with its required owner and optional managers. */
 export function adminCreatePigeon(input: AdminPigeonCreateIn): Promise<AdminPigeon> {
   return apiFetch("/admin/pigeons", {
     method: "POST",
@@ -406,83 +411,21 @@ export function adminCreatePigeon(input: AdminPigeonCreateIn): Promise<AdminPige
   });
 }
 
-/**
- * Update a single pigeon (name and/or owner).
- * Uses player_id (not pigeon_number) in the URL.
- * Pass { owner_email: null } to unassign an owner.
- */
+/** Atomically replace a pigeon's editable details, owner, and managers. */
 export function adminUpdatePigeon(
   playerId: number,
-  patch: AdminPigeonUpdateIn | { pigeon_name?: string; owner_email?: string | null; season_status?: string }
-): Promise<void> {
-  const body =
-    patch instanceof AdminPigeonUpdateIn ? patch : new AdminPigeonUpdateIn(patch);
+  input: AdminPigeonUpdateIn
+): Promise<AdminPigeon> {
   return apiFetch(`/admin/pigeons/${playerId}`, {
-    method: "PATCH",
-    body: JSON.stringify(body),
-    factory: () => undefined,
+    method: "PUT",
+    body: JSON.stringify(input),
+    factory: (data: unknown) => new AdminPigeon(data),
   });
 }
 
-/** Delete a pigeon. Blocked once the season has started, or if it's a user's primary player. */
+/** Atomically delete a preseason pigeon and repair affected memberships. */
 export function adminDeletePigeon(playerId: number): Promise<void> {
   return apiFetch(`/admin/pigeons/${playerId}`, {
-    method: "DELETE",
-    factory: () => undefined,
-  });
-}
-
-// =============================
-// Admin APIs – Users
-// =============================
-
-/** List all users with primary/secondary pigeon assignments. */
-export function adminGetUsers(): Promise<AdminUser[]> {
-  return apiFetch("/admin/users", {
-    method: "GET",
-    factory: (data: unknown) => {
-      if (!Array.isArray(data)) throw new Error("Expected array");
-      return data.map((row) => new AdminUser(row));
-    },
-  });
-}
-
-/**
- * Create a user (commissioner only).
- * Atomically creates the account and adds the user to this tenant with a primary pigeon.
- * Backend generates a random password; user must reset before first login.
- */
-export function adminCreateUser(
-  input: AdminUserCreateIn | { email: string; primary_pigeon: number }
-): Promise<AdminUser> {
-  const body = input instanceof AdminUserCreateIn ? input : new AdminUserCreateIn(input);
-  return apiFetch("/admin/users", {
-    method: "POST",
-    body: JSON.stringify(body),
-    factory: (data: unknown) => new AdminUser(data),
-  });
-}
-
-/**
- * Replace all assignments for a user.
- * - primary_pigeon: number|null (omit to leave user with no primary)
- * - secondary_pigeons: number[] (use [] to clear)
- */
-export function adminUpdateUser(
-  email: string,
-  input: AdminUserUpdateIn | { primary_pigeon?: number | null; secondary_pigeons: number[] }
-): Promise<void> {
-  const body = input instanceof AdminUserUpdateIn ? input : new AdminUserUpdateIn(input);
-  return apiFetch(`/admin/users/${encodeURIComponent(email)}`, {
-    method: "PUT",
-    body: JSON.stringify(body),
-    factory: () => undefined,
-  });
-}
-
-/** Delete a user (409 if they currently own a pigeon). */
-export function adminDeleteUser(email: string): Promise<void> {
-  return apiFetch(`/admin/users/${encodeURIComponent(email)}`, {
     method: "DELETE",
     factory: () => undefined,
   });

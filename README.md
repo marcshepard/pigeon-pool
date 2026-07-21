@@ -141,16 +141,23 @@ later local command at production.
 ### League (tenant) management
 ```bash
 python -m backend.cli list-leagues
+# Read-only roster validation for all leagues (add --tenant ID or --json as needed)
+python -m backend.cli validate-rosters
 # Create a new league (commissioner must already have a user account)
 python -m backend.cli create-league --name "My Pool" --commissioner-email admin@example.com
 # Delete a league and all its data (orphaned users are also deleted)
 python -m backend.cli delete-league <tenant_id> --yes
 ```
 
+Run `validate-rosters` before and after roster/schema deployments. It checks owner, assignment,
+membership, primary-pigeon, role, numbering, and commissioner invariants without changing data.
+Integrity errors return a nonzero exit code. Global users with no tenant or pigeon relationships
+are printed as informational warnings and are never deleted by this command.
+
 New-league onboarding flow:
 1. Run `create-league` — creates the tenant and a placeholder "Commissioner" player
 2. Commissioner logs in; their new league appears in the tenant switcher
-3. Commissioner goes to League Settings → Roster to add players and users
+3. Commissioner goes to League Settings → Roster to add pigeons with their owner and optional managers
 4. New users visit the site and use "Forgot Password" to set their password before first login
 
 ### Scheduler jobs (run immediately, bypass time gates)

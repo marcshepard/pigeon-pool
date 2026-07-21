@@ -20,7 +20,7 @@ import {
   Typography,
 } from "@mui/material";
 import type { Me } from "../backend/types";
-import { renamePigeon } from "../backend/fetch";
+import { renamePigeon, setPrimaryPigeon } from "../backend/fetch";
 
 export interface UserMenuAvatarProps {
   user: Me;
@@ -35,6 +35,7 @@ export interface UserMenuAvatarProps {
 export default function UserMenuAvatar({ user, onSignOut, onSwitchTenant, onRenamed }: UserMenuAvatarProps) {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [renameOpen, setRenameOpen] = useState(false);
+  const [primaryOpen, setPrimaryOpen] = useState(false);
   const open = Boolean(anchorEl);
 
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
@@ -86,6 +87,9 @@ export default function UserMenuAvatar({ user, onSignOut, onSwitchTenant, onRena
         )}
 
         {canRename && <MenuItem onClick={() => setRenameOpen(true)}>Rename pigeon…</MenuItem>}
+        {myPigeons.length > 1 && (
+          <MenuItem onClick={() => setPrimaryOpen(true)}>Set default pigeon…</MenuItem>
+        )}
 
         {otherTenants.length > 0 && <Divider />}
         {otherTenants.map((t) => (
@@ -110,7 +114,104 @@ export default function UserMenuAvatar({ user, onSignOut, onSwitchTenant, onRena
         pigeons={myPigeons}
         onSaved={onRenamed}
       />
+      <PrimaryPigeonDialog
+        open={primaryOpen}
+        onClose={() => setPrimaryOpen(false)}
+        pigeons={myPigeons}
+        currentPlayerId={user.player_id}
+      />
     </>
+  );
+}
+
+function PrimaryPigeonDialog({
+  open,
+  onClose,
+  pigeons,
+  currentPlayerId,
+}: {
+  open: boolean;
+  onClose: () => void;
+  pigeons: PigeonOption[];
+  currentPlayerId: number;
+}) {
+  const [defaultPlayerId, setDefaultPlayerId] = useState(currentPlayerId);
+  const [playerId, setPlayerId] = useState(currentPlayerId);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setDefaultPlayerId(currentPlayerId);
+    setPlayerId(currentPlayerId);
+  }, [currentPlayerId]);
+
+  useEffect(() => {
+    if (open) {
+      setSaving(false);
+      setSaved(false);
+      setError(null);
+    }
+  }, [open]);
+
+  const close = () => {
+    setPlayerId(defaultPlayerId);
+    onClose();
+  };
+
+  const save = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      await setPrimaryPigeon(playerId);
+      setDefaultPlayerId(playerId);
+      setSaved(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onClose={saving ? undefined : close} maxWidth="xs" fullWidth>
+      <DialogTitle>Set default pigeon</DialogTitle>
+      <DialogContent>
+        <Stack spacing={2} sx={{ mt: 1 }}>
+          <FormControl fullWidth disabled={saving || saved}>
+            <InputLabel>Pigeon</InputLabel>
+            <Select
+              label="Pigeon"
+              value={playerId}
+              onChange={(e) => setPlayerId(Number(e.target.value))}
+            >
+              {pigeons.map((pigeon) => (
+                <MenuItem key={pigeon.player_id} value={pigeon.player_id}>
+                  #{pigeon.pigeon_number} – {pigeon.pigeon_name}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <Typography variant="body2" color="text.secondary">
+            This pigeon will be selected by default the next time you sign in. Existing sessions are unchanged.
+          </Typography>
+          {saved && <Alert severity="success">Default pigeon saved.</Alert>}
+          {error && <Alert severity="error">{error}</Alert>}
+        </Stack>
+      </DialogContent>
+      <DialogActions>
+        {saved ? (
+          <Button variant="contained" onClick={close}>Done</Button>
+        ) : (
+          <>
+            <Button onClick={close} disabled={saving}>Cancel</Button>
+            <Button variant="contained" onClick={save} disabled={saving}>
+              {saving ? "Saving…" : "Save"}
+            </Button>
+          </>
+        )}
+      </DialogActions>
+    </Dialog>
   );
 }
 

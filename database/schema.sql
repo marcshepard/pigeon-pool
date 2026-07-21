@@ -71,6 +71,8 @@ CREATE TABLE IF NOT EXISTS players (
   tenant_id     BIGINT NOT NULL REFERENCES tenants(tenant_id) ON DELETE CASCADE,
   pigeon_number INT    NOT NULL CHECK (pigeon_number >= 1),
   pigeon_name   TEXT   NOT NULL,
+  season_status TEXT   NOT NULL DEFAULT 'pending'
+                       CHECK (season_status IN ('pending','active','out')),
   UNIQUE (tenant_id, pigeon_number),
   UNIQUE (tenant_id, pigeon_name)
 );
@@ -85,7 +87,7 @@ CREATE TABLE IF NOT EXISTS user_players (
   role      TEXT   NOT NULL DEFAULT 'owner' CHECK (role IN ('owner','manager','viewer')),
   PRIMARY KEY (user_id, player_id)
 );
--- Exactly one owner per player globally
+-- At most one owner per player; roster mutations enforce that one is present.
 CREATE UNIQUE INDEX IF NOT EXISTS uniq_player_single_owner
   ON user_players(player_id)
   WHERE role = 'owner';
@@ -100,7 +102,18 @@ CREATE TABLE IF NOT EXISTS tenant_members (
   user_id           BIGINT NOT NULL REFERENCES users(user_id)      ON DELETE CASCADE,
   role              TEXT   NOT NULL DEFAULT 'member' CHECK (role IN ('commissioner','member')),
   primary_player_id BIGINT NOT NULL REFERENCES players(player_id),
+  last_used_at      TIMESTAMPTZ,
   PRIMARY KEY (tenant_id, user_id)
+);
+
+-- === PER-TENANT PAYOUTS ===
+-- One row per paying finish position. Points are configured by commissioners
+-- and consumed by analytics/YTD views in the frontend.
+CREATE TABLE IF NOT EXISTS tenant_payouts (
+  tenant_id BIGINT NOT NULL REFERENCES tenants(tenant_id) ON DELETE CASCADE,
+  place     INT    NOT NULL CHECK (place >= 1),
+  points    INT    NOT NULL CHECK (points >= 0),
+  PRIMARY KEY (tenant_id, place)
 );
 
 -- === PICKS ===

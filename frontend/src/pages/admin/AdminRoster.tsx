@@ -1,716 +1,642 @@
-// =============================================
-// File: src/pages/admin/AdminRoster.tsx
-// Users & Pigeons management with search params
-// =============================================
 import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Autocomplete,
   Box,
   Button,
+  Card,
+  CardActions,
+  CardContent,
   Chip,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
-  Divider,
   FormControl,
   InputLabel,
   MenuItem,
+  Paper,
   Select,
   Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
   TextField,
   Typography,
+  useMediaQuery,
+  useTheme,
 } from "@mui/material";
-import { useSearchParams } from "react-router-dom";
 import {
-  adminGetPigeons,
   adminCreatePigeon,
-  adminUpdatePigeon,
   adminDeletePigeon,
-  adminGetUsers,
-  adminCreateUser,
-  adminDeleteUser,
-  adminUpdateUser,
+  adminGetPigeons,
+  adminSendBulkEmail,
+  adminUpdatePigeon,
   getCurrentWeek,
 } from "../../backend/fetch";
-import { AdminPigeon, AdminUser } from "../../backend/types";
-import { AppSnackbar } from "../../components/CommonComponents";
+import type {
+  AdminPigeon,
+  AdminPigeonCreateIn,
+  AdminPigeonUpdateIn,
+  PigeonSeasonStatus,
+} from "../../backend/types";
+import { AppSnackbar, type Severity } from "../../components/CommonComponents";
+
+type RosterFormState =
+  | { mode: "create" }
+  | { mode: "edit"; pigeon: AdminPigeon };
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function emailKey(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+function dedupeEmails(emails: string[]): string[] {
+  const byKey = new Map<string, string>();
+  for (const rawEmail of emails) {
+    const email = rawEmail.trim();
+    if (email && !byKey.has(emailKey(email))) byKey.set(emailKey(email), email);
+  }
+  return [...byKey.values()];
+}
+
+function sortedRoster(pigeons: AdminPigeon[]): AdminPigeon[] {
+  return [...pigeons].sort((a, b) => a.pigeon_number - b.pigeon_number);
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function ManagersSummary({ pigeon }: { pigeon: AdminPigeon }) {
+  if (!pigeon.owner) {
+    return (
+      <Typography component="span" variant="body2" color="error.main" fontWeight={600}>
+        Owner required
+      </Typography>
+    );
+  }
+
+  const count = pigeon.managers.length;
+  return (
+    <Typography component="span" variant="body2">
+      {pigeon.owner.email}
+      {count > 0 ? ` + ${count} ${count === 1 ? "other" : "others"}` : ""}
+    </Typography>
+  );
+}
+
+function StatusChip({ status }: { status: PigeonSeasonStatus }) {
+  const label = status[0].toUpperCase() + status.slice(1);
+  const color = status === "active" ? "success" : status === "pending" ? "warning" : "default";
+  return <Chip size="small" label={label} color={color} variant="outlined" />;
+}
 
 export default function AdminRoster() {
-  const [sp, setSp] = useSearchParams();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("sm"), { noSsr: true });
   const [pigeons, setPigeons] = useState<AdminPigeon[]>([]);
-  const [users, setUsers] = useState<AdminUser[]>([]);
   const [seasonStarted, setSeasonStarted] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity?: "success" | "error" | "info" | "warning" }>({ open: false, message: "" });
-
-  const selectedPnParam = sp.get("pigeon");
-  const selectedEmailParam = sp.get("user");
-
-  const selectedPigeon = useMemo(() => {
-    const pn = selectedPnParam ? Number(selectedPnParam) : undefined;
-    return pn ? pigeons.find((p) => p.pigeon_number === pn) ?? null : null;
-  }, [selectedPnParam, pigeons]);
-
-  const selectedUser = useMemo(() => {
-    return selectedEmailParam ? users.find((u) => u.email === selectedEmailParam) ?? null : null;
-  }, [selectedEmailParam, users]);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [formState, setFormState] = useState<RosterFormState | null>(null);
+  const [deletePigeon, setDeletePigeon] = useState<AdminPigeon | null>(null);
+  const [snackbar, setSnackbar] = useState<{
+    open: boolean;
+    message: string;
+    severity: Severity;
+  }>({ open: false, message: "", severity: "info" });
 
   useEffect(() => {
+    let cancelled = false;
     setLoading(true);
-    setError(null);
-    Promise.all([adminGetPigeons(), adminGetUsers(), getCurrentWeek()])
-      .then(([p, u, cw]) => {
-        setPigeons(p);
-        setUsers(u);
-        setSeasonStarted(cw.any_locked);
+    setLoadError(null);
+    Promise.all([adminGetPigeons(), getCurrentWeek()])
+      .then(([roster, currentWeek]) => {
+        if (cancelled) return;
+        setPigeons(sortedRoster(roster));
+        setSeasonStarted(currentWeek.any_locked);
       })
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
-      .finally(() => setLoading(false));
+      .catch((error) => {
+        if (!cancelled) setLoadError(errorMessage(error));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  const byPigeon = useMemo(() => {
-    const primary: Record<number, string[]> = {}; // pn -> [emails]
-    const secondary: Record<number, string[]> = {};
-    for (const u of users) {
-      if (u.primary_pigeon != null) {
-        primary[u.primary_pigeon] ??= [];
-        primary[u.primary_pigeon].push(u.email);
-      }
-      for (const pn of u.secondary_pigeons) {
-        secondary[pn] ??= [];
-        secondary[pn].push(u.email);
-      }
+  const leagueEmails = useMemo(() => {
+    const emails: string[] = [];
+    for (const pigeon of pigeons) {
+      if (pigeon.owner) emails.push(pigeon.owner.email);
+      emails.push(...pigeon.managers.map((manager) => manager.email));
     }
-    return { primary, secondary };
-  }, [users]);
+    return dedupeEmails(emails).sort((a, b) => a.localeCompare(b));
+  }, [pigeons]);
+
+  const showSnackbar = (message: string, severity: Severity) => {
+    setSnackbar({ open: true, message, severity });
+  };
+
+  const upsertPigeon = (updated: AdminPigeon) => {
+    setPigeons((current) => {
+      const exists = current.some((pigeon) => pigeon.player_id === updated.player_id);
+      return sortedRoster(
+        exists
+          ? current.map((pigeon) => (pigeon.player_id === updated.player_id ? updated : pigeon))
+          : [...current, updated],
+      );
+    });
+  };
+
+  const rowActions = (pigeon: AdminPigeon) => (
+    <Stack direction="row" spacing={0.5} justifyContent="flex-end">
+      <Button
+        size="small"
+        onClick={() => setFormState({ mode: "edit", pigeon })}
+        aria-label={`Edit pigeon #${pigeon.pigeon_number}`}
+      >
+        Edit
+      </Button>
+      {!seasonStarted && (
+        <Button
+          size="small"
+          color="error"
+          onClick={() => setDeletePigeon(pigeon)}
+          aria-label={`Delete pigeon #${pigeon.pigeon_number}`}
+        >
+          Delete
+        </Button>
+      )}
+    </Stack>
+  );
 
   return (
-    <Box>
-      <Typography variant="body1" align="center" gutterBottom sx={{ mb: 2 }}>
-        Manage pigeons and users
-      </Typography>
+    <Box sx={{ px: { xs: 1.5, sm: 3 }, pb: 4 }}>
+      <Stack
+        direction={{ xs: "column", sm: "row" }}
+        spacing={1.5}
+        alignItems={{ xs: "stretch", sm: "center" }}
+        justifyContent="space-between"
+        sx={{ mb: 2 }}
+      >
+        <Box>
+          <Typography variant="h5" component="h1">
+            Roster
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Manage pigeons and the people assigned to them.
+          </Typography>
+        </Box>
+        {!seasonStarted && (
+          <Button variant="contained" onClick={() => setFormState({ mode: "create" })}>
+            New pigeon
+          </Button>
+        )}
+      </Stack>
 
-      {loading && <Alert severity="info">Loading…</Alert>}
-      {error && <Alert severity="error">{error}</Alert>}
+      {seasonStarted && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          The season has started. Pigeons can be edited, but they cannot be added or deleted.
+        </Alert>
+      )}
+      {loading && <Alert severity="info">Loading roster…</Alert>}
+      {loadError && <Alert severity="error">{loadError}</Alert>}
 
-      {!loading && !error && (
-        <Stack direction={{ xs: "column", md: "row" }} spacing={3} alignItems="flex-start">
-          <Box flex={1}>
-            <PigeonsPanel
-              pigeons={pigeons}
-              byPigeon={byPigeon}
-              selected={selectedPigeon}
-              seasonStarted={seasonStarted}
-              onSelect={(pn) => {
-                const next = new URLSearchParams(sp);
-                if (pn == null) next.delete("pigeon");
-                else next.set("pigeon", String(pn));
-                setSp(next, { replace: true });
-              }}
-              onPigeonAdded={(p) => {
-                setPigeons((arr) => [...arr, p].sort((a, b) => a.pigeon_number - b.pigeon_number));
-              }}
-              onPigeonChanged={(updated) => {
-                setPigeons((arr) => arr.map((p) => (p.player_id === updated.player_id ? updated : p)));
-              }}
-              onPigeonDeleted={(playerId) => {
-                setPigeons((arr) => arr.filter((p) => p.player_id !== playerId));
-                const next = new URLSearchParams(sp);
-                next.delete("pigeon");
-                setSp(next, { replace: true });
-              }}
-              refreshUsers={async () => setUsers(await adminGetUsers())}
-              onSnackbar={(message, severity) => setSnackbar({ open: true, message, severity })}
-            />
-          </Box>
-
-          <Divider flexItem orientation="vertical" sx={{ display: { xs: "none", md: "block" } }} />
-
-          <Box flex={1}>
-            <UsersPanel
-              pigeons={pigeons}
-              users={users}
-              selected={selectedUser}
-              onSelect={(email) => {
-                const next = new URLSearchParams(sp);
-                if (!email) next.delete("user");
-                else next.set("user", email);
-                setSp(next, { replace: true });
-              }}
-              onUsersChanged={(nextUsers) => setUsers(nextUsers)}
-              onSnackbar={(message, severity) => setSnackbar({ open: true, message, severity })}
-            />
-          </Box>
+      {!loading && !loadError && isMobile && (
+        <Stack spacing={1.5}>
+          {pigeons.length === 0 && <Alert severity="info">No pigeons have been added yet.</Alert>}
+          {pigeons.map((pigeon) => (
+            <Card key={pigeon.player_id} variant="outlined">
+              <CardContent sx={{ pb: 1 }}>
+                <Stack direction="row" spacing={1} justifyContent="space-between" alignItems="flex-start">
+                  <Box>
+                    <Typography variant="overline" color="text.secondary">
+                      Pigeon #{pigeon.pigeon_number}
+                    </Typography>
+                    <Typography variant="h6" sx={{ overflowWrap: "anywhere" }}>
+                      {pigeon.pigeon_name}
+                    </Typography>
+                  </Box>
+                  <StatusChip status={pigeon.season_status} />
+                </Stack>
+                <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1.5 }}>
+                  Managers
+                </Typography>
+                <Box sx={{ overflowWrap: "anywhere" }}>
+                  <ManagersSummary pigeon={pigeon} />
+                </Box>
+              </CardContent>
+              <CardActions sx={{ justifyContent: "flex-end", pt: 0 }}>
+                {rowActions(pigeon)}
+              </CardActions>
+            </Card>
+          ))}
         </Stack>
+      )}
+
+      {!loading && !loadError && !isMobile && (
+        <TableContainer component={Paper} variant="outlined">
+          <Table size="small" aria-label="Pigeon roster">
+            <TableHead>
+              <TableRow>
+                <TableCell align="right" sx={{ width: 72 }}>Number</TableCell>
+                <TableCell>Pigeon name</TableCell>
+                <TableCell>Managers</TableCell>
+                <TableCell sx={{ width: 110 }}>Status</TableCell>
+                <TableCell align="right" sx={{ width: 150 }}>Actions</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {pigeons.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={5} align="center">
+                    No pigeons have been added yet.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                pigeons.map((pigeon) => (
+                  <TableRow key={pigeon.player_id} hover>
+                    <TableCell align="right">{pigeon.pigeon_number}</TableCell>
+                    <TableCell sx={{ overflowWrap: "anywhere" }}>{pigeon.pigeon_name}</TableCell>
+                    <TableCell sx={{ overflowWrap: "anywhere" }}>
+                      <ManagersSummary pigeon={pigeon} />
+                    </TableCell>
+                    <TableCell><StatusChip status={pigeon.season_status} /></TableCell>
+                    <TableCell align="right">{rowActions(pigeon)}</TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      )}
+
+      <BulkEmailAnnouncement onSnackbar={showSnackbar} />
+
+      {formState && (
+        <PigeonFormDialog
+          key={formState.mode === "edit" ? `edit-${formState.pigeon.player_id}` : "create"}
+          pigeon={formState.mode === "edit" ? formState.pigeon : undefined}
+          leagueEmails={leagueEmails}
+          fullScreen={isMobile}
+          onClose={() => setFormState(null)}
+          onSaved={(pigeon, created) => {
+            upsertPigeon(pigeon);
+            setFormState(null);
+            showSnackbar(created ? "Pigeon created." : "Changes saved.", "success");
+          }}
+        />
+      )}
+
+      {deletePigeon && (
+        <DeletePigeonDialog
+          pigeon={deletePigeon}
+          onClose={() => setDeletePigeon(null)}
+          onDeleted={(playerId) => {
+            setPigeons((current) => current.filter((pigeon) => pigeon.player_id !== playerId));
+            setDeletePigeon(null);
+            showSnackbar("Pigeon deleted.", "success");
+          }}
+        />
       )}
 
       <AppSnackbar
         open={snackbar.open}
         message={snackbar.message}
         severity={snackbar.severity}
-        onClose={() => setSnackbar((s) => ({ ...s, open: false }))}
+        onClose={() => setSnackbar((current) => ({ ...current, open: false }))}
       />
-
-    {/* Bulk Email Announcement Feature */}
-    <BulkEmailAnnouncement onSnackbar={(message, severity) => setSnackbar({ open: true, message, severity })} />
-  </Box>
-  );
-}
-
-// -----------------------------
-// BulkEmailAnnouncement
-// -----------------------------
-import { adminSendBulkEmail } from "../../backend/fetch";
-
-function BulkEmailAnnouncement({ onSnackbar }: { onSnackbar: (message: string, severity?: "success" | "error") => void }) {
-  const [open, setOpen] = useState(false);
-  const [subject, setSubject] = useState("");
-  const [text, setText] = useState("");
-  const [sending, setSending] = useState(false);
-  const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
-
-  const handleSend = async () => {
-    setSending(true);
-    setResult(null);
-    try {
-      await adminSendBulkEmail({ subject, text });
-      setResult({ success: true, message: "Announcement sent to all users." });
-      onSnackbar("Announcement sent.", "success");
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Failed to send announcement.";
-      setResult({ success: false, message: msg });
-      onSnackbar(msg, "error");
-    } finally {
-      setSending(false);
-    }
-  };
-
-  const handleClose = () => {
-    setOpen(false);
-    setSubject("");
-    setText("");
-    setResult(null);
-    setSending(false);
-  };
-
-  return (
-    <Box sx={{ mt: 6, textAlign: "center" }}>
-      <Button variant="contained" color="secondary" onClick={() => setOpen(true)}>
-        Send Email Announcement
-      </Button>
-      <Dialog open={open} onClose={sending ? undefined : handleClose} maxWidth="sm" fullWidth>
-        <DialogTitle>Send Email Announcement</DialogTitle>
-        <DialogContent>
-          <Stack spacing={2} sx={{ mt: 1 }}>
-            <TextField
-              label="Subject"
-              value={subject}
-              onChange={e => setSubject(e.target.value)}
-              fullWidth
-              disabled={sending || !!result}
-              autoFocus
-            />
-            <TextField
-              label="Message"
-              value={text}
-              onChange={e => setText(e.target.value)}
-              fullWidth
-              multiline
-              minRows={5}
-              disabled={sending || !!result}
-            />
-            {result && (
-              <Alert severity={result.success ? "success" : "error"}>{result.message}</Alert>
-            )}
-          </Stack>
-        </DialogContent>
-        <DialogActions>
-          {!result ? (
-            <>
-              <Button onClick={handleClose} disabled={sending}>Cancel</Button>
-              <Button
-                variant="contained"
-                onClick={handleSend}
-                disabled={sending || !subject.trim() || !text.trim()}
-              >
-                {sending ? "Sending..." : "Send"}
-              </Button>
-            </>
-          ) : (
-            <Button onClick={handleClose} variant="contained">Dismiss</Button>
-          )}
-        </DialogActions>
-      </Dialog>
     </Box>
   );
 }
 
-// -----------------------------
-// PigeonsPanel
-// -----------------------------
-function PigeonsPanel({
-  pigeons,
-  byPigeon,
-  selected,
-  seasonStarted,
-  onSelect,
-  onPigeonAdded,
-  onPigeonChanged,
-  onPigeonDeleted,
-  refreshUsers,
-  onSnackbar,
+function PigeonFormDialog({
+  pigeon,
+  leagueEmails,
+  fullScreen,
+  onClose,
+  onSaved,
 }: {
-  pigeons: AdminPigeon[];
-  byPigeon: { primary: Record<number, string[]>; secondary: Record<number, string[]> };
-  selected: AdminPigeon | null;
-  seasonStarted: boolean;
-  onSelect: (pn: number | null) => void;
-  onPigeonAdded: (p: AdminPigeon) => void;
-  onPigeonChanged: (p: AdminPigeon) => void;
-  onPigeonDeleted: (playerId: number) => void;
-  refreshUsers: () => Promise<void>;
-  onSnackbar: (message: string, severity?: "success" | "error" | "info" | "warning") => void;
+  pigeon?: AdminPigeon;
+  leagueEmails: string[];
+  fullScreen: boolean;
+  onClose: () => void;
+  onSaved: (pigeon: AdminPigeon, created: boolean) => void;
 }) {
-  const [name, setName] = useState<string>(selected?.pigeon_name ?? "");
-  const [seasonStatus, setSeasonStatus] = useState<"pending" | "active" | "out">(selected?.season_status ?? "pending");
+  const editing = pigeon !== undefined;
+  const [name, setName] = useState(pigeon?.pigeon_name ?? "");
+  const [status, setStatus] = useState<PigeonSeasonStatus>(pigeon?.season_status ?? "pending");
+  const [ownerEmail, setOwnerEmail] = useState(pigeon?.owner?.email ?? "");
+  const [managerEmails, setManagerEmails] = useState<string[]>(
+    pigeon?.managers.map((manager) => manager.email) ?? [],
+  );
+  const [managerDraft, setManagerDraft] = useState("");
   const [saving, setSaving] = useState(false);
-  const [createOpen, setCreateOpen] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [newNumber, setNewNumber] = useState("");
-  const [creating, setCreating] = useState(false);
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
-  useEffect(() => {
-    setName(selected?.pigeon_name ?? "");
-    setSeasonStatus(selected?.season_status ?? "pending");
-  }, [selected]);
+  const ownerKey = emailKey(ownerEmail);
+  const managerOptions = leagueEmails.filter((email) => emailKey(email) !== ownerKey);
 
-  const options = useMemo(() => pigeons.map((p) => ({ label: `${p.pigeon_number} – ${p.pigeon_name}`, pn: p.pigeon_number })), [pigeons]);
-
-  const primaryList = selected ? byPigeon.primary[selected.pigeon_number] ?? [] : [];
-  const secondaryList = selected ? byPigeon.secondary[selected.pigeon_number] ?? [] : [];
-
-  const handleCreate = async () => {
-    setCreating(true);
-    try {
-      const created = await adminCreatePigeon({
-        pigeon_name: newName.trim(),
-        pigeon_number: newNumber.trim() ? Number(newNumber) : undefined,
-      });
-      onPigeonAdded(created);
-      onSelect(created.pigeon_number);
-      setCreateOpen(false);
-      setNewName("");
-      setNewNumber("");
-      onSnackbar("Pigeon created.", "success");
-    } catch (e: unknown) {
-      onSnackbar(e instanceof Error ? e.message : String(e), "error");
-    } finally {
-      setCreating(false);
-    }
+  const handleOwnerChange = (nextOwner: string) => {
+    setOwnerEmail(nextOwner);
+    const nextKey = emailKey(nextOwner);
+    setManagerEmails((current) => current.filter((email) => emailKey(email) !== nextKey));
+    if (emailKey(managerDraft) === nextKey) setManagerDraft("");
+    setSaveError(null);
   };
 
-  const handleDelete = async () => {
-    if (!selected) return;
-    setDeleting(true);
+  const handleSubmit = async () => {
+    const pigeonName = name.trim();
+    const owner = ownerEmail.trim();
+    const managers = dedupeEmails([...managerEmails, managerDraft]).filter(
+      (email) => emailKey(email) !== emailKey(owner),
+    );
+
+    if (!pigeonName) {
+      setSaveError("Pigeon name is required.");
+      return;
+    }
+    if (!EMAIL_PATTERN.test(owner)) {
+      setSaveError("Enter a valid owner email address.");
+      return;
+    }
+    const invalidManager = managers.find((email) => !EMAIL_PATTERN.test(email));
+    if (invalidManager) {
+      setSaveError(`Enter a valid manager email address: ${invalidManager}`);
+      return;
+    }
+
+    const input: AdminPigeonCreateIn | AdminPigeonUpdateIn = {
+      pigeon_name: pigeonName,
+      season_status: status,
+      owner_email: owner,
+      manager_emails: managers,
+    };
+
+    setSaving(true);
+    setSaveError(null);
     try {
-      await adminDeletePigeon(selected.player_id);
-      onPigeonDeleted(selected.player_id);
-      setDeleteOpen(false);
-      onSnackbar("Pigeon deleted.", "success");
-      await refreshUsers();
-    } catch (e: unknown) {
-      onSnackbar(e instanceof Error ? e.message : String(e), "error");
+      const saved = editing
+        ? await adminUpdatePigeon(pigeon.player_id, input)
+        : await adminCreatePigeon(input);
+      onSaved(saved, !editing);
+    } catch (error) {
+      setSaveError(errorMessage(error));
     } finally {
-      setDeleting(false);
+      setSaving(false);
     }
   };
 
   return (
-    <Box>
-      <Typography variant="h6" gutterBottom>
-        Pigeons
-      </Typography>
-
-      <Typography variant="body2" sx={{ mb: 2 }}>
-        Create new pigeons or change a pigeon's name
-      </Typography>
-
-      <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}>
-        <Autocomplete
-          options={options}
-          value={selected ? { label: `${selected.pigeon_number} – ${selected.pigeon_name}`, pn: selected.pigeon_number } : null}
-          onChange={(_, v) => onSelect(v ? v.pn : null)}
-          renderInput={(params) => <TextField {...params} label="Select pigeon" />}
-          sx={{ minWidth: 280 }}
-        />
-        {!seasonStarted && <Button variant="outlined" onClick={() => setCreateOpen(true)}>New Pigeon</Button>}
-      </Stack>
-
-      {!selected && <Alert severity="info">Select a pigeon to manage, or create a new one.</Alert>}
-
-      {selected && (
-        <Stack spacing={2} maxWidth={520}>
+    <Dialog
+      open
+      onClose={saving ? undefined : onClose}
+      maxWidth="sm"
+      fullWidth
+      fullScreen={fullScreen}
+    >
+      <DialogTitle>{editing ? `Edit pigeon #${pigeon.pigeon_number}` : "New pigeon"}</DialogTitle>
+      <DialogContent>
+        <Stack spacing={2} sx={{ mt: 1 }}>
+          {editing && (
+            <TextField label="Pigeon number" value={pigeon.pigeon_number} disabled fullWidth />
+          )}
           <TextField
+            autoFocus
             label="Pigeon name"
             value={name}
-            onChange={(e) => setName(e.target.value)}
+            onChange={(event) => {
+              setName(event.target.value);
+              setSaveError(null);
+            }}
+            required
+            fullWidth
+            disabled={saving}
           />
-
-          <FormControl size="small">
+          <FormControl fullWidth disabled={saving}>
             <InputLabel>Season status</InputLabel>
             <Select
               label="Season status"
-              value={seasonStatus}
-              onChange={(e) => setSeasonStatus(e.target.value as "pending" | "active" | "out")}
+              value={status}
+              onChange={(event) => setStatus(event.target.value as PigeonSeasonStatus)}
             >
               <MenuItem value="pending">Pending</MenuItem>
               <MenuItem value="active">Active</MenuItem>
               <MenuItem value="out">Out</MenuItem>
             </Select>
           </FormControl>
-
-          <Stack direction="row" spacing={1}>
-            <Button
-              variant="contained"
-              disabled={saving}
-              onClick={async () => {
-                if (!selected) return;
-                setSaving(true);
-                try {
-                  await adminUpdatePigeon(selected.player_id, {
-                    pigeon_name: name === selected.pigeon_name ? undefined : name,
-                    season_status: seasonStatus === selected.season_status ? undefined : seasonStatus,
-                  });
-                  const updated: AdminPigeon = {
-                    player_id: selected.player_id,
-                    pigeon_number: selected.pigeon_number,
-                    pigeon_name: name,
-                    owner_email: selected.owner_email ?? null,
-                    season_status: seasonStatus,
-                  };
-                  onPigeonChanged(updated);
-                  onSnackbar("Saved changes.", "success");
-                  await refreshUsers();
-                } catch (e: unknown) {
-                  onSnackbar(e instanceof Error ? e.message : String(e), "error");
-                } finally {
-                  setSaving(false);
-                }
-              }}
-            >
-              Save changes
-            </Button>
-            {!seasonStarted && (
-              <Button variant="outlined" color="error" onClick={() => setDeleteOpen(true)}>
-                Delete pigeon
-              </Button>
-            )}
-          </Stack>
-
-          <Box>
-            <Typography variant="subtitle2" gutterBottom>Users with this pigeon as primary</Typography>
-            {primaryList.length === 0 ? (
-              <Typography variant="body2" color="text.secondary">None</Typography>
-            ) : (
-              <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
-                {primaryList.map((e) => (
-                  <Chip key={e} label={e} size="small" />
-                ))}
-              </Stack>
-            )}
-          </Box>
-
-          <Box>
-            <Typography variant="subtitle2" gutterBottom>Users with this pigeon as secondary</Typography>
-            {secondaryList.length === 0 ? (
-              <Typography variant="body2" color="text.secondary">None</Typography>
-            ) : (
-              <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
-                {secondaryList.map((e) => (
-                  <Chip key={e} label={e} size="small" />
-                ))}
-              </Stack>
-            )}
-          </Box>
-        </Stack>
-      )}
-
-      {/* Create pigeon dialog */}
-      <Dialog open={createOpen} onClose={() => !creating && setCreateOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>New Pigeon</DialogTitle>
-        <DialogContent>
-          <Stack spacing={2} sx={{ mt: 1 }}>
-            <TextField
-              autoFocus
-              label="Name"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              fullWidth
-              disabled={creating}
-            />
-            <TextField
-              label="Number (optional — auto-assigned if blank)"
-              value={newNumber}
-              onChange={(e) => setNewNumber(e.target.value.replace(/\D/g, ""))}
-              fullWidth
-              disabled={creating}
-              inputProps={{ inputMode: "numeric" }}
-            />
-          </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setCreateOpen(false)} disabled={creating}>Cancel</Button>
-          <Button
-            variant="contained"
-            onClick={handleCreate}
-            disabled={!newName.trim() || creating}
-          >
-            {creating ? "Creating…" : "Create"}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Delete pigeon confirmation */}
-      <Dialog open={deleteOpen} onClose={() => !deleting && setDeleteOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>Delete Pigeon</DialogTitle>
-        <DialogContent>
-          <Typography>
-            Delete pigeon #{selected?.pigeon_number} – {selected?.pigeon_name}? This cannot be undone.
-          </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDeleteOpen(false)} disabled={deleting}>Cancel</Button>
-          <Button variant="contained" color="error" onClick={handleDelete} disabled={deleting}>
-            {deleting ? "Deleting…" : "Delete"}
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </Box>
-  );
-}
-
-// -----------------------------
-// UsersPanel
-// -----------------------------
-function UsersPanel({
-  pigeons,
-  users,
-  selected,
-  onSelect,
-  onUsersChanged,
-  onSnackbar,
-}: {
-  pigeons: AdminPigeon[];
-  users: AdminUser[];
-  selected: AdminUser | null;
-  onSelect: (email: string | null) => void;
-  onUsersChanged: (users: AdminUser[]) => void;
-  onSnackbar: (message: string, severity?: "success" | "error" | "info" | "warning") => void;
-}) {
-  const [createOpen, setCreateOpen] = useState(false);
-  const [newEmail, setNewEmail] = useState("");
-  const [newPrimary, setNewPrimary] = useState<number | null>(null);
-  const [primary, setPrimary] = useState<number | null>(selected?.primary_pigeon ?? null);
-  const [secondary, setSecondary] = useState<number[]>(selected?.secondary_pigeons ?? []);
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    setPrimary(selected?.primary_pigeon ?? null);
-    setSecondary(selected?.secondary_pigeons ?? []);
-  }, [selected]);
-
-  const userOptions = useMemo(() => users.map((u) => ({ label: u.email, email: u.email })), [users]);
-  const pigeonOptions = useMemo(
-    () => pigeons.map((p) => ({ label: `${p.pigeon_number} – ${p.pigeon_name}`, pn: p.pigeon_number })),
-    [pigeons]
-  );
-
-  const secondaryOptions = useMemo(() => {
-    const exclude = new Set<number>();
-    if (primary != null) exclude.add(primary);
-    return pigeonOptions.filter((o) => !exclude.has(o.pn));
-  }, [pigeonOptions, primary]);
-
-  return (
-    <Box>
-      <Typography variant="h6" gutterBottom>
-        Users
-      </Typography>
-
-      <Box component="ul" sx={{ pl: 3, mb: 6, textAlign: "left" }}>
-        <li>
-          <Typography variant="body2">Each user must have a primary pigeon they manage on sign-in</Typography>
-        </li>
-        <li>
-          <Typography variant="body2">Users can have secondary pigeons which they also manage</Typography>
-        </li>
-        <li>
-          <Typography variant="body2">To change someones email, delete the user and create a new one</Typography>
-        </li>
-      </Box>
-
-      <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems="center" sx={{ mb: 2 }}>
-        <Autocomplete
-          options={userOptions}
-          value={selected ? { label: selected.email, email: selected.email } : null}
-          onChange={(_, v) => onSelect(v?.email ?? null)}
-          renderInput={(params) => <TextField {...params} label="Select user" />}
-          sx={{ minWidth: 320 }}
-        />
-        <Button variant="outlined" onClick={() => setCreateOpen(true)}>
-          Add new user
-        </Button>
-      </Stack>
-
-      {!selected && <Alert severity="info">Select a user to manage, or add a new one.</Alert>}
-
-      {selected && (
-        <Stack spacing={2} maxWidth={520}>
-          {primary == null && (
-            <Alert severity="warning">
-              This user must have a primary pigeon assigned to sign in.
-            </Alert>
-          )}
-
           <Autocomplete
-            options={pigeonOptions}
-            value={pigeonOptions.find((o) => o.pn === primary) ?? null}
-            onChange={(_, v) => setPrimary(v?.pn ?? null)}
+            freeSolo
+            options={leagueEmails}
+            value={ownerEmail || null}
+            inputValue={ownerEmail}
+            onChange={(_, value) => handleOwnerChange(value ?? "")}
+            onInputChange={(_, value) => handleOwnerChange(value)}
+            disabled={saving}
             renderInput={(params) => (
               <TextField
                 {...params}
-                label="Primary pigeon"
+                label="Owner email"
+                type="email"
                 required
-                helperText="Required - user must have a primary pigeon"
+                helperText={
+                  editing
+                    ? "Changing the owner removes the former owner unless you add them below."
+                    : "The person will be added to this league if needed."
+                }
               />
             )}
           />
-
           <Autocomplete
             multiple
-            options={secondaryOptions}
-            value={secondary.map((pn) => secondaryOptions.find((o) => o.pn === pn)!).filter(Boolean)}
-            onChange={(_, v) => setSecondary(v.map((o) => o.pn))}
-            renderInput={(params) => <TextField {...params} label="Secondary pigeons" />}
+            freeSolo
+            options={managerOptions}
+            value={managerEmails}
+            inputValue={managerDraft}
+            onChange={(_, values) => {
+              setManagerEmails(
+                dedupeEmails(values).filter((email) => emailKey(email) !== emailKey(ownerEmail)),
+              );
+              setSaveError(null);
+            }}
+            onInputChange={(_, value) => setManagerDraft(value)}
+            disabled={saving}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                label="Additional manager emails"
+                helperText="Optional. Press Enter after each email."
+              />
+            )}
           />
-
-          <Stack direction="row" spacing={1}>
-            <Button
-              variant="contained"
-              disabled={saving || primary == null}
-              onClick={async () => {
-                if (!selected) return;
-                setSaving(true);
-                try {
-                  await adminUpdateUser(selected.email, {
-                    primary_pigeon: primary,
-                    secondary_pigeons: secondary ?? [],
-                  });
-                  // Update local cache without full refetch
-                  const next = users.map((u) =>
-                    u.email === selected.email
-                      ? { ...u, primary_pigeon: primary, secondary_pigeons: [...(secondary ?? [])] }
-                      : u
-                  );
-                  onUsersChanged(next);
-                  onSnackbar("Saved changes.", "success");
-                } catch (e: unknown) {
-                  onSnackbar(e instanceof Error ? e.message : String(e), "error");
-                } finally {
-                  setSaving(false);
-                }
-              }}
-            >
-              Save changes
-            </Button>
-            <Button
-              variant="outlined"
-              color="error"
-              disabled={saving}
-              onClick={async () => {
-                if (!selected) return;
-                const ok = confirm(`Delete user ${selected.email}?`);
-                if (!ok) return;
-                setSaving(true);
-                try {
-                  await adminDeleteUser(selected.email);
-                  const next = users.filter((u) => u.email !== selected.email);
-                  onUsersChanged(next);
-                  onSelect(null);
-                  onSnackbar("User deleted.", "success");
-                } catch (e: unknown) {
-                  if (String((e as Error | string) instanceof Error ? (e as Error).message : e).includes("owns pigeon")) {
-                    onSnackbar(String((e as Error | string) instanceof Error ? (e as Error).message : e), "error");
-                  } else {
-                    onSnackbar(e instanceof Error ? e.message : String(e), "error");
-                  }
-                } finally {
-                  setSaving(false);
-                }
-              }}
-            >
-              Delete user
-            </Button>
-          </Stack>
+          {saveError && <Alert severity="error">{saveError}</Alert>}
         </Stack>
-      )}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose} disabled={saving}>Cancel</Button>
+        <Button
+          variant="contained"
+          onClick={handleSubmit}
+          disabled={saving || !name.trim() || !ownerEmail.trim()}
+        >
+          {saving ? "Saving…" : editing ? "Save changes" : "Create pigeon"}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
 
-      {/* Create user dialog */}
-      <Dialog open={createOpen} onClose={() => { setCreateOpen(false); setNewEmail(""); setNewPrimary(null); }} maxWidth="xs" fullWidth>
-        <DialogTitle>Add new user</DialogTitle>
+function DeletePigeonDialog({
+  pigeon,
+  onClose,
+  onDeleted,
+}: {
+  pigeon: AdminPigeon;
+  onClose: () => void;
+  onDeleted: (playerId: number) => void;
+}) {
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const assignedPeople = [pigeon.owner, ...pigeon.managers].filter(
+    (person): person is NonNullable<typeof person> => person !== null,
+  );
+  const accessCount = assignedPeople.length;
+  const primaryCount = assignedPeople.filter((person) => person.is_primary).length;
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await adminDeletePigeon(pigeon.player_id);
+      onDeleted(pigeon.player_id);
+    } catch (error) {
+      setDeleteError(errorMessage(error));
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <Dialog open onClose={deleting ? undefined : onClose} maxWidth="xs" fullWidth>
+      <DialogTitle>Delete pigeon?</DialogTitle>
+      <DialogContent>
+        <Stack spacing={1.5} sx={{ mt: 0.5 }}>
+          <Typography>
+            Delete pigeon #{pigeon.pigeon_number}, {pigeon.pigeon_name}?
+          </Typography>
+          <Typography variant="body2">
+            This permanently deletes the pigeon and any picks recorded for it.
+          </Typography>
+          {accessCount > 0 && (
+            <Typography variant="body2">
+              This removes access for {accessCount} {accessCount === 1 ? "person" : "people"}.
+              {primaryCount > 0
+                ? ` ${primaryCount === 1
+                  ? "One person's primary pigeon"
+                  : `The primary pigeon for ${primaryCount} people`} will change automatically.`
+                : ""}
+            </Typography>
+          )}
+          {deleteError && <Alert severity="error">{deleteError}</Alert>}
+        </Stack>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose} disabled={deleting}>Cancel</Button>
+        <Button variant="contained" color="error" onClick={handleDelete} disabled={deleting}>
+          {deleting ? "Deleting…" : "Delete pigeon"}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+function BulkEmailAnnouncement({
+  onSnackbar,
+}: {
+  onSnackbar: (message: string, severity: Severity) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [subject, setSubject] = useState("");
+  const [message, setMessage] = useState("");
+  const [sending, setSending] = useState(false);
+  const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  const close = () => {
+    setOpen(false);
+    setSubject("");
+    setMessage("");
+    setResult(null);
+    setSending(false);
+  };
+
+  const send = async () => {
+    setSending(true);
+    setResult(null);
+    try {
+      await adminSendBulkEmail({ subject: subject.trim(), text: message.trim() });
+      setResult({ success: true, message: "Announcement sent to all users." });
+      onSnackbar("Announcement sent.", "success");
+    } catch (error) {
+      const detail = errorMessage(error);
+      setResult({ success: false, message: detail });
+      onSnackbar(detail, "error");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <Box sx={{ mt: 5, textAlign: "center" }}>
+      <Button variant="outlined" onClick={() => setOpen(true)}>
+        Send email announcement
+      </Button>
+      <Dialog open={open} onClose={sending ? undefined : close} maxWidth="sm" fullWidth>
+        <DialogTitle>Send email announcement</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
             <TextField
               autoFocus
-              label="Email"
-              type="email"
+              label="Subject"
+              value={subject}
+              onChange={(event) => setSubject(event.target.value)}
+              disabled={sending || result !== null}
               fullWidth
-              value={newEmail}
-              onChange={(e) => setNewEmail(e.target.value)}
             />
-            <Autocomplete
-              options={pigeonOptions}
-              value={pigeonOptions.find((o) => o.pn === newPrimary) ?? null}
-              onChange={(_, v) => setNewPrimary(v?.pn ?? null)}
-              renderInput={(params) => (
-                <TextField
-                  {...params}
-                  label="Primary pigeon"
-                  required
-                  helperText="Must exist before creating user — create a pigeon first if needed"
-                />
-              )}
+            <TextField
+              label="Message"
+              value={message}
+              onChange={(event) => setMessage(event.target.value)}
+              disabled={sending || result !== null}
+              multiline
+              minRows={5}
+              fullWidth
             />
+            {result && <Alert severity={result.success ? "success" : "error"}>{result.message}</Alert>}
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => { setCreateOpen(false); setNewEmail(""); setNewPrimary(null); }}>Cancel</Button>
-          <Button
-            variant="contained"
-            onClick={async () => {
-              if (!newEmail.trim() || newPrimary == null) return;
-              try {
-                const nu = await adminCreateUser({ email: newEmail.trim(), primary_pigeon: newPrimary });
-                const next = [...users, nu].sort((a, b) => a.email.localeCompare(b.email));
-                onUsersChanged(next);
-                setCreateOpen(false);
-                setNewEmail("");
-                setNewPrimary(null);
-                onSelect(nu.email);
-                onSnackbar("User created successfully.", "success");
-              } catch (e: unknown) {
-                onSnackbar(e instanceof Error ? e.message : String(e), "error");
-              }
-            }}
-            disabled={!newEmail.trim() || newPrimary == null}
-          >
-            Create
-          </Button>
+          {result ? (
+            <Button variant="contained" onClick={close}>Dismiss</Button>
+          ) : (
+            <>
+              <Button onClick={close} disabled={sending}>Cancel</Button>
+              <Button
+                variant="contained"
+                onClick={send}
+                disabled={sending || !subject.trim() || !message.trim()}
+              >
+                {sending ? "Sending…" : "Send"}
+              </Button>
+            </>
+          )}
         </DialogActions>
       </Dialog>
     </Box>

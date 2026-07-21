@@ -117,7 +117,7 @@ function PrivateShell() {
           <Route path="/year-to-date" element={<YearToDatePage />} />
           <Route path="/about" element={<AboutPage />} />
           <Route path="/admin" element={me?.is_admin ? <AdminPage /> : <Box p={3}>Not authorized</Box>}>
-            <Route index element={<Navigate to="/admin/pigeons" replace />} />
+            <Route index element={<Navigate to="/admin/settings" replace />} />
             <Route path="picks" element={<AdminLocksAndPicks />} />
             <Route path="pigeons" element={<AdminRoster />} />
             <Route path="settings" element={<AdminSettings />} />

@@ -21,6 +21,19 @@ React + TypeScript + Vite + MUI application.
 - **Analytics**: Both "Your Picks" and "Top 5" tabs consume the same `useResults` data, displayed differently
 - **YTD leaderboard**: `useYtd` fetches `/results/leaderboard` (all locked weeks concatenated)
 - **Schedule/games**: `useSchedule` and `useAppCache` fetch from `/schedule`
+- **League administration**: `/admin` opens Settings by default, followed by Roster and Picks.
+  The Roster page fetches the aggregate `/admin/pigeons` collection and renders a read-only table
+  (responsive cards on small screens). New and Edit submit one complete pigeon aggregate; Delete
+  uses a confirmation dialog. Successful POST/PUT responses replace the affected row locally,
+  while failed mutations leave displayed state unchanged. New and Delete are hidden once any week
+  is locked.
+- **Roster people fields**: Owner and additional managers are edited together with free-text email
+  autocomplete over people already visible in the league roster. Selecting a manager as owner
+  removes that email from the manager list; a former owner retains access only when explicitly
+  added as a manager.
+- **Default pigeon**: Users who manage more than one pigeon can choose “Set default pigeon…” from
+  the avatar menu. This calls `PUT /me/primary-pigeon`; the dialog explains that the selection
+  applies on the next sign-in because the current JWT is not replaced.
 
 ## Running locally
 

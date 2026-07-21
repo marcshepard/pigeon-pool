@@ -2,10 +2,10 @@
 
 The project has two test suites:
 
-| Suite | Command | Count | Framework |
-|-------|---------|-------|-----------|
-| Backend | `pytest` (repo root) | 54 tests | pytest + FastAPI `TestClient` |
-| Frontend E2E | `npm run test:e2e` (in `frontend/`) | 35 tests | Playwright (Chromium) |
+| Suite | Command | Framework |
+|-------|---------|-----------|
+| Backend | `pytest` (repo root) | pytest + FastAPI `TestClient` |
+| Frontend E2E | `npm run test:e2e` (in `frontend/`) | Playwright (Chromium) |
 
 Both suites run against the dev database configured in `backend/.env` and create/teardown their
 own isolated test tenants, so they never touch Tenant 1 data (except snapshot tests,
@@ -58,8 +58,8 @@ UI content directly instead.
 week has a pick. Week 2 has 16 real NFL games. The test double-clicks the "Enter picks"
 heading to auto-fill all games as home by 3, then submits.
 
-**Roster autocomplete**: Player names in the Admin Roster page live inside a collapsed
-MUI Autocomplete. Tests open the dropdown before asserting on player names.
+**Roster grid**: The Admin Roster page renders one read-only row per pigeon, with its owner and
+additional-manager summary. Tests assert on the visible grid rather than opening the edit form.
 
 **Cleanup via cascade**: Picks submitted during tests are not deleted explicitly. Global
 teardown deletes the `_Test FE League` tenant, which cascades to players and picks.
@@ -77,7 +77,8 @@ The backend test suite lives in `tests/` and uses pytest against the dev databas
 | `test_auth.py` | Login, `/auth/me`, tenant context switching, password reset |
 | `test_picks.py` | Pick submission, retrieval, lock enforcement, alt-player delegation |
 | `test_results.py` | Leaderboard ranking, scoring correctness, YTD aggregation |
-| `test_admin.py` | Pigeon/player management, league rename, payout config, user management |
+| `test_admin.py` | Aggregate roster management, primary/membership repair, league rename, payout config |
+| `test_roster_validation.py` | Read-only roster integrity checks and orphan-user warning behavior |
 | `test_tenant_isolation.py` | Data from Tenant A never leaks into Tenant B responses |
 | `test_snapshots.py` | Golden-file regression tests against Tenant 1's real data |
 

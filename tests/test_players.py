@@ -1,6 +1,4 @@
-"""
-Self-service pigeon rename endpoint tests (PATCH /players/{player_id}/name).
-"""
+"""Self-service pigeon settings endpoint tests."""
 
 
 def test_rename_own_pigeon(client, member_headers, test_data, db_conn):
@@ -90,3 +88,42 @@ def test_rename_blocked_when_league_setting_off(client, member_headers, test_dat
 def test_rename_requires_auth(client, test_data):
     resp = client.patch(f"/players/{test_data['member_pid']}/name", json={"pigeon_name": "NoAuth"})
     assert resp.status_code == 401
+
+
+def test_set_primary_pigeon_to_managed_pigeon(client, member_headers, test_data, db_conn):
+    resp = client.put(
+        "/me/primary-pigeon",
+        json={"player_id": test_data["alt_pid"]},
+        headers=member_headers,
+    )
+    assert resp.status_code == 204
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            "SELECT primary_player_id FROM tenant_members WHERE tenant_id = %s AND user_id = %s",
+            (test_data["tenant_a_id"], test_data["member_uid"]),
+        )
+        assert cur.fetchone()[0] == test_data["alt_pid"]
+        cur.execute(
+            "UPDATE tenant_members SET primary_player_id = %s WHERE tenant_id = %s AND user_id = %s",
+            (test_data["member_pid"], test_data["tenant_a_id"], test_data["member_uid"]),
+        )
+    db_conn.commit()
+
+
+def test_set_primary_pigeon_rejects_unmanaged_pigeon(client, member_headers, test_data):
+    resp = client.put(
+        "/me/primary-pigeon",
+        json={"player_id": test_data["comm_pid"]},
+        headers=member_headers,
+    )
+    assert resp.status_code == 400
+
+
+def test_set_primary_pigeon_rejects_cross_tenant_player(client, member_headers, test_data):
+    resp = client.put(
+        "/me/primary-pigeon",
+        json={"player_id": test_data["b_pid"]},
+        headers=member_headers,
+    )
+    assert resp.status_code == 400
