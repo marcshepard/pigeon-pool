@@ -4,6 +4,9 @@ Commissioner (admin) endpoint tests.
 
 import pytest
 
+from backend.main import app
+from backend.routes.auth import require_admin, AuthUser
+
 
 @pytest.fixture
 def roster_cleanup(db_conn):
@@ -503,3 +506,48 @@ def test_member_can_get_payouts(client, member_headers):
 def test_member_cannot_put_payouts(client, member_headers):
     resp = client.put("/admin/payouts", json=[{"place": 1, "points": 999}], headers=member_headers)
     assert resp.status_code == 403
+
+
+# ── xlsx picks import ─────────────────────────────────────────────────────────
+
+def test_import_picks_xlsx_rejected_for_non_original_tenant(client, comm_headers, test_data):
+    """
+    Only tenant 1 (the original league) may use this legacy import. Also guards
+    against regressing the endpoint's use of `me` before reaching this check.
+    """
+    assert test_data["tenant_a_id"] != 1
+    resp = client.post(
+        "/admin/import-picks-xlsx",
+        headers=comm_headers,
+        data={"week": "1"},
+        files={"file": ("picks.xlsx", b"fake-xlsx-bytes", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+    )
+    assert resp.status_code == 403
+
+
+def test_import_picks_xlsx_success_for_original_tenant(client, comm_headers, monkeypatch):
+    """Simulates tenant 1 via a dependency override; the real xlsx engine is stubbed out."""
+    def fake_require_admin():
+        return AuthUser(player_id=1, pigeon_number=1, tenant_id=1, email="testcomm@example.com", is_admin=True)
+
+    captured = {}
+
+    def fake_import(tmp_path, week):
+        captured["week"] = week
+        return 7
+
+    monkeypatch.setattr("backend.routes.admin.import_picks_pivot_xlsx_with_engine", fake_import)
+    app.dependency_overrides[require_admin] = fake_require_admin
+    try:
+        resp = client.post(
+            "/admin/import-picks-xlsx",
+            headers=comm_headers,
+            data={"week": "3"},
+            files={"file": ("picks.xlsx", b"fake-xlsx-bytes", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        )
+    finally:
+        del app.dependency_overrides[require_admin]
+
+    assert resp.status_code == 200
+    assert resp.json() == {"processed": 7}
+    assert captured["week"] == 3

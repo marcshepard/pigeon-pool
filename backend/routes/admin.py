@@ -1006,13 +1006,13 @@ async def send_bulk_email(
 
 
 # ---------------------------------------------------------------------------
-# XLSX pick import (disabled — needs update for player_id schema)
+# XLSX pick import (legacy interface for the original league, tenant 1 only)
 # ---------------------------------------------------------------------------
 
 @router.post(
     "/import-picks-xlsx",
     status_code=200,
-    summary="Bulk import picks from XLSX (commissioner only) — DISABLED",
+    summary="Bulk import picks from XLSX (commissioner only, tenant 1 only)",
 )
 async def import_picks_xlsx_api(
     week: int = Form(...),

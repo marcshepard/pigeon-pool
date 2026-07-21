@@ -15,6 +15,12 @@ Tests live in `tests/` and use pytest against the dev database configured in `ba
 See [docs/tests.md](tests.md) for a full explanation of the test design: auth approach, the adaptive
 `scored_games` fixture, how pick insertion bypasses the lock trigger, and the scoring formula mirror.
 
+Backend dependencies (including pytest) are installed in the `pigeon` conda environment, not the
+system Python. Activate it before running backend commands:
+```bash
+conda activate pigeon
+```
+
 Run all tests:
 ```bash
 pytest
