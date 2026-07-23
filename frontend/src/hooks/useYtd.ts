@@ -178,7 +178,7 @@ export function useYtd() {
       }
     })();
     return () => { cancelled = true; };
-  }, [getYtdCache, setYtdCache, setCurrentWeekCache, currentWeek]);
+  }, [getYtdCache, setYtdCache, setCurrentWeekCache, getPayoutsCache, setPayoutsCache, currentWeek]);
 
   return { rows, weeks, paidCount, loading, error };
 }

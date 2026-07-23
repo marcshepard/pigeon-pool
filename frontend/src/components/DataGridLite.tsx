@@ -274,11 +274,14 @@ export function DataGridLite<T>({
         : isAlt
           ? "striped-row"
           : undefined;
+    // Highlight rows keep a light-yellow background in both light and dark mode,
+    // so pin the text to a dark color rather than letting it follow the theme.
+    const highlightTextColor = (isHighlighted || isExtraHighlighted) ? "#1e293b" : undefined;
     return (
       <TableRow
         key={key}
         className={rowClass}
-        sx={{ backgroundColor: rowBg }}
+        sx={{ backgroundColor: rowBg, color: highlightTextColor }}
       >
         {orderedCols.map((c) => (
           <TableCell
@@ -287,6 +290,7 @@ export function DataGridLite<T>({
             className={rowClass}
             sx={{
               backgroundColor: rowBg,
+              color: highlightTextColor,
               position: c.pin ? "sticky" : "static",
               left: c.pin === "left" ? 0 : undefined,
               right: c.pin === "right" ? 0 : undefined,

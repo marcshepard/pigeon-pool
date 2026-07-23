@@ -4,7 +4,8 @@
 
 // src/pages/Login.tsx
 import { useEffect, useState } from "react";
-import { Alert, Box, Button, Checkbox, FormControlLabel, Stack, TextField, Typography, Link } from "@mui/material";
+import { Alert, Box, Button, Checkbox, FormControlLabel, Paper, Stack, TextField, Typography, Link } from "@mui/material";
+import { alpha } from "@mui/material/styles";
 import { AppSnackbar } from "../components/CommonComponents";
 import PasswordResetRequestForm from "./PasswordResetRequestForm";
 import { useAuth } from "../auth/useAuth";
@@ -101,11 +102,51 @@ export default function LoginPage() {
 
   return (
     <Box
-      alignContent="flex-start"
-      textAlign="center"
-      sx={{ maxWidth: 400, mx: "auto", mt: 2, p: 3 }}
+      sx={{
+        width: "100%",
+        minHeight: "100dvh",
+        background: (theme) =>
+          `linear-gradient(180deg, ${alpha(theme.palette.primary.light, theme.palette.mode === "light" ? 0.18 : 0.12)} 0%, ${theme.palette.background.default} 420px)`,
+      }}
     >
-      <Typography variant="h4" gutterBottom>Pigeon Pool</Typography>
+      <Box textAlign="center" sx={{ maxWidth: 400, mx: "auto", pt: 4, px: 3 }}>
+        <Typography variant="h4" fontWeight={700} gutterBottom sx={{ color: "primary.main" }}>
+          Pigeon Pool
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          Homing in on the winning picks
+        </Typography>
+      </Box>
+
+      <Box sx={{ width: "100%", maxWidth: 900, mx: "auto", px: 2, my: 2 }}>
+        <Box
+          sx={{
+            width: "100%",
+            height: { xs: 90, sm: 120, md: 140 },
+            overflow: "hidden",
+            borderRadius: 3,
+          }}
+        >
+          <Box
+            component="img"
+            src="/signin.png"
+            alt="Pigeons watching a football game"
+            sx={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+          />
+        </Box>
+      </Box>
+
+      <Paper
+        elevation={4}
+        sx={{
+          maxWidth: 400,
+          mx: "auto",
+          my: 4,
+          p: 3,
+          borderRadius: 3,
+          textAlign: "center",
+        }}
+      >
       {reason === "session_expired" ?
         <Alert severity="info" sx={{ mb: 2 }}>
           Your session timed out. Please sign in again.
@@ -158,7 +199,7 @@ export default function LoginPage() {
         <Typography
           variant={highlightReset ? "body1" : "body2"}
           fontWeight={highlightReset ? 700 : 400}
-          sx={highlightReset ? { transition: 'all 0.2s', p: 1, borderRadius: 1, bgcolor: 'error.lighter' } : {}}
+          sx={(theme) => highlightReset ? { transition: 'all 0.2s', p: 1, borderRadius: 1, bgcolor: alpha(theme.palette.error.main, 0.1) } : {}}
         >
           Forgot your password?{' '}
           <Link
@@ -170,6 +211,7 @@ export default function LoginPage() {
           </Link>
         </Typography>
       </Box>
+      </Paper>
     </Box>
   );
 }

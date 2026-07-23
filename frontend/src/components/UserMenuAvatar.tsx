@@ -9,18 +9,21 @@ import {
   DialogTitle,
   Divider,
   FormControl,
+  FormControlLabel,
   InputLabel,
   Menu,
   MenuItem,
   IconButton,
   Select,
   Stack,
+  Switch,
   TextField,
   Tooltip,
   Typography,
 } from "@mui/material";
 import type { Me } from "../backend/types";
 import { renamePigeon, setPrimaryPigeon } from "../backend/fetch";
+import { useColorMode } from "../hooks/useColorMode";
 
 export interface UserMenuAvatarProps {
   user: Me;
@@ -37,6 +40,7 @@ export default function UserMenuAvatar({ user, onSignOut, onSwitchTenant, onRena
   const [renameOpen, setRenameOpen] = useState(false);
   const [primaryOpen, setPrimaryOpen] = useState(false);
   const open = Boolean(anchorEl);
+  const { mode, toggleMode } = useColorMode();
 
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
@@ -103,6 +107,16 @@ export default function UserMenuAvatar({ user, onSignOut, onSwitchTenant, onRena
             Switch to: {t.name}
           </MenuItem>
         ))}
+
+        <Divider />
+        <MenuItem onClick={(e) => e.stopPropagation()}>
+          <FormControlLabel
+            sx={{ width: "100%", ml: 0, justifyContent: "space-between" }}
+            labelPlacement="start"
+            label="Dark mode"
+            control={<Switch size="small" checked={mode === "dark"} onChange={toggleMode} />}
+          />
+        </MenuItem>
 
         <Divider />
         <MenuItem onClick={onSignOut}>Sign out</MenuItem>

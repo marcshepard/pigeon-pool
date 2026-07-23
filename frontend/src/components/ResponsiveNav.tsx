@@ -182,8 +182,9 @@ export default function ResponsiveNav({
         <AppBar
           position="sticky"
           elevation={0}
-          color="default"
           sx={{
+            bgcolor: "background.default",
+            color: "text.primary",
             borderBottom: `1px solid ${theme.palette.divider}`,
           }}
         >

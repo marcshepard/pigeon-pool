@@ -13,6 +13,11 @@ import BarChartIcon from "@mui/icons-material/BarChart";
 import { NORMAL_PAGE_MAX_WIDTH, PageScroll } from "../components/Layout";
 import { useAuth } from "../auth/useAuth";
 
+// Wider cap than NORMAL_PAGE_MAX_WIDTH so the banner can stretch across the
+// content pane (unlike the tiles below, which stay at reading width), while
+// still capping out on ultra-wide screens.
+const BANNER_MAX_WIDTH = 1400;
+
 const tiles = [
     {
         path: "/enter-picks",
@@ -50,46 +55,69 @@ export default function HomePage() {
     const { me } = useAuth();
     const tenantName = me?.activeTenant?.name ?? "Pigeon Pool";
     return (
-        <PageScroll maxWidth={NORMAL_PAGE_MAX_WIDTH} sx={{ px: 1 }}>
-            <Typography variant="h6" fontWeight="bold" align="center">
-                Welcome to {tenantName}
-            </Typography>
-            <Stack spacing={3} mt={4} mb={1}>
-                {tiles.map((tile) => (
-                    <Paper
-                        key={tile.path}
-                        elevation={4}
-                        sx={{
-                            display: "flex",
-                            alignItems: "center",
-                            p: 2.5,
-                            borderRadius: 3,
-                            boxShadow: 3,
-                            transition: "box-shadow 0.2s, transform 0.2s",
-                            cursor: "pointer",
-                            '&:hover': {
-                                boxShadow: 8,
-                                transform: "translateY(-2px) scale(1.02)",
-                                backgroundColor: (theme) => theme.palette.action.hover,
-                            },
-                            textDecoration: "none",
-                            color: "inherit",
-                        }}
-                        component={RouterLink}
-                        to={tile.path}
-                    >
-                        <Box sx={{ mr: 2, flexShrink: 0 }}>{tile.icon}</Box>
-                        <Box>
-                            <Typography variant="h6" sx={{ fontWeight: 600, mb: 0.5 }}>
-                                {tile.label}
-                            </Typography>
-                            <Typography variant="body2" color="text.secondary">
-                                {tile.desc}
-                            </Typography>
-                        </Box>
-                    </Paper>
-                ))}
-            </Stack>
+        <PageScroll sx={{ px: 1 }}>
+            <Box sx={{ width: "100%", maxWidth: NORMAL_PAGE_MAX_WIDTH, mx: "auto" }}>
+                <Typography variant="h6" fontWeight="bold" align="center">
+                    Welcome to {tenantName}
+                </Typography>
+            </Box>
+
+            <Box sx={{ width: "100%", maxWidth: BANNER_MAX_WIDTH, mx: "auto", mt: 3 }}>
+                <Box
+                    sx={{
+                        width: "100%",
+                        height: { xs: 90, sm: 130, md: 170 },
+                        overflow: "hidden",
+                        borderRadius: 3,
+                    }}
+                >
+                    <Box
+                        component="img"
+                        src="/home.png"
+                        alt="Pigeons checking picks on their phones"
+                        sx={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                    />
+                </Box>
+            </Box>
+
+            <Box sx={{ width: "100%", maxWidth: NORMAL_PAGE_MAX_WIDTH, mx: "auto" }}>
+                <Stack spacing={3} mt={3} mb={1}>
+                    {tiles.map((tile) => (
+                        <Paper
+                            key={tile.path}
+                            elevation={4}
+                            sx={{
+                                display: "flex",
+                                alignItems: "center",
+                                p: 2.5,
+                                borderRadius: 3,
+                                boxShadow: 3,
+                                transition: "box-shadow 0.2s, transform 0.2s",
+                                cursor: "pointer",
+                                '&:hover': {
+                                    boxShadow: 8,
+                                    transform: "translateY(-2px) scale(1.02)",
+                                    backgroundColor: (theme) => theme.palette.action.hover,
+                                },
+                                textDecoration: "none",
+                                color: "inherit",
+                            }}
+                            component={RouterLink}
+                            to={tile.path}
+                        >
+                            <Box sx={{ mr: 2, flexShrink: 0 }}>{tile.icon}</Box>
+                            <Box>
+                                <Typography variant="h6" sx={{ fontWeight: 600, mb: 0.5 }}>
+                                    {tile.label}
+                                </Typography>
+                                <Typography variant="body2" color="text.secondary">
+                                    {tile.desc}
+                                </Typography>
+                            </Box>
+                        </Paper>
+                    ))}
+                </Stack>
+            </Box>
         </PageScroll>
     );
 }

@@ -6,7 +6,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 
 // 3rd party
-import { CssBaseline, ThemeProvider, createTheme, LinearProgress, Box } from "@mui/material";
+import { LinearProgress, Box } from "@mui/material";
 import HomeIcon from "@mui/icons-material/Home";
 import ListAltIcon from "@mui/icons-material/ListAlt";
 import EmojiEventsIcon from "@mui/icons-material/EmojiEvents";
@@ -39,21 +39,29 @@ import AdminLocksAndPicks from "./pages/admin/AdminLocksAndPicks";
 import AdminRoster from "./pages/admin/AdminRoster";
 import AdminSettings from "./pages/admin/AdminSettings";
 
-// ---- optional theme ----
-const theme = createTheme({
-  palette: {
-    mode: "light",
-    primary: { main: "#1976d2" },
-  },
-});
+// theme
+import { ColorModeProvider } from "./hooks/ColorModeContext";
 
 function Brand() {
+  // pigeon.png has an opaque white background baked in; frame it as a
+  // deliberate rounded badge instead of a jarring square, especially in dark mode.
   return (
+    <Box
+      sx={{
+        height: 48,
+        width: 48,
+        borderRadius: 1.5,
+        overflow: "hidden",
+        border: "1px solid",
+        borderColor: "divider",
+      }}
+    >
       <img
         src="/pigeon.png"
         alt="Pigeon logo"
-        style={{ height: 48, width: "auto", display: "block" }}
+        style={{ height: "100%", width: "100%", display: "block", objectFit: "cover" }}
       />
+    </Box>
   );
 }
 
@@ -132,8 +140,7 @@ function PrivateShell() {
 export default function App() {
   return (
     <Viewport>
-      <ThemeProvider theme={theme}>
-        <CssBaseline />
+      <ColorModeProvider>
         <AuthProvider>
           <BrowserRouter>
             <Routes>
@@ -145,7 +152,7 @@ export default function App() {
             </Routes>
           </BrowserRouter>
         </AuthProvider>
-      </ThemeProvider>
+      </ColorModeProvider>
     </Viewport>
   );
 }

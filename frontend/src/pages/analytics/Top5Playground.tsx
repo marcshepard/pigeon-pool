@@ -3,7 +3,7 @@
  */
 
 import { useState, useMemo } from 'react';
-import { Box, Typography, Button, Paper, Select, MenuItem, FormControl, InputLabel } from '@mui/material';
+import { Box, Typography, Button, Paper, Select, MenuItem, FormControl, InputLabel, useTheme } from '@mui/material';
 
 import { scoreForPick, type PickCell } from '../../utils/resultsShaping';
 import { calculateBestPossibleRank } from '../../utils/bestPossibleRank';
@@ -22,6 +22,8 @@ type Player = {
 export default function Top5Playground({ pigeon, week, paidCount = 5 }: { pigeon: number; week: number; paidCount?: number }) {
   const [enteredScores, setEnteredScores] = useState<Record<number, EnteredScore>>({});
   const { rows, games, consensusRow } = useResults(week);
+  const theme = useTheme();
+  const cellBorder = `1px solid ${theme.palette.divider}`;
 
   // Remaining games (not final)
   const remainingGames = useMemo(() => {
@@ -200,15 +202,17 @@ export default function Top5Playground({ pigeon, week, paidCount = 5 }: { pigeon
                 {displayedTop5.map((player) => {
                   const isCurrentPigeon = player.pigeon_number === pigeon;
                   return (
-                    <tr 
+                    <tr
                       key={player.pigeon_number}
-                      style={{ 
-                        backgroundColor: isCurrentPigeon ? '#fff59d' : undefined 
+                      style={{
+                        backgroundColor: isCurrentPigeon ? '#fff59d' : undefined,
+                        // Highlight background stays light-yellow in both modes, so pin dark text
+                        color: isCurrentPigeon ? '#1e293b' : undefined,
                       }}
                     >
-                      <td style={{ padding: '8px', borderTop: '1px solid #eee' }}>{`${player.pigeon_number} ${player.pigeon_name}`}</td>
-                      <td style={{ padding: '8px', borderTop: '1px solid #eee' }}>{player.points}</td>
-                      <td style={{ padding: '8px', borderTop: '1px solid #eee' }}>{player.tie ? `T${player.rank}` : player.rank}</td>
+                      <td style={{ padding: '8px', borderTop: cellBorder }}>{`${player.pigeon_number} ${player.pigeon_name}`}</td>
+                      <td style={{ padding: '8px', borderTop: cellBorder }}>{player.points}</td>
+                      <td style={{ padding: '8px', borderTop: cellBorder }}>{player.tie ? `T${player.rank}` : player.rank}</td>
                     </tr>
                   );
                 })}
@@ -270,11 +274,11 @@ export default function Top5Playground({ pigeon, week, paidCount = 5 }: { pigeon
             <tbody>
               {remainingGames.map((game) => (
                 <tr key={game.id}>
-                  <td style={{ padding: '8px', borderTop: '1px solid #eee' }}>{game.game}</td>
-                  <td style={{ padding: '8px', borderTop: '1px solid #eee' }}>{game.consensus}</td>
-                  <td style={{ padding: '8px', borderTop: '1px solid #eee' }}>{game.yourPick}</td>
-                  <td style={{ padding: '8px', borderTop: '1px solid #eee' }}>{game.currentScore}</td>
-                  <td style={{ padding: '8px', borderTop: '1px solid #eee' }}>
+                  <td style={{ padding: '8px', borderTop: cellBorder }}>{game.game}</td>
+                  <td style={{ padding: '8px', borderTop: cellBorder }}>{game.consensus}</td>
+                  <td style={{ padding: '8px', borderTop: cellBorder }}>{game.yourPick}</td>
+                  <td style={{ padding: '8px', borderTop: cellBorder }}>{game.currentScore}</td>
+                  <td style={{ padding: '8px', borderTop: cellBorder }}>
                     <FormControl fullWidth size="small">
                       <InputLabel>Team</InputLabel>
                       <Select
@@ -300,7 +304,7 @@ export default function Top5Playground({ pigeon, week, paidCount = 5 }: { pigeon
                       </Select>
                     </FormControl>
                   </td>
-                  <td style={{ padding: '8px', borderTop: '1px solid #eee', textAlign: 'center' }}>
+                  <td style={{ padding: '8px', borderTop: cellBorder, textAlign: 'center' }}>
                     {enteredScores[game.id] && (
                       <Button variant="outlined" color="secondary" size="small" onClick={() => handleRowReset(game.id)}>
                         Reset

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 
-import { Box, Typography, IconButton } from "@mui/material";
+import { Box, Link, Typography, IconButton } from "@mui/material";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 
 import { InfoPopover, PointsText } from "../../components/CommonComponents";
@@ -213,16 +213,16 @@ export default function RemainingGames({ week, pigeon }: { week: number; pigeon:
       <Typography variant="body1" sx={{ mb: 1 }}>
         Your most important picks are the ones with the highest{' '}
         <Box component="span" sx={{ display: 'inline' }}>
-          <a
+          <Link
             href="#"
-            style={{ color: '#1976d2', textDecoration: 'underline', cursor: 'pointer' }}
+            sx={{ cursor: 'pointer' }}
             onClick={e => {
               e.preventDefault();
               setInfoAnchor(e.currentTarget as HTMLElement);
             }}
           >
             possible gain
-          </a>
+          </Link>
         </Box>
       </Typography>
 
