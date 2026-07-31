@@ -7,12 +7,14 @@ import {
   Card,
   CardActions,
   CardContent,
+  Checkbox,
   Chip,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
   FormControl,
+  FormControlLabel,
   InputLabel,
   MenuItem,
   Paper,
@@ -37,6 +39,7 @@ import {
   adminUpdatePigeon,
   getCurrentWeek,
 } from "../../backend/fetch";
+import { useAuth } from "../../auth/useAuth";
 import type {
   AdminPigeon,
   AdminPigeonCreateIn,
@@ -571,27 +574,44 @@ function DeletePigeonDialog({
   );
 }
 
-function emailsForStatus(pigeons: AdminPigeon[], status: PigeonSeasonStatus | "all"): string[] {
+function emailsForFilters(
+  pigeons: AdminPigeon[],
+  status: PigeonSeasonStatus | "all",
+  ownersOnly: boolean,
+  excludeEmail: string | undefined,
+): string[] {
   const emails: string[] = [];
   for (const pigeon of pigeons) {
     if (status !== "all" && pigeon.season_status !== status) continue;
     if (pigeon.owner) emails.push(pigeon.owner.email);
-    emails.push(...pigeon.managers.map((manager) => manager.email));
+    if (!ownersOnly) emails.push(...pigeon.managers.map((manager) => manager.email));
   }
-  return dedupeEmails(emails).sort((a, b) => a.localeCompare(b));
+  let result = dedupeEmails(emails);
+  if (excludeEmail) {
+    result = result.filter((email) => emailKey(email) !== emailKey(excludeEmail));
+  }
+  return result.sort((a, b) => a.localeCompare(b));
 }
 
 function CopyEmailAddresses({ pigeons }: { pigeons: AdminPigeon[] }) {
+  const { me } = useAuth();
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<PigeonSeasonStatus | "all">("all");
+  const [ownersOnly, setOwnersOnly] = useState(false);
+  const [includeSelf, setIncludeSelf] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const emails = useMemo(() => emailsForStatus(pigeons, status), [pigeons, status]);
+  const emails = useMemo(
+    () => emailsForFilters(pigeons, status, ownersOnly, includeSelf ? undefined : me?.email),
+    [pigeons, status, ownersOnly, includeSelf, me?.email],
+  );
   const emailList = emails.join("; ");
 
   const close = () => {
     setOpen(false);
     setStatus("all");
+    setOwnersOnly(false);
+    setIncludeSelf(false);
     setCopied(false);
   };
 
@@ -625,6 +645,32 @@ function CopyEmailAddresses({ pigeons }: { pigeons: AdminPigeon[] }) {
                 <MenuItem value="out">Out</MenuItem>
               </Select>
             </FormControl>
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={ownersOnly}
+                  onChange={(event) => {
+                    setOwnersOnly(event.target.checked);
+                    setCopied(false);
+                  }}
+                />
+              }
+              label="Owners only (e.g. for fee collection)"
+            />
+            {me?.email && (
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={includeSelf}
+                    onChange={(event) => {
+                      setIncludeSelf(event.target.checked);
+                      setCopied(false);
+                    }}
+                  />
+                }
+                label={`Include my own email (${me.email})`}
+              />
+            )}
             <TextField
               label={`${emails.length} email address${emails.length === 1 ? "" : "es"}`}
               value={emailList}
