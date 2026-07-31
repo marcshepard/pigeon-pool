@@ -281,7 +281,16 @@ export default function AdminRoster() {
         </TableContainer>
       )}
 
-      <BulkEmailAnnouncement onSnackbar={showSnackbar} />
+      <Stack
+        direction={{ xs: "column", sm: "row" }}
+        spacing={2}
+        justifyContent="center"
+        alignItems="center"
+        sx={{ mt: 5 }}
+      >
+        <CopyEmailAddresses pigeons={pigeons} />
+        <BulkEmailAnnouncement onSnackbar={showSnackbar} />
+      </Stack>
 
       {formState && (
         <PigeonFormDialog
@@ -562,6 +571,83 @@ function DeletePigeonDialog({
   );
 }
 
+function emailsForStatus(pigeons: AdminPigeon[], status: PigeonSeasonStatus | "all"): string[] {
+  const emails: string[] = [];
+  for (const pigeon of pigeons) {
+    if (status !== "all" && pigeon.season_status !== status) continue;
+    if (pigeon.owner) emails.push(pigeon.owner.email);
+    emails.push(...pigeon.managers.map((manager) => manager.email));
+  }
+  return dedupeEmails(emails).sort((a, b) => a.localeCompare(b));
+}
+
+function CopyEmailAddresses({ pigeons }: { pigeons: AdminPigeon[] }) {
+  const [open, setOpen] = useState(false);
+  const [status, setStatus] = useState<PigeonSeasonStatus | "all">("all");
+  const [copied, setCopied] = useState(false);
+
+  const emails = useMemo(() => emailsForStatus(pigeons, status), [pigeons, status]);
+  const emailList = emails.join("; ");
+
+  const close = () => {
+    setOpen(false);
+    setStatus("all");
+    setCopied(false);
+  };
+
+  const copy = async () => {
+    await navigator.clipboard.writeText(emailList);
+    setCopied(true);
+  };
+
+  return (
+    <Box sx={{ textAlign: "center" }}>
+      <Button variant="outlined" onClick={() => setOpen(true)}>
+        Get email addresses
+      </Button>
+      <Dialog open={open} onClose={close} maxWidth="sm" fullWidth>
+        <DialogTitle>Get email addresses</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <FormControl fullWidth>
+              <InputLabel>Status</InputLabel>
+              <Select
+                label="Status"
+                value={status}
+                onChange={(event) => {
+                  setStatus(event.target.value as PigeonSeasonStatus | "all");
+                  setCopied(false);
+                }}
+              >
+                <MenuItem value="all">All pigeons</MenuItem>
+                <MenuItem value="pending">Pending</MenuItem>
+                <MenuItem value="active">Active</MenuItem>
+                <MenuItem value="out">Out</MenuItem>
+              </Select>
+            </FormControl>
+            <TextField
+              label={`${emails.length} email address${emails.length === 1 ? "" : "es"}`}
+              value={emailList}
+              multiline
+              minRows={4}
+              fullWidth
+              slotProps={{ htmlInput: { readOnly: true } }}
+              onFocus={(event) => event.target.select()}
+            />
+            {copied && <Alert severity="success">Copied to clipboard.</Alert>}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={close}>Close</Button>
+          <Button variant="contained" onClick={copy} disabled={emails.length === 0}>
+            Copy
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  );
+}
+
 function BulkEmailAnnouncement({
   onSnackbar,
 }: {
@@ -598,7 +684,7 @@ function BulkEmailAnnouncement({
   };
 
   return (
-    <Box sx={{ mt: 5, textAlign: "center" }}>
+    <Box sx={{ textAlign: "center" }}>
       <Button variant="outlined" onClick={() => setOpen(true)}>
         Send email announcement
       </Button>
