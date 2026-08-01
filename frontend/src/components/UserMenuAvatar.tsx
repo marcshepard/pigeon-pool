@@ -114,7 +114,16 @@ export default function UserMenuAvatar({ user, onSignOut, onSwitchTenant, onRena
             sx={{ width: "100%", ml: 0, justifyContent: "space-between" }}
             labelPlacement="start"
             label="Dark mode"
-            control={<Switch size="small" checked={mode === "dark"} onChange={toggleMode} />}
+            control={
+              <Switch
+                size="small"
+                checked={mode === "dark"}
+                onChange={() => {
+                  toggleMode();
+                  handleMenuClose();
+                }}
+              />
+            }
           />
         </MenuItem>
 
