@@ -19,3 +19,10 @@ Always look to implement the minimal possible changes in order to meet a goal. I
 ## Test
 
 Always consider if additional test automation is required. However we don't want to over-test.
+
+After changing frontend code, run the existing frontend lint check from the repository root:
+
+```powershell
+cd frontend
+npm run lint
+```
