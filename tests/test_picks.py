@@ -2,6 +2,9 @@
 Pick submission and retrieval tests.
 """
 
+from backend.main import app
+from backend.routes.auth import require_user, AuthUser
+
 
 # ── GET picks ─────────────────────────────────────────────────────────────────
 
@@ -79,8 +82,12 @@ def test_commissioner_submits_for_another_player(client, comm_headers, scored_ga
     pick_cleaner.append((member_pid, gid))
 
 
-def test_member_submits_for_managed_player(client, member_headers, scored_games, pick_cleaner, test_data):
-    """Member with manager role can submit picks for the managed player."""
+def test_member_cannot_submit_for_managed_player_outside_tenant_one(client, member_headers, scored_games, test_data):
+    """
+    Manager (not owner) role only grants enter-picks-for-others in tenant 1 (Andy's
+    league). The test tenant isn't tenant 1, so this must be rejected.
+    """
+    assert test_data["tenant_a_id"] != 1
     week = scored_games["submission_week"]
     gid = scored_games["submission_gid"]
     alt_pid = test_data["alt_pid"]
@@ -90,8 +97,32 @@ def test_member_submits_for_managed_player(client, member_headers, scored_games,
         json={"week_number": week, "picks": [{"game_id": gid, "picked_home": False, "predicted_margin": 5}]},
         headers=member_headers,
     )
-    assert resp.status_code == 201
-    pick_cleaner.append((alt_pid, gid))
+    assert resp.status_code == 403
+
+
+def test_member_with_manager_role_allowed_in_tenant_one(client, test_data, scored_games):
+    """Simulates tenant 1 via a dependency override to confirm the manager-role carve-out works there."""
+    week = scored_games["submission_week"]
+    alt_pid = test_data["alt_pid"]
+
+    def fake_require_user():
+        return AuthUser(
+            player_id=test_data["member_pid"],
+            pigeon_number=2,
+            tenant_id=1,
+            email="testmember@example.com",
+            is_admin=False,
+        )
+
+    app.dependency_overrides[require_user] = fake_require_user
+    try:
+        resp = client.get(f"/picks/{week}?player_id={alt_pid}")
+    finally:
+        del app.dependency_overrides[require_user]
+
+    # 200 (not 403) proves the manager-role authz check passed under tenant_id=1.
+    assert resp.status_code == 200
+    assert isinstance(resp.json(), list)
 
 
 def test_member_cannot_submit_for_unmanaged_player(client, member_headers, scored_games, test_data):

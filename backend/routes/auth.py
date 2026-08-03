@@ -400,7 +400,8 @@ def me(user: MeOut = Depends(current_user)):
     debug("In me")
 
     with db() as conn, conn.cursor() as cur:
-        # Alt pigeons within the active tenant
+        # Alt pigeons within the active tenant. Manager (not owner) mappings only
+        # count in tenant 1 — manager-enters-picks-for-others is Andy's-league-only.
         cur.execute("""
             SELECT p.player_id, p.pigeon_number, p.pigeon_name
               FROM user_players up
@@ -408,9 +409,9 @@ def me(user: MeOut = Depends(current_user)):
              WHERE up.user_id = (SELECT user_id FROM users WHERE lower(email) = lower(%s))
                AND p.tenant_id = %s
                AND up.player_id <> %s
-               AND up.role IN ('owner','manager')
+               AND (up.role = 'owner' OR (up.role = 'manager' AND %s = 1))
              ORDER BY p.pigeon_number
-        """, (user.email, user.tenant_id, user.player_id))
+        """, (user.email, user.tenant_id, user.player_id, user.tenant_id))
         alt_rows = cur.fetchall()
         alt_pigeons = [AltPigeon(player_id=r[0], pigeon_number=r[1], pigeon_name=r[2]) for r in alt_rows]
 
