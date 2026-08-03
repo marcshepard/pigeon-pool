@@ -104,7 +104,7 @@ AUTHZ_SQL = text("""
       JOIN users u ON u.user_id = up.user_id
      WHERE lower(u.email) = lower(:email)
        AND up.player_id = :player_id
-       AND (up.role = 'owner' OR (up.role = 'manager' AND :tenant_id = 1))
+       AND up.role IN ('owner','manager')
      LIMIT 1
 """)
 
@@ -145,23 +145,23 @@ async def _resolve_acting_player(
 ) -> int:
     """
     Decide which player_id this request should act as.
-    - Admins: may act for any player in their tenant.
-    - Non-admins: may act for their current player, or another player they own.
-    - Non-admins with a manager (not owner) mapping: only in tenant 1 (Andy's league
-      opted into manager-enters-picks-for-others; it's not offered to other leagues).
+    - Admins in tenant 1 (Andy's league): may act for any player in their tenant
+      ("god mode" is opted into by tenant 1 only; not offered to other leagues).
+    - Everyone else (non-admins, and admins outside tenant 1): may act for their
+      current player, or another player they own or manage.
     """
     if requested_player_id is None or requested_player_id == me.player_id:
         return me.player_id
 
-    if me.is_admin:
+    if me.is_admin and me.tenant_id == 1:
         row = (await db.execute(PLAYER_IN_TENANT_SQL, {"player_id": requested_player_id, "tenant_id": me.tenant_id})).first()
         if not row:
             raise HTTPException(status_code=404, detail=f"Player {requested_player_id} not found in this tenant")
         return requested_player_id
 
-    # Non-admins must be owner, or manager (tenant 1 only) for that player
+    # Must be owner or manager for that player
     row = (await db.execute(
-        AUTHZ_SQL, {"email": me.email, "player_id": requested_player_id, "tenant_id": me.tenant_id}
+        AUTHZ_SQL, {"email": me.email, "player_id": requested_player_id}
     )).first()
     if not row:
         raise HTTPException(status_code=403, detail=f"Not allowed for player {requested_player_id}")

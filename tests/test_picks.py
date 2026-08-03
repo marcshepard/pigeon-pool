@@ -2,8 +2,11 @@
 Pick submission and retrieval tests.
 """
 
+import asyncio
+
 from backend.main import app
 from backend.routes.auth import require_user, AuthUser
+from backend.routes.picks import _resolve_acting_player
 
 
 # ── GET picks ─────────────────────────────────────────────────────────────────
@@ -67,27 +70,8 @@ def test_submit_picks_after_lock_rejected(client, member_headers, scored_games):
 
 # ── POST picks — alt-player ───────────────────────────────────────────────────
 
-def test_commissioner_submits_for_another_player(client, comm_headers, scored_games, pick_cleaner, test_data):
-    """Commissioner can submit picks on behalf of any player in their tenant."""
-    week = scored_games["submission_week"]
-    gid = scored_games["submission_gid"]
-    member_pid = test_data["member_pid"]
-
-    resp = client.post(
-        f"/picks?player_id={member_pid}",
-        json={"week_number": week, "picks": [{"game_id": gid, "picked_home": True, "predicted_margin": 10}]},
-        headers=comm_headers,
-    )
-    assert resp.status_code == 201
-    pick_cleaner.append((member_pid, gid))
-
-
-def test_member_cannot_submit_for_managed_player_outside_tenant_one(client, member_headers, scored_games, test_data):
-    """
-    Manager (not owner) role only grants enter-picks-for-others in tenant 1 (Andy's
-    league). The test tenant isn't tenant 1, so this must be rejected.
-    """
-    assert test_data["tenant_a_id"] != 1
+def test_member_submits_for_managed_player(client, member_headers, scored_games, pick_cleaner, test_data):
+    """Member with manager role can submit picks for the managed player, in any tenant."""
     week = scored_games["submission_week"]
     gid = scored_games["submission_gid"]
     alt_pid = test_data["alt_pid"]
@@ -97,32 +81,56 @@ def test_member_cannot_submit_for_managed_player_outside_tenant_one(client, memb
         json={"week_number": week, "picks": [{"game_id": gid, "picked_home": False, "predicted_margin": 5}]},
         headers=member_headers,
     )
+    assert resp.status_code == 201
+    pick_cleaner.append((alt_pid, gid))
+
+
+def test_commissioner_cannot_submit_for_unmanaged_player_outside_tenant_one(client, comm_headers, scored_games, test_data):
+    """
+    Commissioner "god mode" (acting for any player, not just owned/managed ones)
+    only applies in tenant 1 (Andy's league). The test tenant isn't tenant 1, and
+    the commissioner has no owner/manager relationship to member_pid, so this must
+    be rejected.
+    """
+    assert test_data["tenant_a_id"] != 1
+    week = scored_games["submission_week"]
+    gid = scored_games["submission_gid"]
+    member_pid = test_data["member_pid"]
+
+    resp = client.post(
+        f"/picks?player_id={member_pid}",
+        json={"week_number": week, "picks": [{"game_id": gid, "picked_home": True, "predicted_margin": 10}]},
+        headers=comm_headers,
+    )
     assert resp.status_code == 403
 
 
-def test_member_with_manager_role_allowed_in_tenant_one(client, test_data, scored_games):
-    """Simulates tenant 1 via a dependency override to confirm the manager-role carve-out works there."""
-    week = scored_games["submission_week"]
-    alt_pid = test_data["alt_pid"]
+class _FakeResult:
+    def __init__(self, row):
+        self._row = row
 
-    def fake_require_user():
-        return AuthUser(
-            player_id=test_data["member_pid"],
-            pigeon_number=2,
-            tenant_id=1,
-            email="testmember@example.com",
-            is_admin=False,
-        )
+    def first(self):
+        return self._row
 
-    app.dependency_overrides[require_user] = fake_require_user
-    try:
-        resp = client.get(f"/picks/{week}?player_id={alt_pid}")
-    finally:
-        del app.dependency_overrides[require_user]
 
-    # 200 (not 403) proves the manager-role authz check passed under tenant_id=1.
-    assert resp.status_code == 200
-    assert isinstance(resp.json(), list)
+class _FakeDB:
+    """Stands in for the AsyncSession so this test doesn't need a real tenant-1
+    player row — the test DB never mints real tenant 1 (that's Andy's actual
+    league), so PLAYER_IN_TENANT_SQL can't be exercised against real data."""
+
+    def __init__(self, row):
+        self._row = row
+
+    async def execute(self, *_args, **_kwargs):
+        return _FakeResult(self._row)
+
+
+def test_commissioner_god_mode_allowed_in_tenant_one():
+    """Commissioner (is_admin) in tenant 1 may act for any player found in that tenant."""
+    me = AuthUser(player_id=1, pigeon_number=1, tenant_id=1, email="testcomm@example.com", is_admin=True)
+    db = _FakeDB(row=(1,))  # PLAYER_IN_TENANT_SQL finds the requested player in tenant 1
+    result = asyncio.run(_resolve_acting_player(db, me, requested_player_id=999))
+    assert result == 999
 
 
 def test_member_cannot_submit_for_unmanaged_player(client, member_headers, scored_games, test_data):

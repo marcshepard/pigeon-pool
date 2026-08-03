@@ -91,11 +91,12 @@ export default function EnterPicksPage() {
     { capture: true }
   );
 
-  // Fetch all tenant pigeons once for commissioners (replaces hard-coded 1-68 range)
+  // Fetch all tenant pigeons once for commissioners (replaces hard-coded 1-68 range).
+  // "God mode" (acting for any pigeon, not just owned/managed ones) is tenant-1-only.
   useEffect(() => {
-    if (!me?.is_admin) return;
+    if (!me?.is_admin || me.tenant_id !== 1) return;
     adminGetPigeons().then(setAllPigeons).catch(() => {/* non-fatal */});
-  }, [me?.is_admin]);
+  }, [me?.is_admin, me?.tenant_id]);
 
   // Intercept navigation attempts when there are unsaved changes
   useEffect(() => {
@@ -524,8 +525,8 @@ export default function EnterPicksPage() {
       </Box>
 
 
-    {/* Pigeon selector below header if user is admin OR has alternates */}
-    {me && (me.is_admin || (me.alternates && me.alternates.length > 0)) && (
+    {/* Pigeon selector below header if user has "god mode" (tenant-1 admin) OR has alternates */}
+    {me && ((me.is_admin && me.tenant_id === 1) || (me.alternates && me.alternates.length > 0)) && (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 1 }}>
           {(() => {
             // Known pigeons by player_id: primary + alternates
@@ -535,7 +536,7 @@ export default function EnterPicksPage() {
               ...me.alternates.map(a => ({ value: String(a.player_id), label: `${a.pigeon_number} ${a.pigeon_name}` }))
             ];
             const allOptions = [...knownOptions];
-            if (me.is_admin) {
+            if (me.is_admin && me.tenant_id === 1) {
               for (const p of allPigeons) {
                 if (!knownIds.has(p.player_id)) {
                   allOptions.push({ value: String(p.player_id), label: `${p.pigeon_number} ${p.pigeon_name}` });

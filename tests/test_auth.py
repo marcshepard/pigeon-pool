@@ -57,11 +57,10 @@ def test_me_member(client, member_headers, test_data):
     body = resp.json()
     assert body["is_admin"] is False
     assert body["player_id"] == test_data["member_pid"]
-    # alt_pid is a 'manager' (not 'owner') mapping; that carve-out is tenant-1-only
-    # and the test tenant isn't tenant 1, so it must not appear as an alt pigeon.
-    assert test_data["tenant_a_id"] != 1
+    # alt_pid is a 'manager' (not 'owner') mapping; manager access works in every
+    # tenant, so it must appear as an alt pigeon regardless of test tenant.
     alt_ids = {p["player_id"] for p in body["alt_pigeons"]}
-    assert test_data["alt_pid"] not in alt_ids
+    assert test_data["alt_pid"] in alt_ids
 
 
 def test_me_no_token(client):
