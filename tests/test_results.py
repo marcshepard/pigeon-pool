@@ -12,7 +12,6 @@ the v_results formula exactly:
 import pytest
 from conftest import expected_score
 
-
 # ── lock gate ─────────────────────────────────────────────────────────────────
 
 def test_week_picks_unlocked_week_returns_409(client, comm_headers, scored_games):

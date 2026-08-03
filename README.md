@@ -46,6 +46,7 @@ Note: this file constains secrets and will be .gitignored. Never check in secret
 conda create -n pigeon python=3.12
 conda activate pigeon
 pip install -r backend/requirements.txt
+pip install -r backend/requirements-dev.txt  # local linting and type checking only
 ```
 
 3. Run the CLI to populate the DB with the NFL schedule

@@ -7,7 +7,6 @@ import pytest
 from backend.cli import build_parser
 from backend.utils.roster_validation import validate_rosters
 
-
 _TENANT_NAME = "_Roster Validation Test"
 _OTHER_TENANT_NAME = "_Roster Validation Other"
 _EMAILS = (

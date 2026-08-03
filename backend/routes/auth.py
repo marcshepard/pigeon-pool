@@ -11,23 +11,21 @@ JWT token shape (Stage 5+):
 
 # pylint: disable=line-too-long
 
-from datetime import datetime, timedelta, timezone
-import os
 import binascii
-from typing import List, Optional, Tuple
+import os
 import re
+from datetime import UTC, datetime, timedelta
 
 import jwt
 import psycopg
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-
-from passlib.hash import bcrypt
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from passlib.hash import bcrypt  # pyright: ignore[reportAttributeAccessIssue]
 from pydantic import BaseModel, EmailStr
 
-from backend.utils.settings import get_settings
-from backend.utils.logger import debug, info, warn, error
 from backend.utils.emailer import send_email
+from backend.utils.logger import debug, error, info, warn
+from backend.utils.settings import get_settings
 
 # --- Config ---
 S = get_settings()
@@ -73,8 +71,8 @@ class MeOut(BaseModel):
     is_admin: bool
     tenant_id: int
     session: dict
-    alt_pigeons: List[AltPigeon] = []
-    available_tenants: List[TenantInfo] = []
+    alt_pigeons: list[AltPigeon] = []
+    available_tenants: list[TenantInfo] = []
 
 class LoginOut(BaseModel):
     ok: bool
@@ -96,7 +94,7 @@ class PasswordResetConfirmIn(BaseModel):
 # --- JWT helpers ---
 def make_session_token(player_id: int, tenant_id: int, email: str, uid: int) -> tuple[str, int]:
     """Create a session JWT and return (token, exp_epoch_seconds)."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     exp = now + timedelta(minutes=SESSION_MINUTES)
     exp_epoch = int(exp.timestamp())
     payload = {
@@ -122,7 +120,7 @@ def parse_session_token(token: str) -> dict:
     return data
 
 # --- Queries ---
-def find_user(cur, email: str) -> Optional[Tuple]:
+def find_user(cur, email: str) -> tuple | None:
     """Returns (user_id, email, password_hash) or None."""
     cur.execute(
         "SELECT user_id, email, password_hash FROM users WHERE lower(email) = lower(%s)",
@@ -130,7 +128,7 @@ def find_user(cur, email: str) -> Optional[Tuple]:
     )
     return cur.fetchone()
 
-def select_tenant_context(cur, user_id: int, tenant_id: int = None) -> Optional[Tuple]:
+def select_tenant_context(cur, user_id: int, tenant_id: int | None = None) -> tuple | None:
     """
     Pick the tenant context for a user.
     If tenant_id is given, validate membership in that specific tenant.
@@ -167,7 +165,7 @@ def set_last_used_at(cur, user_id: int, tenant_id: int) -> None:
         (user_id, tenant_id)
     )
 
-def get_available_tenants(cur, user_id: int) -> List[TenantInfo]:
+def get_available_tenants(cur, user_id: int) -> list[TenantInfo]:
     cur.execute("""
         SELECT t.tenant_id, t.name, tm.role, t.pigeons_can_rename
           FROM tenant_members tm
@@ -182,7 +180,7 @@ def get_available_tenants(cur, user_id: int) -> List[TenantInfo]:
 
 # --- Password reset helpers ---
 def make_reset_token(user_id: int) -> str:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     exp = now + timedelta(minutes=RESET_TTL_MINUTES)
     jti = binascii.hexlify(os.urandom(16)).decode()
     payload = {
@@ -301,7 +299,7 @@ def current_user(creds: HTTPAuthorizationCredentials = Depends(bearer)) -> MeOut
             email=row[3],
             is_admin=row[4],
             tenant_id=row[5],
-            session={"expires_at": datetime.fromtimestamp(exp_ts, tz=timezone.utc).isoformat()},
+            session={"expires_at": datetime.fromtimestamp(exp_ts, tz=UTC).isoformat()},
         )
 
 # --- Router ---
@@ -321,7 +319,7 @@ def _build_login_response(uid: int, email: str, ctx) -> dict:
         email=email,
         is_admin=is_admin,
         tenant_id=tenant_id,
-        session={"expires_at": datetime.fromtimestamp(exp_ts, tz=timezone.utc).isoformat()},
+        session={"expires_at": datetime.fromtimestamp(exp_ts, tz=UTC).isoformat()},
     )
     return {
         "ok": True,
@@ -511,7 +509,7 @@ def confirm_password_reset(payload: PasswordResetConfirmIn):
         "ok": True,
         "access_token": token_str,
         "token_type": "bearer",
-        "expires_at": datetime.fromtimestamp(exp_ts, tz=timezone.utc).isoformat(),
+        "expires_at": datetime.fromtimestamp(exp_ts, tz=UTC).isoformat(),
     }
 
 # --- Lightweight dependencies for other routers ---
@@ -519,7 +517,7 @@ class AuthUser(BaseModel):
     player_id: int
     pigeon_number: int
     tenant_id: int
-    email: Optional[EmailStr] = None
+    email: EmailStr | None = None
     is_admin: bool = False
 
 def require_user(user: MeOut = Depends(current_user)) -> AuthUser:

@@ -20,8 +20,6 @@ Notes:
 
 from __future__ import annotations
 
-from typing import List, Optional
-
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy import text
@@ -29,8 +27,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.utils.db import get_db
 from backend.utils.logger import debug, info, warn
-from .auth import require_user
 
+from .auth import require_user
 
 router = APIRouter(prefix="/results", tags=["results"])
 
@@ -55,8 +53,8 @@ class WeekPicksRow(BaseModel):
     away_abbr: str
     kickoff_at: str
     status: str
-    home_score: Optional[int] = None
-    away_score: Optional[int] = None
+    home_score: int | None = None
+    away_score: int | None = None
 
 
 class LeaderboardRow(BaseModel):
@@ -80,7 +78,7 @@ class YtdRow(BaseModel):
     """Aggregated YTD stats across all locked weeks for a player."""
     pigeon_number: int
     pigeon_name: str
-    by_week: List[YtdByWeek]
+    by_week: list[YtdByWeek]
 
 # =============================================================================
 # SQL
@@ -184,7 +182,7 @@ async def get_pool_info(
 
 @router.get(
     "/weeks/{week}/picks",
-    response_model=List[WeekPicksRow],
+    response_model=list[WeekPicksRow],
     summary="All picks + game metadata for a locked week",
 )
 async def get_week_picks(
@@ -199,7 +197,7 @@ async def get_week_picks(
     rows = (await db.execute(WEEK_PICKS_SQL, {"week": week, "tenant_id": me.tenant_id})).fetchall()
     info("results: week picks rows", week=week, count=len(rows))
 
-    out: List[WeekPicksRow] = []
+    out: list[WeekPicksRow] = []
     for r in rows:
         out.append(
             WeekPicksRow(
@@ -222,7 +220,7 @@ async def get_week_picks(
 
 @router.get(
     "/weeks/{week}/leaderboard",
-    response_model=List[LeaderboardRow],
+    response_model=list[LeaderboardRow],
     summary="Leaderboard (score + rank + pigeon_name) for a locked week",
 )
 async def get_week_leaderboard(
@@ -255,7 +253,7 @@ async def get_week_leaderboard(
 
 @router.get(
     "/leaderboard",
-    response_model=List[LeaderboardRow],
+    response_model=list[LeaderboardRow],
     summary="Leaderboard rows across all locked weeks (includes pigeon_name)",
 )
 async def get_all_locked_leaderboards(

@@ -10,16 +10,16 @@ connection to avoid SQLAlchemy async/greenlet issues.
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime
 from typing import Any
-from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import bindparam, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .emailer import send_bulk_email_bcc
 from .logger import info
 from .score_sync import ScoreSync
-from .emailer import send_bulk_email_bcc
 from .settings import get_settings
 
 #pylint: disable=line-too-long
@@ -79,7 +79,7 @@ async def get_all_player_emails(
 
     if player_ids:
         filters.append("up.player_id IN :nums")
-        params["nums"] = tuple(set(int(n) for n in player_ids))
+        params["nums"] = tuple({int(n) for n in player_ids})
     if not include_viewers:
         filters.append("up.role IN ('owner','manager')")
 
@@ -145,7 +145,7 @@ async def run_poll_scores(session: AsyncSession) -> dict[str, Any]:
     syncer = ScoreSync(session)
     updated = await syncer.sync_scores_and_status(week)
 
-    now = datetime.now()
+    now = datetime.now(PT)
     time_str = now.strftime("%H:%M")
     info("component=jobs", job="score_sync", time=time_str, week=week,
          games_updated=updated, message=f"Scores synced at {time_str} - {updated} game(s) updated")
@@ -249,7 +249,7 @@ async def run_email_mon(session: AsyncSession) -> dict[str, Any]:
         ), {"tid": tenant_id})
         next_lock_row = next_lock_res.first()
         deadline_str = (
-            _format_lock_pt(next_lock_row[0].replace(tzinfo=timezone.utc) if next_lock_row[0].tzinfo is None else next_lock_row[0])
+            _format_lock_pt(next_lock_row[0].replace(tzinfo=UTC) if next_lock_row[0].tzinfo is None else next_lock_row[0])
             if next_lock_row else "the upcoming deadline"
         )
 
@@ -319,7 +319,7 @@ async def run_email_tue_warn(session: AsyncSession) -> dict[str, Any]:
         player_ids = [r[0] for r in rows_list]
         lock_at_raw = rows_list[0][1] if rows_list else None
         deadline_str = (
-            _format_lock_pt(lock_at_raw.replace(tzinfo=timezone.utc) if lock_at_raw and lock_at_raw.tzinfo is None else lock_at_raw)
+            _format_lock_pt(lock_at_raw.replace(tzinfo=UTC) if lock_at_raw and lock_at_raw.tzinfo is None else lock_at_raw)
             if lock_at_raw else "the upcoming deadline"
         )
 

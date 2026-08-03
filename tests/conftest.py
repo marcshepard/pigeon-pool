@@ -26,13 +26,14 @@ so the unlocked week is always separate from the locked scoring weeks.
 
 import psycopg
 import pytest
-from passlib.hash import bcrypt as _bcrypt
+from passlib.hash import (
+    bcrypt as _bcrypt,  # pyright: ignore[reportAttributeAccessIssue]
+)
 from starlette.testclient import TestClient
 
 from backend.main import app
 from backend.routes.auth import make_session_token
 from backend.utils.settings import get_settings
-
 
 # ── scoring formula (mirrors v_results) ──────────────────────────────────────
 
@@ -65,9 +66,7 @@ def expected_score(
     diff = abs(pred - actual)
     if not is_made:
         penalty = 100
-    elif _sign(pred) == 0 and _sign(actual) == 0:
-        penalty = 7
-    elif _sign(pred) != _sign(actual):
+    elif _sign(pred) == 0 and _sign(actual) == 0 or _sign(pred) != _sign(actual):
         penalty = 7
     else:
         penalty = 0
@@ -104,9 +103,8 @@ def client():
 def auth_headers():
     """Bearer token for the first commissioner found in the DB (snapshot tests only)."""
     s = get_settings()
-    with psycopg.connect(**s.psycopg_kwargs()) as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
+    with psycopg.connect(**s.psycopg_kwargs()) as conn, conn.cursor() as cur:
+        cur.execute("""
                 SELECT u.user_id, p.player_id, u.email, tm.tenant_id
                   FROM users u
                   JOIN tenant_members tm ON tm.user_id = u.user_id
@@ -115,7 +113,7 @@ def auth_headers():
                  ORDER BY u.user_id, p.player_id
                  LIMIT 1
             """)
-            row = cur.fetchone()
+        row = cur.fetchone()
     assert row, "No commissioner user found in DB"
     uid, player_id, email, tenant_id = row
     token, _ = make_session_token(player_id, tenant_id, email, uid=uid)

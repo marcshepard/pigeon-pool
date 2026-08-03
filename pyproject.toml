@@ -1,0 +1,6 @@
+[tool.ruff]
+target-version = "py312"
+
+[tool.ruff.lint.per-file-ignores]
+# FastAPI intentionally declares dependency and request metadata calls as defaults.
+"backend/routes/*.py" = ["B008"]

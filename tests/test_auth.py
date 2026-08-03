@@ -4,7 +4,6 @@ Auth endpoint tests: login, /me, select-context, password reset.
 
 from unittest.mock import patch
 
-
 # ── login ─────────────────────────────────────────────────────────────────────
 
 def test_login_success(client, test_data):

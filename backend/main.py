@@ -2,20 +2,21 @@
 Main FastAPI application setup.
 """
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.utils.settings import get_settings
-from backend.utils.logger import configure_from_env
-import backend.utils.logger as logger
-from backend.routes.auth import router as auth_router
-from backend.routes.picks import router as picks_router
-from backend.routes.schedule import router as schedule_router
-from backend.routes.results import router as results_router
 from backend.routes.admin import router as admin_router
-from backend.routes.players import router as players_router
+from backend.routes.auth import router as auth_router
 from backend.routes.me import router as me_router
+from backend.routes.picks import router as picks_router
+from backend.routes.players import router as players_router
+from backend.routes.results import router as results_router
+from backend.routes.schedule import router as schedule_router
+from backend.utils import logger
+from backend.utils.logger import configure_from_env
 from backend.utils.scheduler import start_scheduler, stop_scheduler
+from backend.utils.settings import get_settings
 
 DISABLE_SCHEDULER=True  # Set to False before the new season starts
 

@@ -4,18 +4,19 @@ Endpoint for users to create and managing their picks
 
 from __future__ import annotations
 
-from typing import List, Iterable
-from datetime import datetime, timezone
 import asyncio
+from collections.abc import Iterable
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.utils.submit_picks_to_andy import build_submit_body_from_db, submit_to_andy
 from backend.utils.db import get_db
 from backend.utils.logger import error
+from backend.utils.submit_picks_to_andy import build_submit_body_from_db, submit_to_andy
+
 from .auth import require_user
 
 router = APIRouter(prefix="/picks", tags=["picks"])
@@ -43,11 +44,11 @@ class PickOut(BaseModel):
 class PicksBulkIn(BaseModel):
     """Input model for bulk upsert of picks"""
     week_number: int = Field(..., ge=1, le=18)
-    picks: List[PickIn]
+    picks: list[PickIn]
 
     @field_validator("picks")
     @classmethod
-    def no_duplicates(cls, v: List[PickIn]):
+    def no_duplicates(cls, v: list[PickIn]):
         """Ensure no duplicate game_id in payload"""
         seen = set()
         for p in v:
@@ -120,7 +121,7 @@ async def _ensure_week_unlocked(db: AsyncSession, week_number: int, tenant_id: i
     if not row:
         raise HTTPException(status_code=404, detail=f"Week {week_number} not found")
     (lock_at,) = row
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if lock_at <= now:
         raise HTTPException(status_code=409, detail=f"Week {week_number} is locked")
 
@@ -172,7 +173,7 @@ async def _resolve_acting_player(
 # =========================
 @router.get(
     "/{week_number}",
-    response_model=List[PickOut],
+    response_model=list[PickOut],
     summary="Get my picks for a week"
 )
 async def get_my_picks_for_week(
@@ -203,7 +204,7 @@ async def get_my_picks_for_week(
 
 @router.post(
     "",
-    response_model=List[PickOut],
+    response_model=list[PickOut],
     status_code=status.HTTP_201_CREATED,
     summary="Create or update picks for unlocked weeks"
 )
@@ -219,7 +220,7 @@ async def upsert_picks_bulk(
     await _ensure_week_unlocked(db, payload.week_number, me.tenant_id)
     await _ensure_all_games_in_week(db, payload.week_number, (p.game_id for p in payload.picks))
 
-    out: List[PickOut] = []
+    out: list[PickOut] = []
     for p in payload.picks:
         res = await db.execute(
             UPSERT_PICK_SQL,

@@ -3,11 +3,12 @@ Pick submission and retrieval tests.
 """
 
 import asyncio
+from typing import cast
 
-from backend.main import app
-from backend.routes.auth import require_user, AuthUser
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from backend.routes.auth import AuthUser
 from backend.routes.picks import _resolve_acting_player
-
 
 # ── GET picks ─────────────────────────────────────────────────────────────────
 
@@ -128,7 +129,7 @@ class _FakeDB:
 def test_commissioner_god_mode_allowed_in_tenant_one():
     """Commissioner (is_admin) in tenant 1 may act for any player found in that tenant."""
     me = AuthUser(player_id=1, pigeon_number=1, tenant_id=1, email="testcomm@example.com", is_admin=True)
-    db = _FakeDB(row=(1,))  # PLAYER_IN_TENANT_SQL finds the requested player in tenant 1
+    db = cast(AsyncSession, _FakeDB(row=(1,)))  # test double for AsyncSession.execute
     result = asyncio.run(_resolve_acting_player(db, me, requested_player_id=999))
     assert result == 999
 

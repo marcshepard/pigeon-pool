@@ -12,7 +12,6 @@ from typing import Any, Literal
 
 from backend.utils.validation import validate_pigeon_name
 
-
 Severity = Literal["error", "warning"]
 
 

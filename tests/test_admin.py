@@ -5,7 +5,7 @@ Commissioner (admin) endpoint tests.
 import pytest
 
 from backend.main import app
-from backend.routes.auth import require_admin, AuthUser
+from backend.routes.auth import AuthUser, require_admin
 
 
 @pytest.fixture

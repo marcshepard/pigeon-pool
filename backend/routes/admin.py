@@ -6,25 +6,37 @@ within the active tenant. All data-access routes are scoped to me.tenant_id.
 #pylint: disable=line-too-long
 
 from __future__ import annotations
+
 import os
 import secrets
 import string
 import tempfile
-from typing import List, Optional, Literal
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
+from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, status, Body, Response, UploadFile, File, Form
+from fastapi import (
+    APIRouter,
+    Body,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Response,
+    UploadFile,
+    status,
+)
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.utils.import_picks_xlsx import import_picks_pivot_xlsx_with_engine
 from backend.utils.db import get_db
-from backend.utils.logger import debug, info, warn
 from backend.utils.emailer import send_bulk_email_to_all_users
+from backend.utils.import_picks_xlsx import import_picks_pivot_xlsx_with_engine
+from backend.utils.logger import debug, info, warn
 from backend.utils.validation import validate_pigeon_name
-from .auth import require_user, require_admin
+
+from .auth import require_admin, require_user
 from .results import WeekPicksRow
 from .schedule import get_current_week
 
@@ -56,7 +68,7 @@ WEEK_PICKS_SQL = text("""
 
 @router.get(
     "/weeks/{week}/picks",
-    response_model=List[WeekPicksRow],
+    response_model=list[WeekPicksRow],
     summary="All picks + game metadata for a week (commissioner only)",
 )
 async def get_week_picks(
@@ -106,8 +118,8 @@ UPDATE_TENANT_RENAME_SETTING_SQL = text("""
 
 
 class LeagueUpdate(BaseModel):
-    name: Optional[str] = None
-    pigeons_can_rename: Optional[bool] = None
+    name: str | None = None
+    pigeons_can_rename: bool | None = None
 
 
 @router.patch(
@@ -173,7 +185,7 @@ class WeekLockRow(BaseModel):
 
 @router.get(
     "/weeks/locks",
-    response_model=List[WeekLockRow],
+    response_model=list[WeekLockRow],
     summary="All weeks' lock times for this tenant (commissioner only)",
 )
 async def get_weeks_locks(
@@ -221,16 +233,16 @@ async def adjust_week_lock(
 
     new_lock = lock_at
     if new_lock.tzinfo is None:
-        new_lock = new_lock.replace(tzinfo=timezone.utc)
+        new_lock = new_lock.replace(tzinfo=UTC)
     else:
-        new_lock = new_lock.astimezone(timezone.utc)
+        new_lock = new_lock.astimezone(UTC)
 
     first_row = (await db.execute(FIRST_KICKOFF_SQL, {"week": week})).first()
     first_kickoff = first_row[0] if first_row else None
     if first_kickoff is None:
         raise HTTPException(status_code=400, detail=f"No games scheduled for week {week}")
 
-    tuesday_before = first_kickoff.astimezone(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    tuesday_before = first_kickoff.astimezone(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
     days_since_tuesday = (tuesday_before.weekday() - 1) % 7
     tuesday_before = tuesday_before - timedelta(days=days_since_tuesday)
 
@@ -505,14 +517,14 @@ class PigeonRow(BaseModel):
     pigeon_number: int
     pigeon_name: str
     season_status: Literal["pending", "active", "out"]
-    owner: Optional[PigeonPerson]
-    managers: List[PigeonPerson] = Field(default_factory=list)
+    owner: PigeonPerson | None
+    managers: list[PigeonPerson] = Field(default_factory=list)
 
 
 class PigeonAggregateIn(BaseModel):
     pigeon_name: str
     owner_email: EmailStr
-    manager_emails: List[EmailStr] = Field(default_factory=list)
+    manager_emails: list[EmailStr] = Field(default_factory=list)
 
     @field_validator("pigeon_name")
     @classmethod
@@ -547,7 +559,7 @@ def _normalize_email(email: EmailStr | str) -> str:
     return str(email).strip().casefold()
 
 
-def _build_roster(rows) -> List[PigeonRow]:
+def _build_roster(rows) -> list[PigeonRow]:
     pigeons: dict[int, dict] = {}
     for row in rows:
         player_id = row[0]
@@ -570,12 +582,12 @@ def _build_roster(rows) -> List[PigeonRow]:
     return [PigeonRow(**pigeon) for pigeon in pigeons.values()]
 
 
-async def _load_roster(db: AsyncSession, tenant_id: int) -> List[PigeonRow]:
+async def _load_roster(db: AsyncSession, tenant_id: int) -> list[PigeonRow]:
     rows = (await db.execute(GET_ROSTER_SQL, {"tenant_id": tenant_id})).fetchall()
     return _build_roster(rows)
 
 
-async def _load_pigeon(db: AsyncSession, tenant_id: int, player_id: int) -> Optional[PigeonRow]:
+async def _load_pigeon(db: AsyncSession, tenant_id: int, player_id: int) -> PigeonRow | None:
     return next(
         (pigeon for pigeon in await _load_roster(db, tenant_id) if pigeon.player_id == player_id),
         None,
@@ -607,8 +619,8 @@ async def _repair_tenant_membership(
     tenant_id: int,
     user_id: int,
     *,
-    preferred_player_id: Optional[int] = None,
-    exclude_player_id: Optional[int] = None,
+    preferred_player_id: int | None = None,
+    exclude_player_id: int | None = None,
 ) -> None:
     params = {"tenant_id": tenant_id, "user_id": user_id}
     if exclude_player_id is None:
@@ -786,7 +798,7 @@ async def create_pigeon(
 
 @router.get(
     "/pigeons",
-    response_model=List[PigeonRow],
+    response_model=list[PigeonRow],
     summary="List all players with their owners (commissioner only)",
 )
 async def get_pigeons(
@@ -932,7 +944,7 @@ class PayoutRow(BaseModel):
 
 @router.get(
     "/payouts",
-    response_model=List[PayoutRow],
+    response_model=list[PayoutRow],
     summary="Get payout amounts for this tenant (any member)",
 )
 async def get_payouts(
@@ -949,7 +961,7 @@ async def get_payouts(
     summary="Replace payout table for this tenant (commissioner only)",
 )
 async def put_payouts(
-    payouts: List[PayoutRow],
+    payouts: list[PayoutRow],
     db: AsyncSession = Depends(get_db),
     me=Depends(require_admin),
 ):

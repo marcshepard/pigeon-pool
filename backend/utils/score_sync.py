@@ -11,12 +11,15 @@ This file intentionally keeps things simple:
 # pylint: disable=line-too-long
 
 from __future__ import annotations
-from datetime import date, datetime, timezone, timedelta
+
+from datetime import UTC, date, datetime, timedelta
+from typing import Any
 from zoneinfo import ZoneInfo
-from typing import Any, Optional
+
 import httpx
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
+from sqlalchemy.engine import CursorResult
+from sqlalchemy.ext.asyncio import AsyncSession
 
 PT = ZoneInfo("America/Los_Angeles")
 
@@ -34,7 +37,7 @@ def _calc_lock_at_pacific(kickoffs_utc: list[datetime]) -> datetime:
     lock_wed_pt = (earliest_pt - timedelta(days=days_since_wed)).replace(
         hour=23, minute=59, second=59, microsecond=0
     )
-    return lock_wed_pt.astimezone(timezone.utc)
+    return lock_wed_pt.astimezone(UTC)
 
 class ScoreSync:
     """Tiny async sync class; one instance per DB session is fine."""
@@ -218,7 +221,7 @@ class ScoreSync:
     # Private DB helpers (raw SQL; psycopg-style)
     # -------------------------------------------------------------------------
 
-    async def _week_kickoff_bounds(self, week_number: int) -> Optional[tuple[datetime, datetime]]:
+    async def _week_kickoff_bounds(self, week_number: int) -> tuple[datetime, datetime] | None:
         """Return (min_kickoff, max_kickoff) for a week's existing games, or None if none loaded yet."""
         result = await self.session.execute(
             text("SELECT MIN(kickoff_at), MAX(kickoff_at) FROM games WHERE week_number = :week"),
@@ -269,14 +272,14 @@ class ScoreSync:
                 "espn_event_id": espn_event_id,
             },
         )
-        return result.rowcount if hasattr(result, "rowcount") else 1
+        return result.rowcount if isinstance(result, CursorResult) else 1
 
     async def _update_scores_by_event_id(
         self,
         *,
         espn_event_id: int,
-        home_score: Optional[int],
-        away_score: Optional[int],
+        home_score: int | None,
+        away_score: int | None,
         status: str,
     ) -> int:
         result = await self.session.execute(
@@ -301,7 +304,7 @@ class ScoreSync:
                 "espn_event_id": espn_event_id,
             },
         )
-        return result.rowcount if hasattr(result, "rowcount") else 1
+        return result.rowcount if isinstance(result, CursorResult) else 1
 
     async def _update_scores_by_triplet(
         self,
@@ -309,8 +312,8 @@ class ScoreSync:
         week_number: int,
         home_abbr: str,
         away_abbr: str,
-        home_score: Optional[int],
-        away_score: Optional[int],
+        home_score: int | None,
+        away_score: int | None,
         status: str,
         espn_event_id: int,
     ) -> int:
@@ -343,7 +346,7 @@ class ScoreSync:
                 "away_abbr": away_abbr,
             },
         )
-        return result.rowcount if hasattr(result, "rowcount") else 1
+        return result.rowcount if isinstance(result, CursorResult) else 1
 
     async def _update_kickoff_by_event_id(self, *, espn_event_id: int, new_kickoff: datetime) -> int:
         result = await self.session.execute(
@@ -356,7 +359,7 @@ class ScoreSync:
             """),
             {"new_kickoff": new_kickoff, "espn_event_id": espn_event_id},
         )
-        return result.rowcount if hasattr(result, "rowcount") else 1
+        return result.rowcount if isinstance(result, CursorResult) else 1
 
     async def _update_kickoff_by_triplet(
         self,
@@ -365,7 +368,7 @@ class ScoreSync:
         home_abbr: str,
         away_abbr: str,
         new_kickoff: datetime,
-        espn_event_id: Optional[int] = None,
+        espn_event_id: int | None = None,
     ) -> int:
         result = await self.session.execute(
             text("""
@@ -386,7 +389,7 @@ class ScoreSync:
                 "away_abbr": away_abbr,
             },
         )
-        return result.rowcount if hasattr(result, "rowcount") else 1
+        return result.rowcount if isinstance(result, CursorResult) else 1
 
 
 # -----------------------------------------------------------------------------
@@ -411,8 +414,8 @@ def _parse_iso_utc(iso: str) -> datetime:
         iso = iso.replace("Z", "+00:00")
     dt = datetime.fromisoformat(iso)
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC)
 
 
 def _dates_param(start: date, end: date) -> str:
@@ -461,7 +464,7 @@ async def _fetch_current_calendar() -> list[dict[str, Any]]:
     return sb["leagues"][0]["calendar"]
 
 
-async def _fetch_scoreboard(*, dates: Optional[str] = None) -> dict[str, Any]:
+async def _fetch_scoreboard(*, dates: str | None = None) -> dict[str, Any]:
     """GET ESPN's NFL scoreboard, optionally for a `dates=YYYYMMDD-YYYYMMDD` range."""
     url = "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard"
     params = {"dates": dates} if dates else {}
@@ -490,7 +493,7 @@ def _parse_team_abbrs_and_names(ev: dict[str, Any]) -> tuple[str, str, str, str]
     return home_abbr, home_name, away_abbr, away_name
 
 
-def _map_scores_and_status(ev: dict[str, Any]) -> tuple[str, Optional[int], Optional[int]]:
+def _map_scores_and_status(ev: dict[str, Any]) -> tuple[str, int | None, int | None]:
     """
     Map ESPN statuses to your 3-state model and extract integer scores (if present).
     ESPN status types: ev['status']['type']['state'] in {'pre','in','post'}.
@@ -508,7 +511,7 @@ def _map_scores_and_status(ev: dict[str, Any]) -> tuple[str, Optional[int], Opti
     home = next(c for c in comp["competitors"] if c["homeAway"] == "home")
     away = next(c for c in comp["competitors"] if c["homeAway"] == "away")
 
-    def _to_int_or_none(v: Any) -> Optional[int]:
+    def _to_int_or_none(v: Any) -> int | None:
         return int(v) if v is not None else None
 
     home_score = _to_int_or_none(home.get("score"))

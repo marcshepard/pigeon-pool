@@ -20,6 +20,13 @@ Always look to implement the minimal possible changes in order to meet a goal. I
 
 Always consider if additional test automation is required. However we don't want to over-test.
 
+After changing Python code, run the shared backend static checks from the repository root:
+
+```powershell
+python -m ruff check backend tests
+python -m pyright backend tests
+```
+
 After changing frontend code, run the existing frontend lint check from the repository root:
 
 ```powershell

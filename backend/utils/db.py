@@ -3,8 +3,11 @@ Database connection and session management using SQLAlchemy with async support
 """
 
 from __future__ import annotations
-from typing import AsyncGenerator
+
+from collections.abc import AsyncGenerator
+
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
 from .settings import get_settings
 
 engine = create_async_engine(

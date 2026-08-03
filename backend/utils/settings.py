@@ -5,13 +5,16 @@ Makes common settings available (DB config, JWT settings, origins).
 """
 
 from __future__ import annotations
+
 import os
 import sys
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from urllib.parse import quote_plus
+
 from dotenv import load_dotenv
+
 
 def _load_env_files() -> None:
     """Load .env, .env.<env>, .env.<env>.local (base is required)."""
@@ -32,6 +35,17 @@ def _req(name: str) -> str:
     if not v:
         raise RuntimeError(f"Missing required env var: {name}")
     return v
+
+
+def _parse_frontend_origins(raw: str) -> list[str]:
+    """Parse the bracketed comma-separated FRONTEND_ORIGINS environment value."""
+    value = raw.strip()
+    if value.startswith("[") and value.endswith("]"):
+        value = value[1:-1]
+    origins = [origin.strip().strip("\"'") for origin in value.split(",") if origin.strip()]
+    if not origins:
+        raise RuntimeError("FRONTEND_ORIGINS must contain at least one origin")
+    return origins
 
 @dataclass(frozen=True)
 class Settings:
@@ -68,10 +82,13 @@ class Settings:
     # Helpers
     def psycopg_kwargs(self) -> dict:
         """Return dict suitable for psycopg.connect(**kwargs) """
-        return dict(
-            host=self.pg_host, port=self.pg_port, dbname=self.pg_db,
-            user=self.pg_user, password=self.pg_password
-        )
+        return {
+            "host": self.pg_host,
+            "port": self.pg_port,
+            "dbname": self.pg_db,
+            "user": self.pg_user,
+            "password": self.pg_password,
+        }
 
     def sqlalchemy_async_url(self) -> str:
         """Return SQLAlchemy async connection URL (for create_async_engine)"""
@@ -95,7 +112,7 @@ def get_settings() -> Settings:
         jwt_secret=_req("JWT_SECRET"),
         jwt_alg=os.getenv("JWT_ALG", "HS256"),
         api_origin=os.getenv("API_ORIGIN", "http://localhost:8000"),
-        frontend_origins=os.getenv("FRONTEND_ORIGINS"),
+        frontend_origins=_parse_frontend_origins(_req("FRONTEND_ORIGINS")),
         reset_ttl_minutes=int(os.getenv("RESET_TTL_MINUTES", "30")),
         session_minutes=int(os.getenv("SESSION_MINUTES", "60")),
         slide_threshold_seconds=int(os.getenv("SLIDE_THRESHOLD_SECONDS", str(15 * 60))),

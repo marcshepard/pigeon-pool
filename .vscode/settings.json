@@ -1,7 +1,13 @@
 {
   "python.defaultInterpreterPath": "C:\\Users\\marcs\\anaconda3\\envs\\pigeon\\python.exe",
-  "pylint.interpreter": [
+  "pylint.enabled": false,
+  "ruff.nativeServer": "on",
+  "ruff.importStrategy": "fromEnvironment",
+  "ruff.interpreter": [
     "C:\\Users\\marcs\\anaconda3\\envs\\pigeon\\python.exe"
   ],
-  "pylint.importStrategy": "fromEnvironment"
+  "ruff.configurationPreference": "filesystemFirst",
+  "python.analysis.diagnosticMode": "workspace",
+  "python.analysis.diagnosticsSource": "Pylance + Pyright",
+  "python.analysis.pyrightVersion": "1.1.411"
 }

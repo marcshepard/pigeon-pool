@@ -5,7 +5,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import List, Optional
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
@@ -13,6 +12,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.utils.db import get_db
+
 from .auth import require_user
 
 #pylint: disable=line-too-long
@@ -35,8 +35,8 @@ class GameOut(BaseModel):
     home_abbr: str
     away_abbr: str
     status: str
-    home_score: Optional[int] = None
-    away_score: Optional[int] = None
+    home_score: int | None = None
+    away_score: int | None = None
 
 class PickLite(BaseModel):
     """ Lightweight pick info for board view """
@@ -104,7 +104,7 @@ async def get_current_week(
     )
 
 
-@router.get("/{week_number}/games", response_model=List[GameOut], summary="List games for a week")
+@router.get("/{week_number}/games", response_model=list[GameOut], summary="List games for a week")
 async def get_games_for_week(week_number: int, db: AsyncSession = Depends(get_db)):
     """ List all games scheduled for a given week """
     result = await db.execute(GAMES_FOR_WEEK_SQL, {"week_number": week_number})

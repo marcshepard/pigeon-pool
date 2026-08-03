@@ -10,17 +10,19 @@ python -m playwright install chromium && <old startup command>
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import queue
 import re
 import sys
 import threading
-import queue
-import contextlib
-from typing import Any, Dict, List, Literal, Optional
+from collections.abc import Coroutine
+from typing import Any, Literal
 
+from playwright.async_api import TimeoutError as PlaywrightTimeoutError
+from playwright.async_api import async_playwright
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
-from playwright.async_api import async_playwright
 
 from backend.utils.logger import debug, info, warn
 
@@ -54,10 +56,10 @@ class SubmitBody(BaseModel):
     pigeon_number: int = Field(..., ge=1)
     player_name: str
     pin: int = Field(..., ge=0, le=9999)
-    picks: List[PickForAndy]
+    picks: list[PickForAndy]
 
 
-TEAM_LABELS: Dict[str, str] = {
+TEAM_LABELS: dict[str, str] = {
     "ARI": "Arizona",
     "ATL": "Atlanta",
     "BAL": "Baltimore",
@@ -136,7 +138,7 @@ async def build_submit_body_from_db(
     if not rows:
         raise RuntimeError(f"No picks for pigeon={pigeon_number} week={week}")
 
-    picks: List[PickForAndy] = []
+    picks: list[PickForAndy] = []
     for _, picked_home, margin, home_abbr, away_abbr in rows:
         home = expand_team(home_abbr)
         away = expand_team(away_abbr)
@@ -158,7 +160,7 @@ async def _enter_form(page) -> None:
         if await btn.count() > 0:
             await btn.click(timeout=FINISH_CLICK_TIMEOUT_MS)
         else:
-            await page.get_by_role("button", name=re.compile(r"start\s+survey", re.I))\
+            await page.get_by_role("button", name=re.compile(r"start\s+survey", re.IGNORECASE))\
                       .click(timeout=FINISH_CLICK_TIMEOUT_MS)
 
     await page.wait_for_selector("body.survey-page-1", timeout=PLAYWRIGHT_ELEMENT_TIMEOUT_MS)
@@ -196,7 +198,7 @@ async def submit_to_andy(body: SubmitBody, deadline_sec: int = DEFAULT_DEADLINE_
 
                 # --- Survey JSON & index (same as before) ---
                 survey = await page.evaluate("window.survey")
-                q_by_title: Dict[str, Dict[str, Any]] = {}
+                q_by_title: dict[str, dict[str, Any]] = {}
                 for pg in survey["pages"]:
                     for q in pg.get("questions", []):
                         t = (q.get("title") or "").strip()
@@ -206,12 +208,12 @@ async def submit_to_andy(body: SubmitBody, deadline_sec: int = DEFAULT_DEADLINE_
                 debug(f"[submit] Indexed {len(q_by_title)} questions. First few: "
                       + ", ".join(list(q_by_title.keys())[:5]))
 
-                def pref(title: str) -> Optional[str]:
+                def pref(title: str) -> str | None:
                     m = re.match(r"^(.*?):\s*(WINNER|SPREAD)\s*$", title)
                     return m.group(1) if m else None
 
-                winners: Dict[str, Dict[str, Any]] = {}
-                spreads: Dict[str, Dict[str, Any]] = {}
+                winners: dict[str, dict[str, Any]] = {}
+                spreads: dict[str, dict[str, Any]] = {}
                 for t, q in q_by_title.items():
                     pfx = pref(t)
                     if not pfx:
@@ -228,7 +230,7 @@ async def submit_to_andy(body: SubmitBody, deadline_sec: int = DEFAULT_DEADLINE_
                 def _norm_key(s: str) -> str:
                     # strip parentheticals, unify vs->at, collapse spaces, lowercase
                     s2 = parens_re.sub(" ", s)
-                    s2 = re.sub(r"\bvs\b", "at", s2, flags=re.I)
+                    s2 = re.sub(r"\bvs\b", "at", s2, flags=re.IGNORECASE)
                     s2 = s2.replace("Clevelandi", "Cleveland")  # fix Andy's typo
                     s2 = re.sub(r"\s+", " ", s2).strip().lower()
                     return s2
@@ -323,14 +325,14 @@ async def submit_to_andy(body: SubmitBody, deadline_sec: int = DEFAULT_DEADLINE_
                 debug(f"[submit] Checked radio count: {checked}; expected={len(body.picks)}")
 
                 # --- Click Finish and REQUIRE the success text (unchanged) ---
-                await page.get_by_role("button", name=re.compile(r"finish\s+survey", re.I)).click(timeout=FINISH_CLICK_TIMEOUT_MS)
+                await page.get_by_role("button", name=re.compile(r"finish\s+survey", re.IGNORECASE)).click(timeout=FINISH_CLICK_TIMEOUT_MS)
 
                 success_selector = "text=Your picks have been recorded."
                 error_selector = ".PDF_error, .error, .qError, .PDF_mand ~ .error"
                 try:
                     await page.wait_for_selector(success_selector, timeout=SUCCESS_WAIT_TIMEOUT_MS)
                     submitted_ok = True
-                except Exception:
+                except PlaywrightTimeoutError:
                     submitted_ok = False
 
                 if not submitted_ok:
@@ -350,15 +352,15 @@ async def submit_to_andy(body: SubmitBody, deadline_sec: int = DEFAULT_DEADLINE_
 
     # Windows worker thread wrapper (unchanged semantics)
     if sys.platform.startswith("win"):
-        def _run_in_proactor_thread(coro: "asyncio.Future[None]") -> None:
-            q: "queue.Queue[tuple[str, object]]" = queue.Queue()
+        def _run_in_proactor_thread(coro: Coroutine[Any, Any, None]) -> None:
+            q: queue.Queue[tuple[str, BaseException | None]] = queue.Queue()
             def _worker() -> None:
                 try:
                     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())  # type: ignore[attr-defined]
                     asyncio.run(coro)
                     q.put(("ok", None))
-                except Exception as e:
-                    q.put(("err", e))
+                except Exception as exc:  # noqa: BLE001 - relay worker failures to the caller
+                    q.put(("err", exc))
             t = threading.Thread(target=_worker, daemon=True)
             t.start()
             t.join(deadline_sec)
@@ -368,6 +370,8 @@ async def submit_to_andy(body: SubmitBody, deadline_sec: int = DEFAULT_DEADLINE_
             kind, payload = q.get_nowait()
             if kind == "ok":
                 return  # success (None)
+            if not isinstance(payload, BaseException):
+                raise TypeError("Playwright worker failed without an exception")
             raise payload  # re-raise original exception
 
         _run_in_proactor_thread(_run())
@@ -375,6 +379,6 @@ async def submit_to_andy(body: SubmitBody, deadline_sec: int = DEFAULT_DEADLINE_
 
     try:
         await asyncio.wait_for(_run(), timeout=deadline_sec)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         warn("[submit] Timed out waiting for Playwright submit coroutine")
         raise

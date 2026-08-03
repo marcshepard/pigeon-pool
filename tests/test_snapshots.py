@@ -26,12 +26,11 @@ WEEKS = [1, 10]  # representative weeks: start and mid-season
 
 def _has_real_games() -> bool:
     s = get_settings()
-    with psycopg.connect(**s.psycopg_kwargs()) as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT COUNT(*) FROM games WHERE kickoff_at <= now() AND home_score IS NOT NULL"
-            )
-            return (cur.fetchone() or (0,))[0] > 0
+    with psycopg.connect(**s.psycopg_kwargs()) as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT COUNT(*) FROM games WHERE kickoff_at <= now() AND home_score IS NOT NULL"
+        )
+        return (cur.fetchone() or (0,))[0] > 0
 
 
 _SKIP_NO_GAMES = pytest.mark.skipif(

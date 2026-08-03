@@ -7,7 +7,7 @@ the module docstring note above `_fetch_scoreboard` in score_sync.py). No DB or
 network access — pure functions only.
 """
 
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
 from backend.utils.score_sync import (
     _calendar_week_ranges,
@@ -16,15 +16,14 @@ from backend.utils.score_sync import (
     _parse_iso_utc,
 )
 
-
 # ── _parse_iso_utc ────────────────────────────────────────────────────────────
 
 def test_parse_iso_utc_with_trailing_z():
-    assert _parse_iso_utc("2026-09-10T00:20Z") == datetime(2026, 9, 10, 0, 20, tzinfo=timezone.utc)
+    assert _parse_iso_utc("2026-09-10T00:20Z") == datetime(2026, 9, 10, 0, 20, tzinfo=UTC)
 
 
 def test_parse_iso_utc_with_explicit_offset():
-    assert _parse_iso_utc("2026-09-09T17:00-07:00") == datetime(2026, 9, 10, 0, 0, tzinfo=timezone.utc)
+    assert _parse_iso_utc("2026-09-09T17:00-07:00") == datetime(2026, 9, 10, 0, 0, tzinfo=UTC)
 
 
 # ── _dates_param ──────────────────────────────────────────────────────────────
@@ -36,13 +35,13 @@ def test_dates_param_formats_range():
 # ── _pad_date_range ───────────────────────────────────────────────────────────
 
 def test_pad_date_range_widens_by_one_day_each_side():
-    min_dt = datetime(2026, 9, 13, 17, 0, tzinfo=timezone.utc)
-    max_dt = datetime(2026, 9, 15, 0, 15, tzinfo=timezone.utc)
+    min_dt = datetime(2026, 9, 13, 17, 0, tzinfo=UTC)
+    max_dt = datetime(2026, 9, 15, 0, 15, tzinfo=UTC)
     assert _pad_date_range(min_dt, max_dt) == (date(2026, 9, 12), date(2026, 9, 16))
 
 
 def test_pad_date_range_single_game_week_still_widens():
-    same = datetime(2026, 9, 10, 0, 20, tzinfo=timezone.utc)
+    same = datetime(2026, 9, 10, 0, 20, tzinfo=UTC)
     assert _pad_date_range(same, same) == (date(2026, 9, 9), date(2026, 9, 11))
 
 
@@ -76,8 +75,8 @@ def test_calendar_week_ranges_extracts_requested_season_type():
     ranges = _calendar_week_ranges(_FAKE_CALENDAR, "2")
     assert set(ranges) == {1, 2}
     assert ranges[1] == (
-        datetime(2026, 9, 9, 7, 0, tzinfo=timezone.utc),
-        datetime(2026, 9, 16, 6, 59, tzinfo=timezone.utc),
+        datetime(2026, 9, 9, 7, 0, tzinfo=UTC),
+        datetime(2026, 9, 16, 6, 59, tzinfo=UTC),
     )
 
 

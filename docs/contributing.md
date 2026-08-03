@@ -31,6 +31,18 @@ Run a specific file:
 pytest tests/test_results.py -v
 ```
 
+## Backend static checks
+
+Install the local-only tools from `backend/requirements-dev.txt`, then run Ruff and
+Pyright from the repository root:
+
+```bash
+python -m ruff check backend tests
+python -m pyright backend tests
+```
+
+VS Code uses the same Ruff executable, Pyright version, and repository configuration.
+
 ### Snapshot tests
 
 `tests/test_snapshots.py` captures golden-file JSON responses from the results API. These snapshots

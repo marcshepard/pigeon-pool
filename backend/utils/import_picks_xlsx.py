@@ -20,12 +20,12 @@ We:
 # pylint: disable=line-too-long, too-many-locals, too-many-branches, broad-exception-caught
 
 from __future__ import annotations
-from typing import Any, Optional, List, Tuple, Dict
-from dataclasses import dataclass
+
 import logging
 import os
+from dataclasses import dataclass
+from typing import Any
 
-from sqlalchemy import create_engine
 from openpyxl import load_workbook
 
 from backend.utils.settings import get_settings
@@ -38,7 +38,9 @@ logging.basicConfig(level=getattr(logging, LOG_LEVEL, logging.INFO),
                     format="%(levelname)s %(message)s")
 log = logging.getLogger("picks_import")
 
-def import_picks_pivot_xlsx_with_engine(xlsx_path: str, only_week: int = None, tenant_id: int = 1) -> int:
+def import_picks_pivot_xlsx_with_engine(
+    xlsx_path: str, only_week: int | None = None, tenant_id: int = 1
+) -> int:
     """
     Open a fresh psycopg connection and import picks from the given XLSX.
     Scoped to tenant_id (default 1, the legacy Andy pool). The bypass_lock session
@@ -65,7 +67,7 @@ def import_picks_pivot_xlsx_with_engine(xlsx_path: str, only_week: int = None, t
 # Spreadsheet → ESPN aliases
 # (extend as needed)
 # ---------------------------
-TEAM_ALIASES: Dict[str, str] = {
+TEAM_ALIASES: dict[str, str] = {
     # Common mismatches
     "AZ": "ARI",
     "ARZ": "ARI",
@@ -97,12 +99,10 @@ class _PlayerCol:
 def _is_blank(v: Any) -> bool:
     if v is None:
         return True
-    if isinstance(v, str) and v.strip() == "":
-        return True
-    return False
+    return bool(isinstance(v, str) and v.strip() == "")
 
 
-def _to_int_safe(v: Any) -> Optional[int]:
+def _to_int_safe(v: Any) -> int | None:
     """Parse Excel cell to int; accepts strings like ' 7 ' or '+7' and floats like 7.0."""
     if _is_blank(v):
         return None
@@ -115,7 +115,7 @@ def _to_int_safe(v: Any) -> Optional[int]:
         return None
 
 
-def _detect_header(ws) -> Tuple[int, int, int, int]:
+def _detect_header(ws) -> tuple[int, int, int, int]:
     """
     Return (name_row_idx, number_row_idx, first_player_col, last_player_col).
     Detect row with many ints as the player-number row; names are row-1.
@@ -144,8 +144,8 @@ def _detect_header(ws) -> Tuple[int, int, int, int]:
     return name_row, number_row, first_col, last_col
 
 
-def _collect_players(ws, name_row: int, number_row: int, c1: int, c2: int) -> List[_PlayerCol]:
-    players: List[_PlayerCol] = []
+def _collect_players(ws, name_row: int, number_row: int, c1: int, c2: int) -> list[_PlayerCol]:
+    players: list[_PlayerCol] = []
     for col in range(c1, c2 + 1):
         nm = ws.cell(row=name_row, column=col).value
         pn = _to_int_safe(ws.cell(row=number_row, column=col).value)
@@ -177,7 +177,7 @@ def _iter_team_rows(ws, start_row: int, *, label_col: int = 1) -> list[str]:
     return labels
 
 
-def _find_game_id(cur, week: int, t1: str, t2: str) -> Optional[Tuple[int, str, str]]:
+def _find_game_id(cur, week: int, t1: str, t2: str) -> tuple[int, str, str] | None:
     """
     Attempt to find the game for (t1, t2) in any order.
     Returns (game_id, home_abbr, away_abbr) if found.
@@ -214,7 +214,7 @@ def _upsert_pick(cur, player_id: int, game_id: int, picked_home: bool, margin: i
     )
 
 
-def import_picks_pivot_xlsx(*, xlsx_path: str, conn, max_week: Optional[int] = None, only_week: Optional[int] = None, tenant_id: int = 1) -> int:
+def import_picks_pivot_xlsx(*, xlsx_path: str, conn, max_week: int | None = None, only_week: int | None = None, tenant_id: int = 1) -> int:
     """
     Import a pivoted XLSX with one sheet per week (title like 'picks wk N').
     Uses alias normalization for team codes and logs detailed skip reasons.
@@ -224,7 +224,7 @@ def import_picks_pivot_xlsx(*, xlsx_path: str, conn, max_week: Optional[int] = N
     # Build pigeon_number -> player_id map for this tenant
     with conn.cursor() as cur:
         cur.execute("SELECT pigeon_number, player_id FROM players WHERE tenant_id = %s", (tenant_id,))
-        pigeon_to_player: Dict[int, int] = {row[0]: row[1] for row in cur.fetchall()}
+        pigeon_to_player: dict[int, int] = {row[0]: row[1] for row in cur.fetchall()}
     log.info("[xlsx] Loaded %d player mappings for tenant %d", len(pigeon_to_player), tenant_id)
 
     wb = load_workbook(xlsx_path, data_only=True)

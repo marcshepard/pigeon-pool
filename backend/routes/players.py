@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.utils.db import get_db
 from backend.utils.logger import info
 from backend.utils.validation import validate_pigeon_name
+
 from .auth import require_user
 
 router = APIRouter(prefix="/players", tags=["players"])

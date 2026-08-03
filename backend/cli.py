@@ -33,16 +33,19 @@ Example usage:
 from __future__ import annotations
 
 import argparse
-from contextlib import nullcontext, redirect_stdout
+import asyncio
 import csv
 import json
 import os
 import sys
-from typing import Any, Dict, Callable, Awaitable, NoReturn
-import asyncio
+from collections.abc import Awaitable, Callable
+from contextlib import nullcontext, redirect_stdout
+from typing import Any, NoReturn
 
 import psycopg
-from passlib.hash import bcrypt as _bcrypt
+from passlib.hash import (
+    bcrypt as _bcrypt,  # pyright: ignore[reportAttributeAccessIssue]
+)
 from sqlalchemy import text
 
 # Settings currently announce loaded env files on stdout during imports.  Keep
@@ -52,17 +55,20 @@ _json_validation_mode = "validate-rosters" in sys.argv and "--json" in sys.argv
 with redirect_stdout(sys.stderr) if _json_validation_mode else nullcontext():
     from backend.routes.auth import make_session_token
     from backend.utils.db import AsyncSessionLocal
-    from backend.utils.score_sync import ScoreSync
-    from backend.utils.roster_validation import format_roster_validation_report, validate_rosters
-    from backend.utils.settings import get_settings
+    from backend.utils.roster_validation import (
+        format_roster_validation_report,
+        validate_rosters,
+    )
     from backend.utils.scheduled_jobs import (
+        get_all_player_emails,
+        run_email_mon,
+        run_email_sun,
+        run_email_tue_warn,
         run_kickoff_sync,
         run_poll_scores,
-        run_email_sun,
-        run_email_mon,
-        run_email_tue_warn,
-        get_all_player_emails,
     )
+    from backend.utils.score_sync import ScoreSync
+    from backend.utils.settings import get_settings
 from .utils.import_picks_xlsx import import_picks_pivot_xlsx
 
 # Mapping of scheduled job names to their runner functions
@@ -81,7 +87,7 @@ class _HelpOnErrorParser(argparse.ArgumentParser):
         self.exit(2, f"\nerror: {message}\n")
 
 
-def get_connection(cfg: Dict[str, Any]) -> psycopg.Connection:
+def get_connection(cfg: dict[str, Any]) -> psycopg.Connection:
     """Open a psycopg connection and set session TZ to UTC."""
     conn = psycopg.connect(**cfg)  # pylint: disable=no-member
     with conn.cursor() as cur:     # pylint: disable=no-member
@@ -142,20 +148,19 @@ async def cmd_reset_season(args: argparse.Namespace) -> int:
     settings = get_settings()
     cfg = settings.psycopg_kwargs()
 
-    with get_connection(cfg) as conn:
-        with conn.cursor() as cur:
-            year = getattr(args, "year", None) or None
-            if not year:
-                cur.execute("SELECT EXTRACT(YEAR FROM MIN(kickoff_at))::int FROM games")
-                row = cur.fetchone()
-                year = row[0] if row and row[0] else 2024
+    with get_connection(cfg) as conn, conn.cursor() as cur:
+        year = getattr(args, "year", None) or None
+        if not year:
+            cur.execute("SELECT EXTRACT(YEAR FROM MIN(kickoff_at))::int FROM games")
+            row = cur.fetchone()
+            year = row[0] if row and row[0] else 2024
 
-            cur.execute("SELECT COUNT(*) FROM games")
-            game_count = cur.fetchone()[0]  # type: ignore[index]
-            cur.execute("SELECT COUNT(*) FROM picks p JOIN players pl ON pl.player_id = p.player_id")
-            pick_count = cur.fetchone()[0]  # type: ignore[index]
-            cur.execute("SELECT tenant_id, name FROM tenants ORDER BY tenant_id")
-            tenants = cur.fetchall()
+        cur.execute("SELECT COUNT(*) FROM games")
+        game_count = cur.fetchone()[0]  # type: ignore[index]
+        cur.execute("SELECT COUNT(*) FROM picks p JOIN players pl ON pl.player_id = p.player_id")
+        pick_count = cur.fetchone()[0]  # type: ignore[index]
+        cur.execute("SELECT tenant_id, name FROM tenants ORDER BY tenant_id")
+        tenants = cur.fetchall()
 
     print(f"[cli] reset-season: archiving season year {year}")
     print(f"[cli]   {game_count} games and {pick_count} picks will be deleted")
@@ -190,7 +195,8 @@ async def cmd_reset_season(args: argparse.Namespace) -> int:
                 """, (tenant_id,))
                 rows = cur.fetchall()
 
-            with open(archive_path, "w", newline="", encoding="utf-8") as f:
+            # This one-shot CLI operation intentionally performs a small blocking file write.
+            with open(archive_path, "w", newline="", encoding="utf-8") as f:  # noqa: ASYNC230
                 writer = csv.writer(f)
                 writer.writerow([
                     "pigeon_number", "pigeon_name", "week_number",
@@ -271,7 +277,7 @@ def cmd_import_picks_xlsx(args: argparse.Namespace) -> int:
 
         try:
             # Do the import work (any inserts/updates on this conn will bypass the trigger)
-            extra_kwargs: Dict[str, Any] = {}
+            extra_kwargs: dict[str, Any] = {}
             if max_week is not None:
                 extra_kwargs["max_week"] = max_week
             if only_week is not None:
@@ -330,9 +336,8 @@ def cmd_list_leagues(_: argparse.Namespace) -> int:
     """List all tenants with member and player counts."""
     settings = get_settings()
     cfg = settings.psycopg_kwargs()
-    with get_connection(cfg) as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
+    with get_connection(cfg) as conn, conn.cursor() as cur:
+        cur.execute("""
                 SELECT t.tenant_id, t.name,
                        COUNT(DISTINCT tm.user_id) AS members,
                        COUNT(DISTINCT p.player_id) AS players
@@ -342,7 +347,7 @@ def cmd_list_leagues(_: argparse.Namespace) -> int:
                  GROUP BY t.tenant_id, t.name
                  ORDER BY t.tenant_id
             """)
-            rows = cur.fetchall()
+        rows = cur.fetchall()
     if not rows:
         print("[cli] No leagues found.")
         return 0

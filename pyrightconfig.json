@@ -1,4 +1,7 @@
 {
+  "include": ["backend", "tests"],
+  "typeCheckingMode": "standard",
+  "pythonVersion": "3.12",
   "venvPath": "C:/Users/marcs/anaconda3/envs",
   "venv": "pigeon"
 }

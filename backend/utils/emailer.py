@@ -4,11 +4,13 @@ Set EMAIL_DRY_RUN=true to log and skip sending.
 """
 
 from __future__ import annotations
+
 import os
 
 from azure.communication.email import EmailClient
+
+from .logger import debug, error, info, warn
 from .settings import get_settings
-from .logger import debug, info, warn, error
 
 # pylint: disable=line-too-long, broad-except
 
@@ -45,7 +47,7 @@ def send_email(
         result = poller.result()
         debug(f"Email successfully sent. Result: {result}")
         return True
-    except Exception:
+    except Exception:  # noqa: BLE001 - external SDK failures are logged and reported as False
         error("Error sending email", exc_info=True)
         return False
 
@@ -80,7 +82,7 @@ def send_bulk_email_bcc(bcc: list[str], subject: str, plain_text: str, html: str
         poller = client.begin_send(message)
         poller.result()
         return True
-    except Exception:
+    except Exception:  # noqa: BLE001 - external SDK failures are logged and reported as False
         error("Error sending bulk email", exc_info=True)
         return False
 
@@ -91,4 +93,4 @@ def send_bulk_email_to_all_users(emails: list[str], subject: str, plain_text: st
         warn("No user emails found for bulk email.")
         return False
     # Use BCC for privacy
-    return send_bulk_email_bcc(emails, subject, plain_text, None)
+    return send_bulk_email_bcc(emails, subject, plain_text, "")

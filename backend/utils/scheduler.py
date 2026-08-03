@@ -14,21 +14,22 @@ from __future__ import annotations
 
 import asyncio
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
+
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .db import AsyncSessionLocal
-from .logger import info, error
-from .settings import get_settings
+from .logger import error, info
 from .scheduled_jobs import (
+    run_email_mon,
+    run_email_sun,
+    run_email_tue_warn,
     run_kickoff_sync,
     run_poll_scores,
-    run_email_sun,
-    run_email_mon,
-    run_email_tue_warn,
 )
+from .settings import get_settings
 
 #pylint: disable=line-too-long
 
@@ -54,7 +55,7 @@ def _now_pst() -> datetime:
 
 def _now_utc() -> datetime:
     """Timezone-aware UTC 'now' (use for DB and interval deltas)."""
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 def _start_of_local_week_sun(dt: datetime) -> datetime:
     """Return Sunday 00:00 of current local week."""
@@ -214,7 +215,7 @@ async def _maybe_run(session: AsyncSession, job_name: str, due: bool, run_fn, pr
                 result=result,
                 message="run ok",
             )
-        except Exception as ex:  # pylint: disable=broad-except
+        except Exception as ex:  # noqa: BLE001 - isolate a failed job from the scheduler
             dur = (time.perf_counter_ns() - start_ns) // 1_000_000
             error(
                 "component=scheduler",
@@ -254,7 +255,7 @@ async def _coordinator_loop():
                 last_score = await _get_last_run(session, "score_sync")
                 due_score = (
                     not last_score
-                    or (_now_utc() - last_score.astimezone(timezone.utc)).total_seconds() >= LIVE_POLL_SECONDS
+                    or (_now_utc() - last_score.astimezone(UTC)).total_seconds() >= LIVE_POLL_SECONDS
                 )
                 await _maybe_run(session, "score_sync", due_score, run_poll_scores, _any_live_games)
 
@@ -291,7 +292,7 @@ async def _coordinator_loop():
                             _missing_picks_exist,
                         )
 
-        except Exception as ex:  # pylint: disable=broad-except
+        except Exception as ex:  # noqa: BLE001 - keep the coordinator alive after a loop failure
             error(
                 "component=scheduler",
                 job="loop",
