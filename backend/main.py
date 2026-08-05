@@ -18,7 +18,7 @@ from backend.utils.logger import configure_from_env
 from backend.utils.scheduler import start_scheduler, stop_scheduler
 from backend.utils.settings import get_settings
 
-DISABLE_SCHEDULER=True  # Set to False before the new season starts
+DISABLE_SCHEDULER=False  # Set to False before the new season starts, True in offseason
 
 # Early initialization
 s = get_settings()          # forces env load/validation early

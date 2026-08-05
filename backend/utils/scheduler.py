@@ -119,7 +119,7 @@ async def _all_sun_games_final_and_week_not_done(session: AsyncSession) -> bool:
     q = text("""
     WITH current_week AS (
       SELECT MAX(week_number) AS w
-      FROM weeks
+      FROM tenant_weeks
       WHERE lock_at <= now()
     )
     SELECT
@@ -146,7 +146,7 @@ async def _all_games_final(session: AsyncSession) -> bool:
         """
         WITH current_week AS (
           SELECT MAX(week_number) AS w
-          FROM weeks
+          FROM tenant_weeks
           WHERE lock_at <= now()
         )
         SELECT NOT EXISTS (
@@ -164,12 +164,19 @@ async def _all_games_final(session: AsyncSession) -> bool:
 async def _missing_picks_exist(session: AsyncSession) -> bool:
     q = text(
         """
-        WITH next_week AS (SELECT MIN(week_number) AS w FROM weeks WHERE lock_at > now())
+        WITH next_weeks AS (
+          SELECT tenant_id, MIN(week_number) AS w
+          FROM tenant_weeks
+          WHERE lock_at > now()
+          GROUP BY tenant_id
+        )
         SELECT 1
         FROM v_picks_filled f
         JOIN games g ON g.game_id=f.game_id
+        JOIN next_weeks nw
+          ON nw.tenant_id=f.tenant_id
+         AND nw.w=g.week_number
         WHERE f.is_made=FALSE
-          AND g.week_number=(SELECT w FROM next_week)
         LIMIT 1
         """
     )
@@ -198,34 +205,34 @@ async def _maybe_run(session: AsyncSession, job_name: str, due: bool, run_fn, pr
     if not await _advisory_lock(session, lock_key):
         return
 
+    start_ns = time.perf_counter_ns()
     try:
         if predicate and not await predicate(session):
             return
 
-        start_ns = time.perf_counter_ns()
-        try:
-            result = await run_fn(session)
-            await _touch_last_run(session, job_name)
-            dur = (time.perf_counter_ns() - start_ns) // 1_000_000
-            info(
-                "component=scheduler",
-                job=job_name,
-                now_local=_now_pst().isoformat(),
-                duration_ms=dur,
-                result=result,
-                message="run ok",
-            )
-        except Exception as ex:  # noqa: BLE001 - isolate a failed job from the scheduler
-            dur = (time.perf_counter_ns() - start_ns) // 1_000_000
-            error(
-                "component=scheduler",
-                job=job_name,
-                now_local=_now_pst().isoformat(),
-                duration_ms=dur,
-                err_type=type(ex).__name__,
-                err=str(ex),
-                message="run failed",
-            )
+        result = await run_fn(session)
+        await _touch_last_run(session, job_name)
+        dur = (time.perf_counter_ns() - start_ns) // 1_000_000
+        info(
+            "component=scheduler",
+            job=job_name,
+            now_local=_now_pst().isoformat(),
+            duration_ms=dur,
+            result=result,
+            message="run ok",
+        )
+    except Exception as ex:  # noqa: BLE001 - isolate a failed job from the scheduler
+        await session.rollback()
+        dur = (time.perf_counter_ns() - start_ns) // 1_000_000
+        error(
+            "component=scheduler",
+            job=job_name,
+            now_local=_now_pst().isoformat(),
+            duration_ms=dur,
+            err_type=type(ex).__name__,
+            err=str(ex),
+            message="run failed",
+        )
     finally:
         await _advisory_unlock(session, lock_key)
 
