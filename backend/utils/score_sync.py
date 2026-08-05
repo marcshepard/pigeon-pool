@@ -25,19 +25,19 @@ PT = ZoneInfo("America/Los_Angeles")
 
 def _calc_lock_at_pacific(kickoffs_utc: list[datetime]) -> datetime:
     """
-    Lock time policy: Wednesday 23:59:59 PT *before* the earliest game of that week.
+    Lock time policy: Tuesday 23:59:59 PT *before* the earliest game of that week.
     Returns a tz-aware UTC datetime suitable for storing in weeks.lock_at.
     """
     earliest_pt = min(kickoffs_utc).astimezone(PT)
-    # weekday(): Mon=0 .. Sun=6 ; Wed=2
-    days_since_wed = (earliest_pt.weekday() - 2) % 7
-    if days_since_wed == 0:
-        # If earliest is on Wednesday, lock is the previous Wednesday
-        days_since_wed = 7
-    lock_wed_pt = (earliest_pt - timedelta(days=days_since_wed)).replace(
+    # weekday(): Mon=0 .. Sun=6 ; Tue=1
+    days_since_tue = (earliest_pt.weekday() - 1) % 7
+    if days_since_tue == 0:
+        # If earliest is on Tuesday, lock is the previous Tuesday
+        days_since_tue = 7
+    lock_tue_pt = (earliest_pt - timedelta(days=days_since_tue)).replace(
         hour=23, minute=59, second=59, microsecond=0
     )
-    return lock_wed_pt.astimezone(UTC)
+    return lock_tue_pt.astimezone(UTC)
 
 class ScoreSync:
     """Tiny async sync class; one instance per DB session is fine."""

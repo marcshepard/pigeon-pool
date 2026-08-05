@@ -27,7 +27,7 @@ from .settings import get_settings
 PT = ZoneInfo("America/Los_Angeles")
 
 def _format_lock_pt(lock_utc: datetime) -> str:
-    """Format a UTC lock datetime in Pacific Time, e.g. 'Wednesday, Sep 10 at 11:59 PM PDT'."""
+    """Format a UTC lock datetime in Pacific Time, e.g. 'Tuesday, Sep 9 at 11:59 PM PDT'."""
     lock_pt = lock_utc.astimezone(PT)
     hour = lock_pt.hour % 12 or 12
     ampm = "AM" if lock_pt.hour < 12 else "PM"
