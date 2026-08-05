@@ -24,28 +24,30 @@ unreliable for a season that hasn't started yet (it silently ignores `year` and 
 against whatever season ESPN currently considers "current"). Instead, `load_schedule()`
 reads per-week date ranges from ESPN's own `leagues[0].calendar` block — which contains
 *both* seasontype sub-arrays (preseason and regular season) in a single response — and
-fetches each week by `dates=YYYYMMDD-YYYYMMDD` range. `REGULAR_SEASON_TYPE = "2"` is
-hardcoded as the calendar block selector.
+fetches each week by `dates=YYYYMMDD-YYYYMMDD` range, using `Settings.nfl_season_type`
+as the calendar block selector.
 
-The plan below is to make that selector a config value so it can be toggled to `"1"`
-(preseason) for early testing.
-
-## Implementation (not yet done)
+## Implementation (done)
 
 **`backend/utils/settings.py`**
-- Add `nfl_season_type: str` field to `Settings` (string, matching ESPN's `value` field —
-  not an int)
-- Read from `os.getenv("NFL_SEASON_TYPE", "2")`
+- `nfl_season_type: str` field on `Settings` (string, matching ESPN's `value` field —
+  not an int), read from `os.getenv("NFL_SEASON_TYPE", "2")`
 
 **`backend/.env`**
-- Add `NFL_SEASON_TYPE=2` (comment: `1=preseason, 2=regular season`)
+- `NFL_SEASON_TYPE=2` (comment: `1=preseason, 2=regular season`) — the committed
+  default; production relies on this and must never override it
+
+**`backend/.env.development.local`** (gitignored)
+- Set `NFL_SEASON_TYPE=1` here to test against preseason data locally. Never edit
+  `score_sync.py` or `backend/.env` to do this — this file is the only place it
+  should be toggled, so there's nothing to accidentally check in.
 
 **`backend/utils/score_sync.py`**
-- `load_schedule()` reads `nfl_season_type` from settings instead of the hardcoded
-  `REGULAR_SEASON_TYPE` constant when calling `_calendar_week_ranges`
-- This is the only call site; all other sync logic is unaffected
+- `load_schedule()` reads `get_settings().nfl_season_type` instead of a hardcoded
+  constant when calling `_calendar_week_ranges`. This is the only call site; all
+  other sync logic is unaffected.
 
-**Preseason week-numbering quirk** — ESPN's preseason calendar entries don't number 1–4
+**Preseason week-numbering quirk** (still unresolved) — ESPN's preseason calendar entries don't number 1–4
 the way you'd expect. Their `entries[].value` for `seasontype="1"` is a sequential index
 over labeled blocks, not a "preseason week number":
 
@@ -70,8 +72,8 @@ signal.
 
 ## Preseason run sequence
 
-1. **Implement the config change** above, including a decision on the week-numbering quirk.
-2. **Set `NFL_SEASON_TYPE=1`** in `.env` (or the production environment variable).
+1. **Decide on the week-numbering quirk** above (still open).
+2. **Set `NFL_SEASON_TYPE=1`** in `backend/.env.development.local` (never `.env` or production).
 3. **Run `sync-schedule`** via the CLI. This loads the preseason calendar's weeks into the DB.
 4. **Each commissioner runs "Activate Season"** in League Settings to copy the preseason
    lock times into their tenant.
@@ -85,7 +87,9 @@ signal.
 Once you are satisfied with preseason testing and the regular-season schedule is available
 from ESPN:
 
-1. **Set `NFL_SEASON_TYPE=2`** in `.env` / production environment.
+1. **Remove `NFL_SEASON_TYPE=1`** from `backend/.env.development.local` (or set it back to `2`).
+   Production is untouched — it was never overridden, and the committed default in
+   `backend/.env` is already `2`.
 2. **Run `reset-season`** via the CLI. This archives picks to CSV, wipes all games
    (cascading to picks), resets `season_status` to `pending` for all players, syncs the
    regular-season schedule, and reseeds `weeks.default_lock_at`.

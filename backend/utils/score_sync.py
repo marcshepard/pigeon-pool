@@ -21,6 +21,8 @@ from sqlalchemy import text
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.utils.settings import get_settings
+
 PT = ZoneInfo("America/Los_Angeles")
 
 def _calc_lock_at_pacific(kickoffs_utc: list[datetime]) -> datetime:
@@ -69,7 +71,7 @@ class ScoreSync:
             Total number of game rows inserted or updated across all weeks.
         """
         calendar = await _fetch_current_calendar()
-        week_ranges = _calendar_week_ranges(calendar, REGULAR_SEASON_TYPE)
+        week_ranges = _calendar_week_ranges(calendar, get_settings().nfl_season_type)
         total_changed = 0
 
         for week in sorted(week_ranges):
@@ -404,8 +406,6 @@ class ScoreSync:
 # `week=`: `load_schedule` reads per-week date ranges from ESPN's own `calendar`
 # block, and `refresh_kickoffs`/`sync_scores_and_status` derive their date range
 # from that week's already-loaded `kickoff_at` values in the DB.
-
-REGULAR_SEASON_TYPE = "2"  # ESPN seasontype: 1=preseason, 2=regular, 3=postseason
 
 
 def _parse_iso_utc(iso: str) -> datetime:

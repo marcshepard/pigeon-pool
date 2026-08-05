@@ -79,6 +79,11 @@ class Settings:
     tue_warning_hour: int
     email_delay_minutes: int    # Delay before sending emails (to allow FE to refresh)
 
+    # ESPN scoreboard "seasontype" selector: 1=preseason, 2=regular, 3=postseason.
+    # Override in backend/.env.development.local (gitignored) for local preseason
+    # testing -- never set outside development.
+    nfl_season_type: str
+
     # Helpers
     def psycopg_kwargs(self) -> dict:
         """Return dict suitable for psycopg.connect(**kwargs) """
@@ -123,6 +128,7 @@ def get_settings() -> Settings:
         kickoff_sync_hour=int(_req("PP_KICKOFF_SYNC_HOUR")),
         tue_warning_hour=int(_req("PP_TUE_WARNING_HOUR")),
         email_delay_minutes=int(os.getenv("EMAIL_DELAY_MINUTES", "0")),
+        nfl_season_type=os.getenv("NFL_SEASON_TYPE", "2"),
     )
 
 def reset_settings_cache() -> None:
