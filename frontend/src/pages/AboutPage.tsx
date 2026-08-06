@@ -33,7 +33,16 @@ export default function AboutPage() {
     }, [cacheGetPoolInfo, cacheSetPoolInfo]);
 
     return (
-        <PageScroll maxWidth={NORMAL_PAGE_MAX_WIDTH}>
+        <PageScroll
+            maxWidth={NORMAL_PAGE_MAX_WIDTH}
+            sx={{
+                "& a, & a:visited": {
+                    color: "primary.main",
+                    textDecorationColor: "primary.main",
+                    textUnderlineOffset: "0.15em",
+                },
+            }}
+        >
             <Typography variant="h6" gutterBottom align="center" fontWeight={700}>
                 Pigeon pool rules
             </Typography>

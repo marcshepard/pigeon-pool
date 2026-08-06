@@ -6,7 +6,7 @@ import { useMemo, useState, useEffect, useRef } from "react";
 import type { ReactNode } from "react";
 import { Box, Table, TableHead, TableRow, TableCell, TableBody } from "@mui/material";
 import TableSortLabel from "@mui/material/TableSortLabel";
-import type { Theme } from "@mui/material/styles";
+import { alpha, type Theme } from "@mui/material/styles";
 
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import IconButton from "@mui/material/IconButton";
@@ -201,9 +201,7 @@ export function DataGridLite<T>({
           whiteSpace: "nowrap",
           backgroundColor: (theme) =>
             isSorted
-              ? (theme.palette.mode === 'light'
-                  ? theme.palette.grey[100]
-                  : theme.palette.grey[900])
+              ? alpha(theme.palette.primary.main, theme.palette.mode === "light" ? 0.12 : 0.30)
               : theme.palette.background.paper,
           ...(c.width ? { width: c.width, minWidth: c.width } : {}),
           ...(c.pin === "left"  && { left: 0,  zIndex: 12, boxShadow: "inset -1px 0 0 rgba(0,0,0,0.12)" }),
