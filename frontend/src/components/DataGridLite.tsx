@@ -260,7 +260,7 @@ export function DataGridLite<T>({
       // Use yellow shades for better visibility
       if (isHighlighted) return "#fff59d"; // primary: brighter yellow (Yellow 200)
       if (isExtraHighlighted) return "#fff9c4"; // alternate: softer yellow (Yellow 100)
-      if (isAlt) return theme.palette.mode === "light" ? theme.palette.grey[200] : theme.palette.grey[900];
+      if (isAlt) return theme.palette.action.hover;
       // Explicit solid background for non-striped, non-highlighted rows
       return theme.palette.background.paper;
     };
