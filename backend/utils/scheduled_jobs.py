@@ -305,7 +305,10 @@ async def run_email_tue_warn(session: AsyncSession) -> dict[str, Any]:
             WITH next_week AS (
                 SELECT MIN(week_number) AS w, MIN(lock_at) AS lock_at
                   FROM tenant_weeks
-                 WHERE tenant_id = :tid AND lock_at > now()
+                 WHERE tenant_id = :tid
+                   AND lock_at > now()
+                   AND (lock_at AT TIME ZONE 'America/Los_Angeles')::date
+                       = (now() AT TIME ZONE 'America/Los_Angeles')::date
             )
             SELECT DISTINCT f.player_id, (SELECT lock_at FROM next_week) AS lock_at
               FROM v_picks_filled f

@@ -75,20 +75,6 @@ def expected_score(
 
 # ── CLI flag ──────────────────────────────────────────────────────────────────
 
-def pytest_addoption(parser):
-    parser.addoption(
-        "--update-snapshots",
-        action="store_true",
-        default=False,
-        help="Regenerate snapshot files instead of comparing against them",
-    )
-
-
-@pytest.fixture(scope="session")
-def update_snapshots(pytestconfig):
-    return pytestconfig.getoption("--update-snapshots")
-
-
 # ── HTTP test client ──────────────────────────────────────────────────────────
 
 @pytest.fixture(scope="session")
@@ -98,27 +84,6 @@ def client():
 
 
 # ── snapshot auth (for test_snapshots.py only) ───────────────────────────────
-
-@pytest.fixture(scope="session")
-def auth_headers():
-    """Bearer token for the first commissioner found in the DB (snapshot tests only)."""
-    s = get_settings()
-    with psycopg.connect(**s.psycopg_kwargs()) as conn, conn.cursor() as cur:
-        cur.execute("""
-                SELECT u.user_id, p.player_id, u.email, tm.tenant_id
-                  FROM users u
-                  JOIN tenant_members tm ON tm.user_id = u.user_id
-                  JOIN players p ON p.player_id = tm.primary_player_id
-                 WHERE tm.role = 'commissioner'
-                 ORDER BY u.user_id, p.player_id
-                 LIMIT 1
-            """)
-        row = cur.fetchone()
-    assert row, "No commissioner user found in DB"
-    uid, player_id, email, tenant_id = row
-    token, _ = make_session_token(player_id, tenant_id, email, uid=uid)
-    return {"Authorization": f"Bearer {token}"}
-
 
 # ── shared DB connection ──────────────────────────────────────────────────────
 

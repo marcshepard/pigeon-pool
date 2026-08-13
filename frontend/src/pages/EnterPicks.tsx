@@ -422,6 +422,16 @@ export default function EnterPicksPage() {
     }
   };
 
+  if (me?.activeTenant?.picks_open === false) {
+    return (
+      <PageFit maxWidth={NORMAL_PAGE_MAX_WIDTH}>
+        <Banner severity="warning">
+          Entering picks is currently disabled by your league manager
+        </Banner>
+      </PageFit>
+    );
+  }
+
   return (
     <PageFit maxWidth={NORMAL_PAGE_MAX_WIDTH}>
       {/* Navigation blocker dialog */}

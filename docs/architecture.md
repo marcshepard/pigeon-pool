@@ -43,6 +43,9 @@ the durable reference — for directory structure and frontend data flows see
   same `role IN ('owner','manager')` check picks submission already uses — commissioners
   can always rename any pigeon via the Roster tab regardless of this setting. Name is
   validated to 1-30 printable characters, trimmed of leading/trailing whitespace.
+- **`tenants.picks_open`** (default `true`) — whether members can enter picks. Commissioners
+  control it from League Settings; when closed, the picks UI is replaced by a warning and
+  pick submissions are rejected by the API.
 
 ## Auth & sessions
 

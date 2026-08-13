@@ -125,6 +125,15 @@ async def _ensure_week_unlocked(db: AsyncSession, week_number: int, tenant_id: i
     if lock_at <= now:
         raise HTTPException(status_code=409, detail=f"Week {week_number} is locked")
 
+
+async def _ensure_picks_open(db: AsyncSession, tenant_id: int) -> None:
+    row = (await db.execute(
+        text("SELECT picks_open FROM tenants WHERE tenant_id = :tenant_id"),
+        {"tenant_id": tenant_id},
+    )).first()
+    if not row or not row[0]:
+        raise HTTPException(status_code=409, detail="Entering picks is currently disabled by your league manager")
+
 async def _ensure_all_games_in_week(
     db: AsyncSession, week_number: int, game_ids: Iterable[int]
 ) -> None:
@@ -217,6 +226,7 @@ async def upsert_picks_bulk(
     """ App-layer guard (DB trigger will also enforce) """
     acting_player_id = await _resolve_acting_player(db, me, player_id)
 
+    await _ensure_picks_open(db, me.tenant_id)
     await _ensure_week_unlocked(db, payload.week_number, me.tenant_id)
     await _ensure_all_games_in_week(db, payload.week_number, (p.game_id for p in payload.picks))
 

@@ -9,8 +9,10 @@ export default function AdminSettings() {
   const { me, refresh } = useAuth();
   const currentName = me?.activeTenant?.name ?? "";
   const currentPigeonsCanRename = me?.activeTenant?.pigeons_can_rename ?? true;
+  const currentPicksOpen = me?.activeTenant?.picks_open ?? true;
   const [name, setName] = useState(currentName);
   const [pigeonsCanRename, setPigeonsCanRename] = useState(currentPigeonsCanRename);
+  const [picksOpen, setPicksOpen] = useState(currentPicksOpen);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -20,7 +22,7 @@ export default function AdminSettings() {
     setSaved(false);
     setError(null);
     try {
-      await adminUpdateLeague({ name: name.trim(), pigeons_can_rename: pigeonsCanRename });
+      await adminUpdateLeague({ name: name.trim(), pigeons_can_rename: pigeonsCanRename, picks_open: picksOpen });
       await refresh();
       setSaved(true);
     } catch (e) {
@@ -53,13 +55,23 @@ export default function AdminSettings() {
           }
           label="Allow pigeons to rename themselves"
         />
+        <FormControlLabel
+          control={
+            <Switch
+              checked={picksOpen}
+              onChange={(e) => { setPicksOpen(e.target.checked); setSaved(false); }}
+              disabled={saving}
+            />
+          }
+          label="Pool is open for entering picks"
+        />
         {saved && <Alert severity="success">Saved.</Alert>}
         {error && <Alert severity="error">{error}</Alert>}
         <Box>
           <Button
             variant="contained"
             onClick={handleSave}
-            disabled={saving || !name.trim() || (name.trim() === currentName && pigeonsCanRename === currentPigeonsCanRename)}
+            disabled={saving || !name.trim() || (name.trim() === currentName && pigeonsCanRename === currentPigeonsCanRename && picksOpen === currentPicksOpen)}
           >
             {saving ? "Saving…" : "Save"}
           </Button>

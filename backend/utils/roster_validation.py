@@ -16,7 +16,7 @@ Severity = Literal["error", "warning"]
 
 
 _REQUIRED_COLUMNS: dict[str, set[str]] = {
-    "tenants": {"tenant_id", "name", "pigeons_can_rename"},
+    "tenants": {"tenant_id", "name", "pigeons_can_rename", "picks_open"},
     "users": {"user_id", "email", "password_hash"},
     "players": {
         "player_id",

@@ -77,6 +77,7 @@ export interface TenantInfo {
   name: string;
   role: "commissioner" | "member";
   pigeons_can_rename: boolean;
+  picks_open: boolean;
 }
 
 // ---- Me (result of /auth/me or /auth/login) ----
@@ -141,7 +142,7 @@ export class Me {
         throw new DataValidationError("available_tenants must be an array");
       }
       for (const t of available_tenants) {
-        if (!isRecord(t) || !isNumber(t.tenant_id) || !isString(t.name) || !isString(t.role) || !isBoolean(t.pigeons_can_rename)) {
+        if (!isRecord(t) || !isNumber(t.tenant_id) || !isString(t.name) || !isString(t.role) || !isBoolean(t.pigeons_can_rename) || !isBoolean(t.picks_open)) {
           throw new DataValidationError("available_tenants[] entry is invalid");
         }
         this.available_tenants.push({
@@ -149,6 +150,7 @@ export class Me {
           name: t.name as string,
           role: t.role as "commissioner" | "member",
           pigeons_can_rename: t.pigeons_can_rename as boolean,
+          picks_open: t.picks_open as boolean,
         });
       }
     }

@@ -116,10 +116,15 @@ UPDATE_TENANT_RENAME_SETTING_SQL = text("""
     UPDATE tenants SET pigeons_can_rename = :pigeons_can_rename WHERE tenant_id = :tenant_id
 """)
 
+UPDATE_TENANT_PICKS_OPEN_SQL = text("""
+    UPDATE tenants SET picks_open = :picks_open WHERE tenant_id = :tenant_id
+""")
+
 
 class LeagueUpdate(BaseModel):
     name: str | None = None
     pigeons_can_rename: bool | None = None
+    picks_open: bool | None = None
 
 
 @router.patch(
@@ -145,6 +150,13 @@ async def update_league(
             "tenant_id": me.tenant_id,
         })
         info("admin: pigeons_can_rename updated", tenant_id=me.tenant_id, value=update.pigeons_can_rename)
+
+    if update.picks_open is not None:
+        await db.execute(UPDATE_TENANT_PICKS_OPEN_SQL, {
+            "picks_open": update.picks_open,
+            "tenant_id": me.tenant_id,
+        })
+        info("admin: picks_open updated", tenant_id=me.tenant_id, value=update.picks_open)
 
     await db.commit()
     return Response(status_code=204)

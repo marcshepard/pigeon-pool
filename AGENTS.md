@@ -2,7 +2,7 @@
 
 ## Documentation
 
-Update the relevant doc file whenever a code change affects the documented behavior. Files and their scope:
+Read the documentation before making any design decisions. Update the relevant doc file whenever a code change affects the documented behavior. Files and their scope:
 
 | File | Contains |
 |------|----------|

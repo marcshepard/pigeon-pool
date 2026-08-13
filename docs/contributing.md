@@ -43,19 +43,6 @@ python -m pyright backend tests
 
 VS Code uses the same Ruff executable, Pyright version, and repository configuration.
 
-### Snapshot tests
-
-`tests/test_snapshots.py` captures golden-file JSON responses from the results API. These snapshots
-represent current single-pool behavior and are used to verify that the multi-tenant migration does
-not regress data output.
-
-Snapshots are stored in `tests/snapshots/`.
-
-To regenerate snapshots after an intentional schema or data change:
-```bash
-pytest --update-snapshots
-```
-
 ## Frontend E2E tests
 
 Tests live in `frontend/e2e/` and use Playwright (Chromium). They spin up an isolated
@@ -70,11 +57,6 @@ Or use the VS Code task **pigeon FE tests**.
 The backend and frontend servers are started automatically if not already running. If
 your **pigeon pool** VS Code task is already up, Playwright reuses those servers and
 starts faster.
-
-To regenerate the FE snapshot golden files after an intentional data change:
-```bash
-cd frontend && npm run test:e2e:update
-```
 
 See [docs/tests.md](tests.md) for the full test design (both backend and frontend).
 

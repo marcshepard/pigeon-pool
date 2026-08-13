@@ -168,6 +168,8 @@ async def _missing_picks_exist(session: AsyncSession) -> bool:
           SELECT tenant_id, MIN(week_number) AS w
           FROM tenant_weeks
           WHERE lock_at > now()
+            AND (lock_at AT TIME ZONE 'America/Los_Angeles')::date
+                = (now() AT TIME ZONE 'America/Los_Angeles')::date
           GROUP BY tenant_id
         )
         SELECT 1

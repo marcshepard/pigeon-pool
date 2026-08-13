@@ -8,9 +8,9 @@ The project has two test suites:
 | Frontend E2E | `npm run test:e2e` (in `frontend/`) | Playwright (Chromium) |
 
 Both suites run against the dev database configured in `backend/.env` and create/teardown their
-own isolated test tenants, so they never touch Tenant 1 data (except snapshot tests,
-which read-only query Tenant 1). For full run commands (single-file runs, snapshot
-regeneration, etc.) see [docs/contributing.md](contributing.md); this doc covers test design.
+own isolated test tenants. The tenant-switcher E2E check uses a read-only token for a real user
+with multiple memberships. For full run commands and single-file runs, see
+[docs/contributing.md](contributing.md); this doc covers test design.
 
 ---
 
@@ -42,7 +42,6 @@ clicking through the login form.
 | `results.spec.ts` | 5 | Page loads, locked week table, picks/leaderboard API, unlocked week privacy |
 | `admin.spec.ts` | 6 | Commissioner access, league rename, payouts, roster player, 401 on bad token, lock page |
 | `analytics.spec.ts` | 8 | Selectors, tabs, Your Picks table, Top 5 panel, pigeon selector, MNF/Top5 content, API |
-| `snapshots.spec.ts` | 7 | Golden-file API and rendered-content checks against the real Tenant 1 pool |
 
 ## Design decisions
 
@@ -80,7 +79,6 @@ The backend test suite lives in `tests/` and uses pytest against the dev databas
 | `test_admin.py` | Aggregate roster management, primary/membership repair, league rename, payout config |
 | `test_roster_validation.py` | Read-only roster integrity checks and orphan-user warning behavior |
 | `test_tenant_isolation.py` | Data from Tenant A never leaks into Tenant B responses |
-| `test_snapshots.py` | Golden-file regression tests against Tenant 1's real data |
 
 ---
 
@@ -108,10 +106,6 @@ The `make_session_token()` helper is the same function the `/auth/login` endpoin
 
 For this to work, `test_data` inserts the commissioner user with a bcrypt hash of `"testpass"` (via `passlib.hash.bcrypt.hash("testpass")`). The member user gets a placeholder hash `"x"` since the login endpoint is never called for them.
 
-### Snapshot tests
-
-`test_snapshots.py` uses a separate `auth_headers` fixture (not `comm_headers`) that queries the DB for the first real commissioner in the production pool (Tenant 1). This is intentional — snapshots must reflect real data, not test-fixture data.
-
 ---
 
 ## Game data: the adaptive `scored_games` fixture
@@ -130,7 +124,9 @@ The `scored_games` session fixture handles this adaptively:
 2. **If scored games exist**, use those `game_id`s directly. No writes to the `games` table.
 3. **If no scored games exist**, insert two synthetic games into week 1 (KC 21 BUF 14, LAR 10 SF 3) with `kickoff_at` in the past, and delete them at teardown.
 
-This matters because of `v_picks_filled`, which uses a `CROSS JOIN` between players and games. Inserting a new game adds default-pick rows for every player in the DB — including Tenant 1's 68 real players, which would corrupt their leaderboard and break snapshot tests. By reusing real `game_id`s when they exist, we insert zero new game rows in the normal case.
+This matters because of `v_picks_filled`, which uses a `CROSS JOIN` between players and games.
+By reusing real `game_id`s when they exist, the fixture avoids adding unnecessary default-pick
+rows for every player in the database.
 
 ### Submission week
 
