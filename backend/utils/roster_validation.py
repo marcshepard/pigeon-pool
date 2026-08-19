@@ -277,7 +277,7 @@ def validate_rosters(conn: Any, tenant_id: int | None = None) -> RosterValidatio
     scoped_tenant_ids = list(tenant_counts)
     if scoped_tenant_ids:
         with conn.cursor() as cur:
-            # Exactly one owner per pigeon.  The partial unique index normally
+            # Pigeons may be unclaimed. The partial unique index normally
             # prevents multiple owners, but this also detects schema drift.
             cur.execute(
                 """
@@ -287,7 +287,7 @@ def validate_rosters(conn: Any, tenant_id: int | None = None) -> RosterValidatio
                   LEFT JOIN user_players up ON up.player_id = p.player_id
                  WHERE p.tenant_id = ANY(%s)
                  GROUP BY p.tenant_id, p.player_id, p.pigeon_number, p.pigeon_name
-                HAVING COUNT(up.user_id) FILTER (WHERE up.role = 'owner') <> 1
+                HAVING COUNT(up.user_id) FILTER (WHERE up.role = 'owner') > 1
                  ORDER BY p.tenant_id, p.pigeon_number
                 """,
                 (scoped_tenant_ids,),
@@ -295,7 +295,7 @@ def validate_rosters(conn: Any, tenant_id: int | None = None) -> RosterValidatio
             for tid, player_id_value, pigeon_number, pigeon_name, owner_count in cur.fetchall():
                 add_error(
                     "invalid_owner_count",
-                    f"Pigeon #{pigeon_number} '{pigeon_name}' has {owner_count} owners; exactly one is required.",
+                    f"Pigeon #{pigeon_number} '{pigeon_name}' has {owner_count} owners; at most one is allowed.",
                     int(tid),
                     player_id=int(player_id_value),
                     pigeon_number=int(pigeon_number),

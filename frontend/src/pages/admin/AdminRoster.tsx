@@ -15,6 +15,7 @@ import {
   DialogTitle,
   FormControl,
   FormControlLabel,
+  IconButton,
   InputLabel,
   MenuItem,
   Paper,
@@ -28,9 +29,11 @@ import {
   TableRow,
   TextField,
   Typography,
+  Tooltip,
   useMediaQuery,
   useTheme,
 } from "@mui/material";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import {
   adminCreatePigeon,
   adminDeletePigeon,
@@ -75,13 +78,19 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function notePreview(note: string): string {
+  const singleLine = note.replace(/\s+/g, " ").trim();
+  return singleLine.length > 20 ? `${singleLine.slice(0, 20)}…` : singleLine;
+}
+
 function ManagersSummary({ pigeon }: { pigeon: AdminPigeon }) {
   if (!pigeon.owner) {
     const count = pigeon.managers.length;
     return (
-      <Typography component="span" variant="body2" color="error.main" fontWeight={600}>
-        Owner required
-        {count > 0 ? ` + ${count} ${count === 1 ? "other" : "others"}` : ""}
+      <Typography component="span" variant="body2" color="text.secondary">
+        {count > 0
+          ? `${count} ${count === 1 ? "manager" : "managers"} (no owner)`
+          : "Not using the app"}
       </Typography>
     );
   }
@@ -161,6 +170,37 @@ export default function AdminRoster() {
     });
   };
 
+  const copyNote = async (pigeon: AdminPigeon) => {
+    try {
+      await navigator.clipboard.writeText(pigeon.commissioner_notes);
+      showSnackbar("Note copied.", "success");
+    } catch (error) {
+      showSnackbar(`Could not copy note: ${errorMessage(error)}`, "error");
+    }
+  };
+
+  const noteSummary = (pigeon: AdminPigeon) => {
+    if (!pigeon.commissioner_notes) {
+      return <Typography color="text.secondary">—</Typography>;
+    }
+    return (
+      <Stack direction="row" spacing={0.5} alignItems="center">
+        <Typography variant="body2" noWrap title={pigeon.commissioner_notes}>
+          {notePreview(pigeon.commissioner_notes)}
+        </Typography>
+        <Tooltip title="Copy full note">
+          <IconButton
+            size="small"
+            aria-label={`Copy note for pigeon #${pigeon.pigeon_number}`}
+            onClick={() => void copyNote(pigeon)}
+          >
+            <ContentCopyIcon fontSize="inherit" />
+          </IconButton>
+        </Tooltip>
+      </Stack>
+    );
+  };
+
   const rowActions = (pigeon: AdminPigeon) => (
     <Stack direction="row" spacing={0.5} justifyContent="flex-end">
       <Button
@@ -238,6 +278,14 @@ export default function AdminRoster() {
                 <Box sx={{ overflowWrap: "anywhere" }}>
                   <ManagersSummary pigeon={pigeon} />
                 </Box>
+                {pigeon.commissioner_notes && (
+                  <>
+                    <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1.5 }}>
+                      Note
+                    </Typography>
+                    {noteSummary(pigeon)}
+                  </>
+                )}
               </CardContent>
               <CardActions sx={{ justifyContent: "flex-end", pt: 0 }}>
                 {rowActions(pigeon)}
@@ -255,6 +303,7 @@ export default function AdminRoster() {
                 <TableCell align="right" sx={{ width: 72 }}>Number</TableCell>
                 <TableCell>Pigeon name</TableCell>
                 <TableCell>Managers</TableCell>
+                <TableCell sx={{ minWidth: 220 }}>Note</TableCell>
                 <TableCell sx={{ width: 110 }}>Status</TableCell>
                 <TableCell align="right" sx={{ width: 150 }}>Actions</TableCell>
               </TableRow>
@@ -262,7 +311,7 @@ export default function AdminRoster() {
             <TableBody>
               {pigeons.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} align="center">
+                  <TableCell colSpan={6} align="center">
                     No pigeons have been added yet.
                   </TableCell>
                 </TableRow>
@@ -274,6 +323,7 @@ export default function AdminRoster() {
                     <TableCell sx={{ overflowWrap: "anywhere" }}>
                       <ManagersSummary pigeon={pigeon} />
                     </TableCell>
+                    <TableCell sx={{ maxWidth: 260 }}>{noteSummary(pigeon)}</TableCell>
                     <TableCell><StatusChip status={pigeon.season_status} /></TableCell>
                     <TableCell align="right">{rowActions(pigeon)}</TableCell>
                   </TableRow>
@@ -352,6 +402,7 @@ function PigeonFormDialog({
   const [managerEmails, setManagerEmails] = useState<string[]>(
     pigeon?.managers.map((manager) => manager.email) ?? [],
   );
+  const [notes, setNotes] = useState(pigeon?.commissioner_notes ?? "");
   const [managerDraft, setManagerDraft] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -372,7 +423,7 @@ function PigeonFormDialog({
       setSaveError("Pigeon name is required.");
       return;
     }
-    if (!EMAIL_PATTERN.test(owner)) {
+    if (owner && !EMAIL_PATTERN.test(owner)) {
       setSaveError("Enter a valid owner email address.");
       return;
     }
@@ -385,8 +436,9 @@ function PigeonFormDialog({
     const input: AdminPigeonCreateIn | AdminPigeonUpdateIn = {
       pigeon_name: pigeonName,
       season_status: status,
-      owner_email: owner,
+      owner_email: owner || null,
       manager_emails: managers,
+      commissioner_notes: notes.trim(),
     };
 
     setSaving(true);
@@ -454,15 +506,7 @@ function PigeonFormDialog({
                 {...params}
                 label="Owner email"
                 type="email"
-                required
-                error={!ownerEmail.trim()}
-                helperText={
-                  !ownerEmail.trim()
-                    ? "Owner is required."
-                    : editing
-                      ? undefined
-                      : "The person will be added to this league if needed."
-                }
+                helperText="Optional. Assigning an owner gives that person app access."
               />
             )}
           />
@@ -493,6 +537,20 @@ function PigeonFormDialog({
               />
             )}
           />
+          <TextField
+            label="Notes"
+            value={notes}
+            onChange={(event) => {
+              setNotes(event.target.value);
+              setSaveError(null);
+            }}
+            helperText="Only commissioners can see these notes."
+            multiline
+            minRows={3}
+            slotProps={{ htmlInput: { maxLength: 2000 } }}
+            disabled={saving}
+            fullWidth
+          />
           {saveError && <Alert severity="error">{saveError}</Alert>}
         </Stack>
       </DialogContent>
@@ -501,7 +559,7 @@ function PigeonFormDialog({
         <Button
           variant="contained"
           onClick={handleSubmit}
-          disabled={saving || !name.trim() || !ownerEmail.trim()}
+          disabled={saving || !name.trim()}
         >
           {saving ? "Saving…" : editing ? "Save changes" : "Create pigeon"}
         </Button>

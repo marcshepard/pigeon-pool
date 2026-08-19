@@ -33,12 +33,13 @@ def roster_cleanup(db_conn):
     db_conn.commit()
 
 
-def _aggregate(name, owner, managers=None, status="pending"):
+def _aggregate(name, owner=None, managers=None, status="pending", notes=""):
     return {
         "pigeon_name": name,
         "season_status": status,
         "owner_email": owner,
         "manager_emails": managers or [],
+        "commissioner_notes": notes,
     }
 
 
@@ -74,6 +75,7 @@ def test_get_pigeons_lists_test_players(client, comm_headers, test_data):
         "is_primary": True,
     }
     assert commissioner["managers"] == []
+    assert commissioner["commissioner_notes"] == ""
 
     alt = by_id[test_data["alt_pid"]]
     assert alt["owner"] is None
@@ -106,7 +108,13 @@ def test_create_pigeon_builds_complete_aggregate_and_fills_lowest_gap(
 
     resp = client.post(
         "/admin/pigeons",
-        json=_aggregate("_AggregateCreated", owner_email, [manager_email], "active"),
+        json=_aggregate(
+            "_AggregateCreated",
+            owner_email,
+            [manager_email],
+            "active",
+            "Pays by mailed check.",
+        ),
         headers=comm_headers,
     )
     assert resp.status_code == 201, resp.text
@@ -116,6 +124,7 @@ def test_create_pigeon_builds_complete_aggregate_and_fills_lowest_gap(
     assert body["pigeon_number"] == 4
     assert body["pigeon_name"] == "_AggregateCreated"
     assert body["season_status"] == "active"
+    assert body["commissioner_notes"] == "Pays by mailed check."
     assert body["owner"]["email"] == owner_email
     assert body["owner"]["is_primary"] is True
     assert [manager["email"] for manager in body["managers"]] == [manager_email]
@@ -140,6 +149,95 @@ def test_create_pigeon_builds_complete_aggregate_and_fills_lowest_gap(
         (manager_email, "manager", "member", body["player_id"]),
         (owner_email, "owner", "member", body["player_id"]),
     ]
+
+
+def test_create_unclaimed_pigeon_without_creating_membership(
+    client, comm_headers, test_data, db_conn, roster_cleanup
+):
+    resp = client.post(
+        "/admin/pigeons",
+        json=_aggregate("_AggregateUnclaimed", notes="  Payment handled offline.  "),
+        headers=comm_headers,
+    )
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    roster_cleanup["player_ids"].add(body["player_id"])
+
+    assert body["owner"] is None
+    assert body["managers"] == []
+    assert body["commissioner_notes"] == "Payment handled offline."
+
+    with db_conn.cursor() as cur:
+        cur.execute("SELECT COUNT(*) FROM user_players WHERE player_id = %s", (body["player_id"],))
+        assert cur.fetchone()[0] == 0
+
+
+def test_update_ownerless_pigeon_and_notes(
+    client, comm_headers, db_conn, roster_cleanup
+):
+    created = client.post(
+        "/admin/pigeons",
+        json=_aggregate("_AggregateOwnerlessOriginal"),
+        headers=comm_headers,
+    ).json()
+    roster_cleanup["player_ids"].add(created["player_id"])
+
+    resp = client.put(
+        f"/admin/pigeons/{created['player_id']}",
+        json=_aggregate(
+            "_AggregateOwnerlessRenamed",
+            status="active",
+            notes="Venmo after the season.",
+        ),
+        headers=comm_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+
+    assert body["pigeon_name"] == "_AggregateOwnerlessRenamed"
+    assert body["owner"] is None
+    assert body["managers"] == []
+    assert body["commissioner_notes"] == "Venmo after the season."
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            "SELECT commissioner_notes FROM players WHERE player_id = %s",
+            (created["player_id"],),
+        )
+        assert cur.fetchone()[0] == "Venmo after the season."
+
+
+def test_clearing_owner_removes_final_member_assignment(
+    client, comm_headers, test_data, db_conn, roster_cleanup
+):
+    email = "aggregate-clear-owner@example.com"
+    roster_cleanup["emails"].add(email)
+    created = client.post(
+        "/admin/pigeons",
+        json=_aggregate("_AggregateClearOwner", email),
+        headers=comm_headers,
+    ).json()
+    roster_cleanup["player_ids"].add(created["player_id"])
+
+    resp = client.put(
+        f"/admin/pigeons/{created['player_id']}",
+        json=_aggregate("_AggregateClearOwner"),
+        headers=comm_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["owner"] is None
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT COUNT(*)
+            FROM tenant_members tm
+            JOIN users u ON u.user_id = tm.user_id
+            WHERE tm.tenant_id = %s AND LOWER(u.email) = LOWER(%s)
+            """,
+            (test_data["tenant_a_id"], email),
+        )
+        assert cur.fetchone()[0] == 0
 
 
 def test_create_pigeon_links_existing_global_user_without_touching_other_tenant(
@@ -443,6 +541,15 @@ def test_update_pigeon_name_too_long_rejected(client, comm_headers, test_data):
     resp = client.put(
         f"/admin/pigeons/{test_data['alt_pid']}",
         json=_aggregate("x" * 31, "testmember@example.com"),
+        headers=comm_headers,
+    )
+    assert resp.status_code == 422
+
+
+def test_pigeon_notes_too_long_rejected(client, comm_headers):
+    resp = client.post(
+        "/admin/pigeons",
+        json=_aggregate("_NotesTooLong", notes="x" * 2001),
         headers=comm_headers,
     )
     assert resp.status_code == 422

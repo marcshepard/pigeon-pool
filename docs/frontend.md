@@ -28,9 +28,14 @@ React + TypeScript + Vite + MUI application.
   while failed mutations leave displayed state unchanged. New and Delete are hidden once any week
   is locked.
 - **Roster people fields**: Owner and additional managers are edited together with free-text email
-  autocomplete over people already visible in the league roster. Email text can be copied and
-  pasted between the fields. On submission, the owner is removed from the additional-manager list;
-  a former owner retains access only when explicitly added as a manager.
+  autocomplete over people already visible in the league roster. The owner is optional; a pigeon
+  with no assigned people is displayed as “Not using the app.” Email text can be copied and pasted
+  between the fields. On submission, the owner is removed from the additional-manager list; a
+  former owner retains access only when explicitly added as a manager.
+- **Roster notes**: The edit dialog includes a commissioner-only “Notes” field backed by
+  `players.commissioner_notes`. The roster shows a 20-character preview and a copy action that
+  copies the complete note. Notes are limited to 2,000 characters and never enter member-facing
+  frontend data flows.
 - **Default pigeon**: Users who manage more than one pigeon can choose “Set default pigeon…” from
   the avatar menu. This calls `PUT /me/primary-pigeon`; the dialog explains that the selection
   applies on the next sign-in because the current JWT is not replaced.

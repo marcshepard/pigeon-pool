@@ -514,14 +514,23 @@ export class AdminPigeon {
   player_id: number;
   pigeon_number: number;
   pigeon_name: string;
-  /** Null only for legacy data that needs an owner assigned. */
+  /** Null when the pigeon is not claimed by an app user. */
   owner: AdminPigeonManager | null;
   managers: AdminPigeonManager[];
   season_status: PigeonSeasonStatus;
+  commissioner_notes: string;
 
   constructor(data: unknown) {
     if (!isRecord(data)) throw new DataValidationError("Invalid AdminPigeon (not an object)");
-    const { player_id, pigeon_number, pigeon_name, owner, managers, season_status } = data;
+    const {
+      player_id,
+      pigeon_number,
+      pigeon_name,
+      owner,
+      managers,
+      season_status,
+      commissioner_notes,
+    } = data;
 
     if (!isNumber(player_id)) throw new DataValidationError("player_id must be number");
     if (!isNumber(pigeon_number)) throw new DataValidationError("pigeon_number must be number");
@@ -530,6 +539,9 @@ export class AdminPigeon {
       throw new DataValidationError("owner must be object|null");
     }
     if (!Array.isArray(managers)) throw new DataValidationError("managers must be array");
+    if (!isString(commissioner_notes)) {
+      throw new DataValidationError("commissioner_notes must be string");
+    }
     const ss = season_status as string;
     if (!["pending", "active", "out"].includes(ss)) {
       throw new DataValidationError("season_status must be pending|active|out");
@@ -541,6 +553,7 @@ export class AdminPigeon {
     this.owner = owner == null ? null : new AdminPigeonManager(owner);
     this.managers = managers.map((manager) => new AdminPigeonManager(manager));
     this.season_status = ss as PigeonSeasonStatus;
+    this.commissioner_notes = commissioner_notes;
   }
 }
 
@@ -553,8 +566,9 @@ export interface PayoutRow {
 export interface AdminPigeonCreateIn {
   pigeon_name: string;
   season_status: PigeonSeasonStatus;
-  owner_email: string;
+  owner_email: string | null;
   manager_emails: string[];
+  commissioner_notes: string;
 }
 
 /** Complete replacement payload for PUT /admin/pigeons/{player_id}. */

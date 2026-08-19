@@ -119,7 +119,7 @@ def test_valid_roster_passes_and_serializes(db_conn, valid_roster):
     assert json.loads(json.dumps(report.to_dict()))["ok"] is True
 
 
-def test_ownerless_primary_is_reported(db_conn, valid_roster):
+def test_dangling_member_for_ownerless_pigeon_is_reported(db_conn, valid_roster):
     with db_conn.cursor() as cur:
         cur.execute(
             "DELETE FROM user_players WHERE user_id = %s AND player_id = %s",
@@ -131,9 +131,27 @@ def test_ownerless_primary_is_reported(db_conn, valid_roster):
     codes = {issue.code for issue in report.errors}
 
     assert not report.is_valid
-    assert "invalid_owner_count" in codes
+    assert "invalid_owner_count" not in codes
     assert "primary_not_managed" in codes
     assert "member_without_managed_pigeon" in codes
+
+
+def test_unclaimed_pigeon_is_valid(db_conn, valid_roster):
+    with db_conn.cursor() as cur:
+        cur.execute(
+            "DELETE FROM tenant_members WHERE tenant_id = %s AND user_id = %s",
+            (valid_roster["tenant_id"], valid_roster["member_user_id"]),
+        )
+        cur.execute(
+            "DELETE FROM user_players WHERE user_id = %s AND player_id = %s",
+            (valid_roster["member_user_id"], valid_roster["second_player_id"]),
+        )
+    db_conn.commit()
+
+    report = validate_rosters(db_conn, tenant_id=valid_roster["tenant_id"])
+
+    assert report.is_valid
+    assert report.errors == []
 
 
 def test_cross_tenant_primary_is_reported(db_conn, valid_roster):

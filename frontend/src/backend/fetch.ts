@@ -402,7 +402,7 @@ export function adminGetPigeons(): Promise<AdminPigeon[]> {
   });
 }
 
-/** Atomically create a pigeon with its required owner and optional managers. */
+/** Atomically create a pigeon with an optional owner and managers. */
 export function adminCreatePigeon(input: AdminPigeonCreateIn): Promise<AdminPigeon> {
   return apiFetch("/admin/pigeons", {
     method: "POST",

@@ -18,11 +18,11 @@ the durable reference — for directory structure and frontend data flows see
   (`CHECK (pigeon_number >= 1)` only) — tenants can size their pool however they like, though
   there's no formal `max_players` setting to enforce a chosen size.
 - **`user_players`** — links a login (`user_id`) to the player(s) it controls, with
-  `role IN ('owner', 'manager', 'viewer')` for alt-pigeon management. Every pigeon must have
-  exactly one owner and may have additional managers. Owner and manager currently grant the
-  same application access; owner identifies the primary administrative contact. The database's
-  partial unique index enforces at most one owner, while the roster API enforces that an owner is
-  always supplied. The unused `viewer` role is preserved but is not exposed by roster management.
+  `role IN ('owner', 'manager', 'viewer')` for alt-pigeon management. A pigeon may be unclaimed
+  when none of its participants use the app; otherwise it may have one owner and additional
+  managers. Owner and manager currently grant the same application access; owner identifies the
+  primary administrative contact. The database's partial unique index enforces at most one owner.
+  The unused `viewer` role is preserved but is not exposed by roster management.
 - **`picks`** — keyed by `player_id` (not `pigeon_number`).
 - **`tenant_weeks`** — per-tenant lock time for each of the 18 global `weeks`. `weeks` itself
   (the week numbers and `default_lock_at` template) stays global — only lock time is
@@ -34,6 +34,9 @@ the durable reference — for directory structure and frontend data flows see
   pigeon is confirmed in for the season. Resets to `pending` for everyone on `reset-season`.
   Currently informational only (Roster tab display/edit) — nothing blocks a `pending` player
   from submitting picks once their week unlocks.
+- **`players.commissioner_notes`** — private free-text notes (up to 2,000 characters) available
+  only through commissioner roster endpoints. Member-facing APIs, results, and emails do not
+  expose them.
 - **`tenant_payouts`** — `(tenant_id, place, points)`, one row per paying finish position.
   Commissioner-configurable via League Settings; the "top N places pay" count (rows with
   `points > 0`) is derived from this table across analytics/YTD/About.
@@ -81,15 +84,16 @@ Pigeon numbers are display/order values assigned by the server. Creation fills t
 available positive number; deletion leaves a gap until a later create fills it. Mutation routes
 always use stable `player_id` values.
 
-Owner and manager emails are resolved against the global case-insensitive user identity. A new
-account is created when there is no match; otherwise the existing account is linked into the
-active tenant. New memberships receive the `member` role, while an existing role—including
-`commissioner`—is preserved. Roster operations never delete global `users` rows or relationships
-in another tenant.
+When supplied, owner and manager emails are resolved against the global case-insensitive user
+identity. A new account is created when there is no match; otherwise the existing account is
+linked into the active tenant. An ownerless pigeon with no managers creates no user or membership.
+New memberships receive the `member` role, while an existing role—including `commissioner`—is
+preserved. Roster operations never delete global `users` rows or relationships in another tenant.
 
-The submitted owner and manager lists are the complete desired state. Changing the owner does not
-implicitly preserve the former owner as a manager. If the new owner was an additional manager,
-that relationship becomes owner so the person is not listed twice.
+The submitted optional owner and manager lists are the complete desired state. Clearing an owner
+removes that assignment; changing the owner does not implicitly preserve the former owner as a
+manager. If the new owner was an additional manager, that relationship becomes owner so the person
+is not listed twice. Commissioner notes are part of the same aggregate.
 
 After each mutation, a user's existing primary remains unchanged if it is still assigned. If it
 was removed, the lowest-numbered remaining owned/managed pigeon becomes primary. An ordinary

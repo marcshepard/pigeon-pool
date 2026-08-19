@@ -74,6 +74,7 @@ CREATE TABLE IF NOT EXISTS players (
   pigeon_name   TEXT   NOT NULL,
   season_status TEXT   NOT NULL DEFAULT 'pending'
                        CHECK (season_status IN ('pending','active','out')),
+  commissioner_notes TEXT NOT NULL DEFAULT '',
   UNIQUE (tenant_id, pigeon_number),
   UNIQUE (tenant_id, pigeon_name)
 );
@@ -88,7 +89,7 @@ CREATE TABLE IF NOT EXISTS user_players (
   role      TEXT   NOT NULL DEFAULT 'owner' CHECK (role IN ('owner','manager','viewer')),
   PRIMARY KEY (user_id, player_id)
 );
--- At most one owner per player; roster mutations enforce that one is present.
+-- A player may be unclaimed; when claimed, it has at most one owner.
 CREATE UNIQUE INDEX IF NOT EXISTS uniq_player_single_owner
   ON user_players(player_id)
   WHERE role = 'owner';

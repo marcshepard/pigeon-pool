@@ -327,6 +327,7 @@ GET_ROSTER_SQL = text("""
         p.pigeon_number,
         p.pigeon_name,
         p.season_status,
+        p.commissioner_notes,
         u.user_id,
         u.email,
         up.role,
@@ -374,13 +375,15 @@ CREATE_PLAYER_SQL = text("""
         tenant_id,
         pigeon_number,
         pigeon_name,
-        season_status
+        season_status,
+        commissioner_notes
     )
     VALUES (
         :tenant_id,
         :pigeon_number,
         :pigeon_name,
-        :season_status
+        :season_status,
+        :commissioner_notes
     )
     ON CONFLICT (tenant_id, pigeon_number) DO NOTHING
     RETURNING player_id
@@ -389,7 +392,8 @@ CREATE_PLAYER_SQL = text("""
 UPDATE_PLAYER_SQL = text("""
     UPDATE players
     SET pigeon_name = :pigeon_name,
-        season_status = :season_status
+        season_status = :season_status,
+        commissioner_notes = :commissioner_notes
     WHERE player_id = :player_id AND tenant_id = :tenant_id
 """)
 
@@ -529,27 +533,37 @@ class PigeonRow(BaseModel):
     pigeon_number: int
     pigeon_name: str
     season_status: Literal["pending", "active", "out"]
+    commissioner_notes: str
     owner: PigeonPerson | None
     managers: list[PigeonPerson] = Field(default_factory=list)
 
 
 class PigeonAggregateIn(BaseModel):
     pigeon_name: str
-    owner_email: EmailStr
+    owner_email: EmailStr | None = None
     manager_emails: list[EmailStr] = Field(default_factory=list)
+    commissioner_notes: str = ""
 
     @field_validator("pigeon_name")
     @classmethod
     def _validate_pigeon_name(cls, v: str) -> str:
         return validate_pigeon_name(v)
 
+    @field_validator("commissioner_notes")
+    @classmethod
+    def _validate_commissioner_notes(cls, v: str) -> str:
+        stripped = v.strip()
+        if len(stripped) > 2000:
+            raise ValueError("Notes must be 2000 characters or fewer")
+        return stripped
+
     @model_validator(mode="after")
     def _validate_people(self):
-        owner = str(self.owner_email).strip().casefold()
+        owner = _normalize_email(self.owner_email) if self.owner_email is not None else None
         managers = [str(email).strip().casefold() for email in self.manager_emails]
         if len(managers) != len(set(managers)):
             raise ValueError("Additional manager emails must be unique")
-        if owner in managers:
+        if owner is not None and owner in managers:
             raise ValueError("Owner cannot also be an additional manager")
         return self
 
@@ -581,15 +595,16 @@ def _build_roster(rows) -> list[PigeonRow]:
                 "pigeon_number": row[1],
                 "pigeon_name": row[2],
                 "season_status": row[3],
+                "commissioner_notes": row[4],
                 "owner": None,
                 "managers": [],
             }
-        if row[4] is None:
+        if row[5] is None:
             continue
-        person = PigeonPerson(user_id=row[4], email=row[5], is_primary=bool(row[7]))
-        if row[6] == "owner":
+        person = PigeonPerson(user_id=row[5], email=row[6], is_primary=bool(row[8]))
+        if row[7] == "owner":
             pigeons[player_id]["owner"] = person
-        elif row[6] == "manager":
+        elif row[7] == "manager":
             pigeons[player_id]["managers"].append(person)
     return [PigeonRow(**pigeon) for pigeon in pigeons.values()]
 
@@ -699,7 +714,10 @@ async def _replace_player_assignments(
         (user_id for user_id, role in existing_roles.items() if role == "owner"),
         None,
     )
-    desired_owner_id = next(user_id for user_id, role in desired_roles.items() if role == "owner")
+    desired_owner_id = next(
+        (user_id for user_id, role in desired_roles.items() if role == "owner"),
+        None,
+    )
 
     # Release the partial single-owner constraint before promoting a new owner.
     if existing_owner_id is not None and existing_owner_id != desired_owner_id:
@@ -751,7 +769,7 @@ async def create_pigeon(
     db: AsyncSession = Depends(get_db),
     me=Depends(require_admin),
 ):
-    """Atomically create a pigeon with its required owner and optional managers."""
+    """Atomically create a pigeon with an optional owner and managers."""
     debug("admin: create_pigeon called", tenant_id=me.tenant_id, name=pigeon.pigeon_name)
 
     try:
@@ -772,6 +790,7 @@ async def create_pigeon(
                     "pigeon_number": pigeon_number,
                     "pigeon_name": pigeon.pigeon_name,
                     "season_status": pigeon.season_status,
+                    "commissioner_notes": pigeon.commissioner_notes,
                 })).first()
                 if created:
                     player_id = created[0]
@@ -779,8 +798,10 @@ async def create_pigeon(
             if player_id is None:
                 raise HTTPException(status_code=409, detail="Could not allocate a pigeon number; please retry")
 
-            owner_id, _ = await _find_or_create_user(db, pigeon.owner_email)
-            desired_roles = {owner_id: "owner"}
+            desired_roles: dict[int, str] = {}
+            if pigeon.owner_email is not None:
+                owner_id, _ = await _find_or_create_user(db, pigeon.owner_email)
+                desired_roles[owner_id] = "owner"
             for manager_email in pigeon.manager_emails:
                 manager_id, _ = await _find_or_create_user(db, manager_email)
                 desired_roles[manager_id] = "manager"
@@ -855,8 +876,10 @@ async def update_pigeon(
             })).fetchall()
             affected_user_ids.update(row[0] for row in primary_rows)
 
-            owner_id, _ = await _find_or_create_user(db, update.owner_email)
-            desired_roles = {owner_id: "owner"}
+            desired_roles: dict[int, str] = {}
+            if update.owner_email is not None:
+                owner_id, _ = await _find_or_create_user(db, update.owner_email)
+                desired_roles[owner_id] = "owner"
             for manager_email in update.manager_emails:
                 manager_id, _ = await _find_or_create_user(db, manager_email)
                 desired_roles[manager_id] = "manager"
@@ -867,6 +890,7 @@ async def update_pigeon(
                 "player_id": player_id,
                 "pigeon_name": update.pigeon_name,
                 "season_status": update.season_status,
+                "commissioner_notes": update.commissioner_notes,
             })
 
             for user_id in affected_user_ids:
