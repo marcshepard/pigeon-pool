@@ -140,6 +140,7 @@ export default function YtdPage() {
               rows={rows}
               columns={columns}
               defaultSort={{ key: "pigeon", dir: "asc" }}
+              emptyMessage="Come back after Week 1 is over to see the year-to-date results."
               printTitle="Pigeon Pool — Year to Date"
               getRowId={(r) => r.pigeon_number}
               highlightRowId={state.status === "signedIn" ? state.user.pigeon_number : undefined}

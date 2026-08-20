@@ -25,8 +25,9 @@ React + TypeScript + Vite + MUI application.
   The Roster page fetches the aggregate `/admin/pigeons` collection and renders a read-only table
   (responsive cards on small screens). New and Edit submit one complete pigeon aggregate; Delete
   uses a confirmation dialog. Successful POST/PUT responses replace the affected row locally,
-  while failed mutations leave displayed state unchanged. New and Delete are hidden once any week
-  is locked.
+  while failed mutations leave displayed state unchanged. The optional Notes and Status columns
+  can be hidden from the Columns menu; visibility is stored in the browser per tenant. New and
+  Delete are hidden once any week is locked.
 - **Roster people fields**: Owner and additional managers are edited together with free-text email
   autocomplete over people already visible in the league roster. The owner is optional; a pigeon
   with no assigned people is displayed as “Not using the app.” Email text can be copied and pasted

@@ -17,6 +17,7 @@ import {
   FormControlLabel,
   IconButton,
   InputLabel,
+  Menu,
   MenuItem,
   Paper,
   Select,
@@ -34,6 +35,7 @@ import {
   useTheme,
 } from "@mui/material";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
+import ViewColumnIcon from "@mui/icons-material/ViewColumn";
 import {
   adminCreatePigeon,
   adminDeletePigeon,
@@ -56,6 +58,42 @@ type RosterFormState =
   | { mode: "edit"; pigeon: AdminPigeon };
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+$/;
+const ROSTER_COLUMNS_STORAGE_PREFIX = "pigeonpool.adminRoster.columns";
+
+type RosterColumnVisibility = {
+  notes: boolean;
+  status: boolean;
+};
+
+const DEFAULT_COLUMN_VISIBILITY: RosterColumnVisibility = {
+  notes: true,
+  status: true,
+};
+
+function loadColumnVisibility(tenantId: number): RosterColumnVisibility {
+  try {
+    const raw = localStorage.getItem(`${ROSTER_COLUMNS_STORAGE_PREFIX}.${tenantId}`);
+    if (!raw) return DEFAULT_COLUMN_VISIBILITY;
+    const saved = JSON.parse(raw) as Partial<RosterColumnVisibility>;
+    return {
+      notes: typeof saved.notes === "boolean" ? saved.notes : true,
+      status: typeof saved.status === "boolean" ? saved.status : true,
+    };
+  } catch {
+    return DEFAULT_COLUMN_VISIBILITY;
+  }
+}
+
+function saveColumnVisibility(tenantId: number, visibility: RosterColumnVisibility): void {
+  try {
+    localStorage.setItem(
+      `${ROSTER_COLUMNS_STORAGE_PREFIX}.${tenantId}`,
+      JSON.stringify(visibility),
+    );
+  } catch {
+    // The current view still updates when browser storage is unavailable.
+  }
+}
 
 function emailKey(email: string): string {
   return email.trim().toLowerCase();
@@ -113,12 +151,18 @@ function StatusChip({ status }: { status: PigeonSeasonStatus }) {
 export default function AdminRoster() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"), { noSsr: true });
+  const { me } = useAuth();
+  const tenantId = me?.tenant_id;
   const [pigeons, setPigeons] = useState<AdminPigeon[]>([]);
   const [seasonStarted, setSeasonStarted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [formState, setFormState] = useState<RosterFormState | null>(null);
   const [deletePigeon, setDeletePigeon] = useState<AdminPigeon | null>(null);
+  const [columnMenuAnchor, setColumnMenuAnchor] = useState<HTMLElement | null>(null);
+  const [columnVisibility, setColumnVisibility] = useState<RosterColumnVisibility>(
+    DEFAULT_COLUMN_VISIBILITY,
+  );
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
     message: string;
@@ -146,6 +190,11 @@ export default function AdminRoster() {
     };
   }, []);
 
+  useEffect(() => {
+    if (tenantId === undefined) return;
+    setColumnVisibility(loadColumnVisibility(tenantId));
+  }, [tenantId]);
+
   const leagueEmails = useMemo(() => {
     const emails: string[] = [];
     for (const pigeon of pigeons) {
@@ -157,6 +206,12 @@ export default function AdminRoster() {
 
   const showSnackbar = (message: string, severity: Severity) => {
     setSnackbar({ open: true, message, severity });
+  };
+
+  const toggleColumn = (column: keyof RosterColumnVisibility) => {
+    const next = { ...columnVisibility, [column]: !columnVisibility[column] };
+    setColumnVisibility(next);
+    if (tenantId !== undefined) saveColumnVisibility(tenantId, next);
   };
 
   const upsertPigeon = (updated: AdminPigeon) => {
@@ -240,12 +295,41 @@ export default function AdminRoster() {
             Manage pigeons and the people assigned to them.
           </Typography>
         </Box>
-        {!seasonStarted && (
-          <Button variant="contained" onClick={() => setFormState({ mode: "create" })}>
-            New pigeon
+        <Stack direction="row" spacing={1} justifyContent="flex-end">
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={<ViewColumnIcon />}
+            onClick={(event) => setColumnMenuAnchor(event.currentTarget)}
+            aria-controls={columnMenuAnchor ? "roster-columns-menu" : undefined}
+            aria-haspopup="true"
+            aria-expanded={columnMenuAnchor ? "true" : undefined}
+          >
+            Columns
           </Button>
-        )}
+          {!seasonStarted && (
+            <Button variant="contained" onClick={() => setFormState({ mode: "create" })}>
+              New pigeon
+            </Button>
+          )}
+        </Stack>
       </Stack>
+
+      <Menu
+        id="roster-columns-menu"
+        anchorEl={columnMenuAnchor}
+        open={Boolean(columnMenuAnchor)}
+        onClose={() => setColumnMenuAnchor(null)}
+      >
+        <MenuItem dense onClick={() => toggleColumn("notes")}>
+          <Checkbox checked={columnVisibility.notes} size="small" disableRipple sx={{ p: 0, mr: 1 }} />
+          Notes
+        </MenuItem>
+        <MenuItem dense onClick={() => toggleColumn("status")}>
+          <Checkbox checked={columnVisibility.status} size="small" disableRipple sx={{ p: 0, mr: 1 }} />
+          Status
+        </MenuItem>
+      </Menu>
 
       {seasonStarted && (
         <Alert severity="info" sx={{ mb: 2 }}>
@@ -270,7 +354,7 @@ export default function AdminRoster() {
                       {pigeon.pigeon_name}
                     </Typography>
                   </Box>
-                  <StatusChip status={pigeon.season_status} />
+                  {columnVisibility.status && <StatusChip status={pigeon.season_status} />}
                 </Stack>
                 <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1.5 }}>
                   Managers
@@ -278,10 +362,10 @@ export default function AdminRoster() {
                 <Box sx={{ overflowWrap: "anywhere" }}>
                   <ManagersSummary pigeon={pigeon} />
                 </Box>
-                {pigeon.commissioner_notes && (
+                {columnVisibility.notes && pigeon.commissioner_notes && (
                   <>
                     <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1.5 }}>
-                      Note
+                      Notes
                     </Typography>
                     {noteSummary(pigeon)}
                   </>
@@ -303,15 +387,18 @@ export default function AdminRoster() {
                 <TableCell align="right" sx={{ width: 72 }}>Number</TableCell>
                 <TableCell>Pigeon name</TableCell>
                 <TableCell>Managers</TableCell>
-                <TableCell sx={{ minWidth: 220 }}>Note</TableCell>
-                <TableCell sx={{ width: 110 }}>Status</TableCell>
+                {columnVisibility.notes && <TableCell sx={{ minWidth: 220 }}>Notes</TableCell>}
+                {columnVisibility.status && <TableCell sx={{ width: 110 }}>Status</TableCell>}
                 <TableCell align="right" sx={{ width: 150 }}>Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {pigeons.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} align="center">
+                  <TableCell
+                    colSpan={4 + Number(columnVisibility.notes) + Number(columnVisibility.status)}
+                    align="center"
+                  >
                     No pigeons have been added yet.
                   </TableCell>
                 </TableRow>
@@ -323,8 +410,12 @@ export default function AdminRoster() {
                     <TableCell sx={{ overflowWrap: "anywhere" }}>
                       <ManagersSummary pigeon={pigeon} />
                     </TableCell>
-                    <TableCell sx={{ maxWidth: 260 }}>{noteSummary(pigeon)}</TableCell>
-                    <TableCell><StatusChip status={pigeon.season_status} /></TableCell>
+                    {columnVisibility.notes && (
+                      <TableCell sx={{ maxWidth: 260 }}>{noteSummary(pigeon)}</TableCell>
+                    )}
+                    {columnVisibility.status && (
+                      <TableCell><StatusChip status={pigeon.season_status} /></TableCell>
+                    )}
                     <TableCell align="right">{rowActions(pigeon)}</TableCell>
                   </TableRow>
                 ))
