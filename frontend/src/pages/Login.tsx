@@ -5,12 +5,33 @@
 // src/pages/Login.tsx
 import { useEffect, useState } from "react";
 import { Alert, Box, Button, Checkbox, FormControlLabel, Paper, Stack, TextField, Typography, Link } from "@mui/material";
+import IosShareIcon from "@mui/icons-material/IosShare";
+import MoreVertIcon from "@mui/icons-material/MoreVert";
 import { alpha } from "@mui/material/styles";
 import { AppSnackbar } from "../components/CommonComponents";
 import PasswordResetRequestForm from "./PasswordResetRequestForm";
 import { useAuth } from "../auth/useAuth";
 import { LoginPayload } from "../backend/types";
 import { useNavigate, useSearchParams } from "react-router-dom";
+
+type InstallPlatform = "ios" | "android";
+
+function getMobileInstallPlatform(): InstallPlatform | null {
+  const userAgent = navigator.userAgent;
+  const isIOS =
+    /iPad|iPhone|iPod/i.test(userAgent) ||
+    (/Macintosh/i.test(userAgent) && navigator.maxTouchPoints > 1);
+  const platform = isIOS
+    ? "ios"
+    : /Android/i.test(userAgent)
+      ? "android"
+      : null;
+  const isStandalone =
+    window.matchMedia("(display-mode: standalone)").matches ||
+    (navigator as Navigator & { standalone?: boolean }).standalone === true;
+
+  return platform && !isStandalone ? platform : null;
+}
 
 export default function LoginPage() {
   const { signIn } = useAuth();  // pulls in apiLogin via context
@@ -24,6 +45,7 @@ export default function LoginPage() {
   const [rememberEmail, setRememberEmail] = useState(false);
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
+  const [installPlatform] = useState(getMobileInstallPlatform);
 
   const [snack, setSnack] = useState({
     open: false,
@@ -105,6 +127,8 @@ export default function LoginPage() {
       sx={{
         width: "100%",
         minHeight: "100dvh",
+        display: "flex",
+        flexDirection: "column",
         background: (theme) =>
           `linear-gradient(180deg, ${alpha(theme.palette.primary.light, theme.palette.mode === "light" ? 0.18 : 0.12)} 0%, ${theme.palette.background.default} 420px)`,
       }}
@@ -212,6 +236,44 @@ export default function LoginPage() {
         </Typography>
       </Box>
       </Paper>
+
+      {installPlatform && (
+        <Alert
+          severity="warning"
+          sx={{
+            width: "calc(100% - 32px)",
+            maxWidth: 600,
+            mx: "auto",
+            mt: "auto",
+            mb: `max(16px, env(safe-area-inset-bottom))`,
+            bgcolor: (theme) => alpha(theme.palette.primary.main, theme.palette.mode === "light" ? 0.1 : 0.18),
+            border: 1,
+            borderColor: "primary.main",
+            color: "text.primary",
+            "& .MuiAlert-icon": { color: "primary.main" },
+          }}
+        >
+          <Typography variant="body2">
+            For a better user experience, install this app to your Home Screen.
+          </Typography>
+          <Box component="ol" sx={{ my: 0.5, pl: 2.5 }}>
+            <Typography component="li" variant="body2" sx={{ mb: 0.5 }}>
+              {installPlatform === "ios" ? (
+              <>
+                Tap the Share icon (<IosShareIcon titleAccess="Share icon" sx={{ fontSize: "1.1rem", verticalAlign: "text-bottom" }} />), then tap Add to Home Screen.
+              </>
+            ) : (
+              <>
+                Tap the Menu icon (<MoreVertIcon titleAccess="Menu icon" sx={{ fontSize: "1.1rem", verticalAlign: "text-bottom" }} />) on the upper right, then tap Add to Home screen or Install app.
+              </>
+              )}
+            </Typography>
+            <Typography component="li" variant="body2">
+              After it’s installed, tap the app icon on your Home Screen to launch the app.
+            </Typography>
+          </Box>
+        </Alert>
+      )}
     </Box>
   );
 }

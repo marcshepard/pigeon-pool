@@ -16,6 +16,9 @@ React + TypeScript + Vite + MUI application.
 
 ## Key data flows
 
+- **Mobile sign-in**: iOS and Android browsers show platform-specific Home Screen installation
+  instructions at the bottom of the sign-in page. The prompt is hidden when the app is already
+  running in standalone mode.
 - **Auth**: `useAuth` → JWT stored in localStorage → `Authorization: Bearer` header on every API call
 - **Picks/Results**: `useResults(week)` fetches `/results/weeks/{week}/picks` and `/results/weeks/{week}/leaderboard`, then shapes via `resultsShaping.ts`
 - **Analytics**: Both "Your Picks" and "Top 5" tabs consume the same `useResults` data, displayed differently

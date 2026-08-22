@@ -3,6 +3,46 @@ import { getState } from "./helpers/state";
 import { setAuthToken, clearAuthToken } from "./helpers/auth";
 
 test.describe("auth", () => {
+  test("mobile browsers show platform-specific Home Screen instructions", async ({ browser }) => {
+    const iosContext = await browser.newContext({
+      userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1",
+      viewport: { width: 390, height: 844 },
+    });
+    const iosPage = await iosContext.newPage();
+    await iosPage.goto("/login");
+    await expect(iosPage.getByText(/Tap Share/i)).toBeVisible();
+    await expect(iosPage.getByTitle("Share icon")).toBeVisible();
+    await expect(iosPage.getByText(/tap the app icon on your Home Screen/i)).toBeVisible();
+    await iosContext.close();
+
+    const androidContext = await browser.newContext({
+      userAgent: "Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36",
+      viewport: { width: 412, height: 915 },
+    });
+    const androidPage = await androidContext.newPage();
+    await androidPage.goto("/login");
+    await expect(androidPage.getByText(/Tap Menu/i)).toBeVisible();
+    await expect(androidPage.getByTitle("Menu icon")).toBeVisible();
+    await androidContext.close();
+
+    const installedIosContext = await browser.newContext({
+      userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1",
+      viewport: { width: 390, height: 844 },
+    });
+    await installedIosContext.addInitScript(() => {
+      Object.defineProperty(navigator, "standalone", { value: true });
+    });
+    const installedIosPage = await installedIosContext.newPage();
+    await installedIosPage.goto("/login");
+    await expect(installedIosPage.getByText(/install this app on your Home Screen/i)).toHaveCount(0);
+    await installedIosContext.close();
+  });
+
+  test("desktop browsers do not show Home Screen instructions", async ({ page }) => {
+    await page.goto("/login");
+    await expect(page.getByText(/install this app on your Home Screen/i)).toHaveCount(0);
+  });
+
   test("login with valid credentials succeeds", async ({ page }) => {
     const { user_email, user_password } = getState().test;
     await page.goto("/login");
