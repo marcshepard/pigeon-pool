@@ -6,6 +6,8 @@ Commands:
 - sync-scores    : Update scores & status for a specific week, called while games are live
 - sync-kickoffs  : Refresh kickoff times for a specific week, called infrequently
 - reset-season   : Archive picks, wipe games/picks, reset season status, sync new schedule
+- export-tenant-picks : Write a tenant's roster and picks to a JSON snapshot
+- import-tenant-picks : Interactively import a JSON snapshot into localhost
 - list-leagues   : Show all tenants with member/player counts
 - validate-rosters : Read-only roster integrity checks across one or all tenants
 - create-league  : Create a new league/tenant and assign a commissioner
@@ -21,6 +23,8 @@ Example usage:
 - python -m backend.cli sync-kickoffs 6
 - python -m backend.cli import-picks-xlsx C:/path/to/picks.xlsx --week 6
 - python -m backend.cli import-picks-xlsx C:/path/to/picks.xlsx --max-week 6
+- python -m backend.cli export-tenant-picks --tenant 1 --output snapshots/tenant-1.json
+- python -m backend.cli import-tenant-picks --tenant 1 --input snapshots/tenant-1.json
 - python -m backend.cli reset-season --year 2024
 - python -m backend.cli list-leagues
 - python -m backend.cli validate-rosters --json
@@ -37,9 +41,11 @@ import asyncio
 import csv
 import json
 import os
+import secrets
 import sys
 from collections.abc import Awaitable, Callable
 from contextlib import nullcontext, redirect_stdout
+from pathlib import Path
 from typing import Any, NoReturn
 
 import psycopg
@@ -296,6 +302,461 @@ def cmd_import_picks_xlsx(args: argparse.Namespace) -> int:
 
     return 0
 
+
+_SNAPSHOT_FORMAT_VERSION = 1
+_LOCAL_DB_HOSTS = {"localhost", "127.0.0.1", "::1"}
+
+
+def _snapshot_player_rows(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
+    """Validate and normalize the roster portion of a tenant snapshot."""
+    rows = snapshot.get("players")
+    if not isinstance(rows, list):
+        raise TypeError("snapshot field 'players' must be a list")
+
+    seen_numbers: set[int] = set()
+    seen_names: set[str] = set()
+    normalized: list[dict[str, Any]] = []
+    for index, row in enumerate(rows, start=1):
+        if not isinstance(row, dict):
+            raise TypeError(f"players[{index}] must be an object")
+        number = row.get("pigeon_number")
+        name = row.get("pigeon_name")
+        if isinstance(number, bool) or not isinstance(number, int) or number < 1:
+            raise ValueError(f"players[{index}].pigeon_number must be a positive integer")
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError(f"players[{index}].pigeon_name must be a non-empty string")
+        name = name.strip()
+        name_key = name.casefold()
+        if number in seen_numbers:
+            raise ValueError(f"snapshot has duplicate pigeon number {number}")
+        if name_key in seen_names:
+            raise ValueError(f"snapshot has duplicate pigeon name '{name}'")
+        season_status = row.get("season_status", "pending")
+        if season_status not in {"pending", "active", "out"}:
+            raise ValueError(f"players[{index}].season_status is invalid")
+        notes = row.get("commissioner_notes", "")
+        if not isinstance(notes, str):
+            raise TypeError(f"players[{index}].commissioner_notes must be a string")
+        seen_numbers.add(number)
+        seen_names.add(name_key)
+        normalized.append({
+            "pigeon_number": number,
+            "pigeon_name": name,
+            "season_status": season_status,
+            "commissioner_notes": notes,
+        })
+    return normalized
+
+
+def _snapshot_pick_rows(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
+    """Validate and normalize the pick portion of a tenant snapshot."""
+    rows = snapshot.get("picks")
+    if not isinstance(rows, list):
+        raise TypeError("snapshot field 'picks' must be a list")
+
+    normalized: list[dict[str, Any]] = []
+    seen_keys: set[tuple[int, int]] = set()
+    for index, row in enumerate(rows, start=1):
+        if not isinstance(row, dict):
+            raise TypeError(f"picks[{index}] must be an object")
+        number = row.get("pigeon_number")
+        event_id = row.get("espn_event_id")
+        week = row.get("week_number")
+        picked_home = row.get("picked_home")
+        margin = row.get("predicted_margin")
+        if isinstance(number, bool) or not isinstance(number, int) or number < 1:
+            raise ValueError(f"picks[{index}].pigeon_number must be a positive integer")
+        if isinstance(event_id, bool) or not isinstance(event_id, int):
+            raise TypeError(f"picks[{index}].espn_event_id must be an integer")
+        if isinstance(week, bool) or not isinstance(week, int) or not 1 <= week <= 18:
+            raise ValueError(f"picks[{index}].week_number must be between 1 and 18")
+        if not isinstance(picked_home, bool):
+            raise TypeError(f"picks[{index}].picked_home must be true or false")
+        if isinstance(margin, bool) or not isinstance(margin, int) or margin < 0:
+            raise ValueError(f"picks[{index}].predicted_margin must be a non-negative integer")
+        key = (number, event_id)
+        if key in seen_keys:
+            raise ValueError(f"snapshot has duplicate pick for pigeon {number}, event {event_id}")
+        seen_keys.add(key)
+        created_at = row.get("created_at")
+        if created_at is not None and not isinstance(created_at, str):
+            raise ValueError(f"picks[{index}].created_at must be an ISO timestamp")
+        normalized.append({
+            "pigeon_number": number,
+            "espn_event_id": event_id,
+            "week_number": week,
+            "home_abbr": row.get("home_abbr"),
+            "away_abbr": row.get("away_abbr"),
+            "picked_home": picked_home,
+            "predicted_margin": margin,
+            "created_at": created_at,
+        })
+    return normalized
+
+
+def _load_tenant_snapshot(path: str) -> dict[str, Any]:
+    """Load and validate the outer shape of a JSON tenant snapshot."""
+    with open(path, encoding="utf-8") as snapshot_file:
+        snapshot = json.load(snapshot_file)
+    if not isinstance(snapshot, dict):
+        raise TypeError("snapshot root must be an object")
+    if snapshot.get("format_version") != _SNAPSHOT_FORMAT_VERSION:
+        raise ValueError(
+            f"unsupported snapshot format; expected version {_SNAPSHOT_FORMAT_VERSION}"
+        )
+    tenant = snapshot.get("source_tenant")
+    if not isinstance(tenant, dict):
+        raise TypeError("snapshot field 'source_tenant' must be an object")
+    if not isinstance(tenant.get("tenant_id"), int) or not isinstance(tenant.get("name"), str):
+        raise TypeError("snapshot source_tenant must contain integer tenant_id and string name")
+    _snapshot_player_rows(snapshot)
+    _snapshot_pick_rows(snapshot)
+    return snapshot
+
+
+def cmd_export_tenant_picks(args: argparse.Namespace) -> int:
+    """Export a tenant roster and all of its picks without exporting user data."""
+    settings = get_settings()
+    cfg = settings.psycopg_kwargs()
+    tenant_id = args.tenant_id
+    output_path = args.output
+
+    with get_connection(cfg) as conn, conn.cursor() as cur:
+        cur.execute("SELECT name FROM tenants WHERE tenant_id = %s", (tenant_id,))
+        tenant_row = cur.fetchone()
+        if not tenant_row:
+            print(f"error: no league with tenant_id={tenant_id}")
+            return 1
+
+        cur.execute("""
+            SELECT pigeon_number, pigeon_name, season_status, commissioner_notes
+              FROM players
+             WHERE tenant_id = %s
+             ORDER BY pigeon_number
+        """, (tenant_id,))
+        players = [
+            {
+                "pigeon_number": row[0],
+                "pigeon_name": row[1],
+                "season_status": row[2],
+                "commissioner_notes": row[3],
+            }
+            for row in cur.fetchall()
+        ]
+
+        cur.execute("""
+            SELECT p.pigeon_number, p.pigeon_name, g.espn_event_id, g.week_number,
+                   g.home_abbr, g.away_abbr, pk.picked_home, pk.predicted_margin, pk.created_at
+              FROM picks pk
+              JOIN players p ON p.player_id = pk.player_id
+              JOIN games g ON g.game_id = pk.game_id
+             WHERE p.tenant_id = %s
+             ORDER BY g.week_number, p.pigeon_number, g.espn_event_id
+        """, (tenant_id,))
+        picks = [
+            {
+                "pigeon_number": row[0],
+                "pigeon_name": row[1],
+                "espn_event_id": row[2],
+                "week_number": row[3],
+                "home_abbr": row[4],
+                "away_abbr": row[5],
+                "picked_home": row[6],
+                "predicted_margin": row[7],
+                "created_at": row[8].isoformat(),
+            }
+            for row in cur.fetchall()
+        ]
+
+    snapshot = {
+        "format_version": _SNAPSHOT_FORMAT_VERSION,
+        "source_tenant": {"tenant_id": tenant_id, "name": tenant_row[0]},
+        "players": players,
+        "picks": picks,
+    }
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, "w", encoding="utf-8") as snapshot_file:
+        json.dump(snapshot, snapshot_file, indent=2)
+        snapshot_file.write("\n")
+    print(f"[cli] Exported {len(players)} pigeons and {len(picks)} picks to {output_path}")
+    return 0
+
+
+def _require_local_development_import(settings) -> str | None:
+    """Return a safety error when an import target is not a local development DB."""
+    env = os.getenv("APP_ENV", "development").lower()
+    if env != "development":
+        return "import-tenant-picks is allowed only when APP_ENV=development"
+    if settings.pg_host.lower() not in _LOCAL_DB_HOSTS:
+        return "import-tenant-picks requires a localhost PostgreSQL host"
+    return None
+
+
+def cmd_import_tenant_picks(args: argparse.Namespace) -> int:
+    """Interactively import a snapshot into an existing localhost tenant."""
+    settings = get_settings()
+    safety_error = _require_local_development_import(settings)
+    if safety_error:
+        print(f"error: {safety_error}")
+        return 2
+    try:
+        snapshot = _load_tenant_snapshot(args.input)
+        source_players = _snapshot_player_rows(snapshot)
+        source_picks = _snapshot_pick_rows(snapshot)
+    except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        print(f"error: invalid snapshot: {exc}")
+        return 2
+
+    target_week = getattr(args, "week", None)
+    if target_week is not None:
+        target_week = _validated_week(target_week)
+        source_picks = [pick for pick in source_picks if pick["week_number"] == target_week]
+
+    cfg = settings.psycopg_kwargs()
+    target_tenant_id = args.tenant_id
+    with get_connection(cfg) as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT name FROM tenants WHERE tenant_id = %s", (target_tenant_id,))
+            target_tenant = cur.fetchone()
+            if not target_tenant:
+                print(f"error: no local league with tenant_id={target_tenant_id}")
+                return 1
+            target_name = target_tenant[0]
+            cur.execute("""
+                SELECT player_id, pigeon_number, pigeon_name, season_status, commissioner_notes
+                  FROM players
+                 WHERE tenant_id = %s
+                 ORDER BY pigeon_number
+            """, (target_tenant_id,))
+            local_players = [
+                {
+                    "player_id": row[0],
+                    "pigeon_number": row[1],
+                    "pigeon_name": row[2],
+                    "season_status": row[3],
+                    "commissioner_notes": row[4],
+                }
+                for row in cur.fetchall()
+            ]
+
+            if target_week is None:
+                cur.execute("""
+                    SELECT COUNT(*)
+                      FROM picks pk
+                      JOIN players p ON p.player_id = pk.player_id
+                     WHERE p.tenant_id = %s
+                """, (target_tenant_id,))
+            else:
+                cur.execute("""
+                    SELECT COUNT(*)
+                      FROM picks pk
+                      JOIN players p ON p.player_id = pk.player_id
+                      JOIN games g ON g.game_id = pk.game_id
+                     WHERE p.tenant_id = %s AND g.week_number = %s
+                """, (target_tenant_id, target_week))
+            count_row = cur.fetchone()
+            assert count_row is not None
+            existing_pick_count = count_row[0]
+
+            game_ids = [pick["espn_event_id"] for pick in source_picks]
+            games_by_event: dict[int, tuple[Any, ...]] = {}
+            if game_ids:
+                cur.execute("""
+                    SELECT espn_event_id, game_id, week_number, home_abbr, away_abbr
+                      FROM games
+                     WHERE espn_event_id = ANY(%s)
+                """, (game_ids,))
+                games_by_event = {row[0]: row for row in cur.fetchall()}
+
+        source_name = snapshot["source_tenant"]["name"]
+        source_id = snapshot["source_tenant"]["tenant_id"]
+        print(f"Snapshot source: tenant_id={source_id}, name='{source_name}'")
+        print(f"Local target:    tenant_id={target_tenant_id}, name='{target_name}'")
+        if source_id != target_tenant_id:
+            print("WARNING: source and target tenant IDs differ; this is allowed.")
+        if source_name != target_name:
+            print("WARNING: source and target tenant names differ; the local name will not change.")
+
+        local_by_name = {player["pigeon_name"].casefold(): player for player in local_players}
+        local_by_number = {player["pigeon_number"]: player for player in local_players}
+        player_by_source_number: dict[int, dict[str, Any]] = {}
+        used_local_ids: set[int] = set()
+        created_players: list[dict[str, Any]] = []
+
+        if target_week is None:
+            for source_player in source_players:
+                matched = local_by_name.get(source_player["pigeon_name"].casefold())
+                if matched:
+                    player_by_source_number[source_player["pigeon_number"]] = matched
+                    used_local_ids.add(matched["player_id"])
+
+            for source_player in source_players:
+                if source_player["pigeon_number"] in player_by_source_number:
+                    continue
+                matched = local_by_number.get(source_player["pigeon_number"])
+                if matched and matched["player_id"] not in used_local_ids:
+                    player_by_source_number[source_player["pigeon_number"]] = matched
+                    used_local_ids.add(matched["player_id"])
+                else:
+                    created_players.append(source_player)
+
+            conflicts: list[str] = []
+            for source_number, local_player in player_by_source_number.items():
+                occupant = local_by_number.get(source_number)
+                if occupant and occupant["player_id"] not in used_local_ids:
+                    conflicts.append(
+                        f"pigeon number {source_number} is held locally by "
+                        f"'{occupant['pigeon_name']}'")
+            for source_player in created_players:
+                occupant = local_by_number.get(source_player["pigeon_number"])
+                if occupant and occupant["player_id"] not in used_local_ids:
+                    conflicts.append(
+                        f"pigeon number {source_player['pigeon_number']} is held locally by "
+                        f"'{occupant['pigeon_name']}'")
+            if conflicts:
+                print("error: roster conflicts; no changes were made:")
+                for conflict in conflicts:
+                    print(f"  - {conflict}")
+                return 1
+
+            source_by_number = {player["pigeon_number"]: player for player in source_players}
+            for number, local_player in sorted(local_by_number.items()):
+                if number not in source_by_number:
+                    print(f"Roster: retain local-only pigeon {number} '{local_player['pigeon_name']}'")
+            for source_player in source_players:
+                number = source_player["pigeon_number"]
+                local_player = player_by_source_number.get(number)
+                if local_player is None:
+                    print(f"Roster: create pigeon {number} '{source_player['pigeon_name']}'")
+                elif local_player["pigeon_number"] != number:
+                    print(
+                        f"Roster: renumber '{local_player['pigeon_name']}' "
+                        f"{local_player['pigeon_number']} -> {number}"
+                    )
+                elif local_player["pigeon_name"] != source_player["pigeon_name"]:
+                    print(
+                        f"Roster: rename pigeon {number} '{local_player['pigeon_name']}' "
+                        f"-> '{source_player['pigeon_name']}'"
+                    )
+        else:
+            player_by_source_number = local_by_number
+            print(f"Roster: unchanged (--week {target_week})")
+
+        created_numbers = {player["pigeon_number"] for player in created_players}
+        validated_picks: list[tuple[dict[str, Any], int]] = []
+        pick_errors: list[str] = []
+        for source_pick in source_picks:
+            player = player_by_source_number.get(source_pick["pigeon_number"])
+            if not player and source_pick["pigeon_number"] not in created_numbers:
+                pick_errors.append(
+                    f"pigeon {source_pick['pigeon_number']} is missing from the local target"
+                )
+                continue
+            game = games_by_event.get(source_pick["espn_event_id"])
+            if not game:
+                pick_errors.append(f"ESPN event {source_pick['espn_event_id']} is missing locally")
+                continue
+            if game[2] != source_pick["week_number"] or game[3] != source_pick["home_abbr"] or game[4] != source_pick["away_abbr"]:
+                pick_errors.append(
+                    f"ESPN event {source_pick['espn_event_id']} does not match the local schedule"
+                )
+                continue
+            validated_picks.append((source_pick, game[1]))
+        if pick_errors:
+            print("error: pick validation failed; no changes were made:")
+            for message in pick_errors:
+                print(f"  - {message}")
+            return 1
+
+        scope = f"week {target_week}" if target_week is not None else "all weeks"
+        print(
+            f"Picks: replace {existing_pick_count} local picks with {len(validated_picks)} "
+            f"snapshot picks ({scope})."
+        )
+        try:
+            confirmation = input("\nType 'yes' to import: ")
+        except EOFError:
+            print("\n[cli] Aborted (interactive confirmation is required).")
+            return 0
+        if confirmation.strip().lower() != "yes":
+            print("[cli] Aborted.")
+            return 0
+
+        with conn.cursor() as cur:
+            if target_week is None:
+                changed_players = [
+                    (source_player, player_by_source_number[source_player["pigeon_number"]])
+                    for source_player in source_players
+                    if source_player["pigeon_number"] in player_by_source_number
+                ]
+                temp_number = max(
+                    [player["pigeon_number"] for player in local_players]
+                    + [player["pigeon_number"] for player in source_players]
+                    + [0]
+                ) + 1
+                for index, (_, local_player) in enumerate(changed_players):
+                    cur.execute(
+                        "UPDATE players SET pigeon_number = %s, pigeon_name = %s WHERE player_id = %s",
+                        (temp_number + index, f"__snapshot_import_{local_player['player_id']}_{index}", local_player["player_id"]),
+                    )
+                for source_player, local_player in changed_players:
+                    cur.execute("""
+                        UPDATE players
+                           SET pigeon_number = %s, pigeon_name = %s, season_status = %s,
+                               commissioner_notes = %s
+                         WHERE player_id = %s
+                    """, (
+                        source_player["pigeon_number"], source_player["pigeon_name"],
+                        source_player["season_status"], source_player["commissioner_notes"],
+                        local_player["player_id"],
+                    ))
+                for source_player in created_players:
+                    cur.execute("""
+                        INSERT INTO players (tenant_id, pigeon_number, pigeon_name, season_status, commissioner_notes)
+                        VALUES (%s, %s, %s, %s, %s)
+                        RETURNING player_id
+                    """, (
+                        target_tenant_id, source_player["pigeon_number"], source_player["pigeon_name"],
+                        source_player["season_status"], source_player["commissioner_notes"],
+                    ))
+                    player_id_row = cur.fetchone()
+                    assert player_id_row is not None
+                    player_by_source_number[source_player["pigeon_number"]] = {
+                        "player_id": player_id_row[0],
+                    }
+
+            pick_values = [
+                (
+                    player_by_source_number[source_pick["pigeon_number"]]["player_id"], game_id,
+                    source_pick["picked_home"], source_pick["predicted_margin"], source_pick["created_at"],
+                )
+                for source_pick, game_id in validated_picks
+            ]
+
+            if target_week is None:
+                cur.execute("""
+                    DELETE FROM picks pk
+                     USING players p
+                     WHERE pk.player_id = p.player_id AND p.tenant_id = %s
+                """, (target_tenant_id,))
+            else:
+                cur.execute("""
+                    DELETE FROM picks pk
+                     USING players p, games g
+                     WHERE pk.player_id = p.player_id AND pk.game_id = g.game_id
+                       AND p.tenant_id = %s AND g.week_number = %s
+                """, (target_tenant_id, target_week))
+            cur.execute("SET app.bypass_lock = 'on'")
+            cur.executemany("""
+                INSERT INTO picks (player_id, game_id, picked_home, predicted_margin, created_at)
+                VALUES (%s, %s, %s, %s, COALESCE(%s::timestamptz, now()))
+            """, pick_values)
+            cur.execute("RESET app.bypass_lock")
+        conn.commit()
+
+    print(f"[cli] Imported {len(pick_values)} picks into tenant_id={target_tenant_id}.")
+    return 0
+
 async def cmd_run_job(args: argparse.Namespace) -> int:
     """
     Run a scheduler job immediately (bypasses time gates/predicates).
@@ -375,7 +836,7 @@ def cmd_validate_rosters(args: argparse.Namespace) -> int:
 def cmd_create_league(args: argparse.Namespace) -> int:
     """
     Create a new league/tenant.
-    The commissioner must already have a user account. A placeholder player named
+    Creates the commissioner user when it does not already exist. A placeholder player named
     'Commissioner' (pigeon_number=1) is created; rename it via League Settings after login.
     Default lock times (weeks.default_lock_at) are copied into tenant_weeks if available.
     """
@@ -392,9 +853,15 @@ def cmd_create_league(args: argparse.Namespace) -> int:
             cur.execute("SELECT user_id FROM users WHERE lower(email) = %s", (email,))
             row = cur.fetchone()
             if not row:
-                print(f"error: user '{email}' not found. Create the user account first.")
-                return 1
-            user_id = row[0]
+                cur.execute(
+                    "INSERT INTO users (email, password_hash) VALUES (%s, %s) RETURNING user_id",
+                    (email, _bcrypt.hash(secrets.token_urlsafe(32))),
+                )
+                user_id = cur.fetchone()[0]  # type: ignore[index]
+                commissioner_created = True
+            else:
+                user_id = row[0]
+                commissioner_created = False
 
             cur.execute("INSERT INTO tenants (name) VALUES (%s) RETURNING tenant_id", (name,))
             tenant_id = cur.fetchone()[0]  # type: ignore[index]
@@ -434,6 +901,8 @@ def cmd_create_league(args: argparse.Namespace) -> int:
 
     print(f"[cli] League created: tenant_id={tenant_id}, name='{name}'")
     print(f"[cli]   Commissioner: {email}")
+    if commissioner_created:
+        print("[cli]   Commissioner account created; use Forgot Password before first login")
     print(f"[cli]   Lock times copied: {lock_count} weeks")
     print(f"[cli]   Placeholder player 'Commissioner' (player_id={player_id}) created")
     print("[cli]   -> Rename via League Settings after first login")
@@ -923,6 +1392,36 @@ def build_parser() -> argparse.ArgumentParser:
     group.add_argument("--max-week", type=int, help="Highest week to import")
     p_imp_pivot.set_defaults(func=cmd_import_picks_xlsx)
 
+    # export-tenant-picks
+    p_export_picks = sub.add_parser(
+        "export-tenant-picks",
+        help="Export a tenant roster and picks to JSON (read-only).",
+        description=(
+            "Writes pigeon details and picks, but never users, emails, or password hashes. "
+            "Run with APP_ENV=production to create a snapshot for localhost import."
+        ),
+    )
+    p_export_picks.add_argument("--tenant", dest="tenant_id", type=int, required=True,
+                                help="Source tenant_id to export")
+    p_export_picks.add_argument("--output", required=True, help="Destination JSON file")
+    p_export_picks.set_defaults(func=cmd_export_tenant_picks)
+
+    # import-tenant-picks
+    p_import_picks = sub.add_parser(
+        "import-tenant-picks",
+        help="Interactively import a tenant JSON snapshot into localhost.",
+        description=(
+            "Allowed only with APP_ENV=development and a localhost DB host. Without --week, "
+            "reconciles pigeons and replaces all target-tenant picks. With --week, leaves "
+            "pigeons unchanged and replaces only that week's picks. Always prompts for confirmation."
+        ),
+    )
+    p_import_picks.add_argument("--tenant", dest="tenant_id", type=int, required=True,
+                                help="Existing local target tenant_id")
+    p_import_picks.add_argument("--input", required=True, help="Source JSON snapshot file")
+    p_import_picks.add_argument("--week", type=int, help="Import only this week and leave pigeons unchanged")
+    p_import_picks.set_defaults(func=cmd_import_tenant_picks)
+
     # run-job
     p_run_job = sub.add_parser(
         "run-job",
@@ -967,13 +1466,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Create a new league and assign a commissioner.",
         description=(
             "Creates a tenant, a placeholder player, and adds the commissioner. "
-            "The commissioner must already have a user account. "
+            "Creates the commissioner user if it does not already exist; use Forgot Password "
+            "before the first login. "
             "Default lock times are copied from weeks.default_lock_at if available."
         ),
     )
     p_create.add_argument("--name", required=True, help="League name")
     p_create.add_argument("--commissioner-email", required=True, metavar="EMAIL",
-                          help="Email of an existing user to make commissioner")
+                          help="Email of the commissioner (a user is created if needed)")
     p_create.set_defaults(func=cmd_create_league)
 
     # delete-league

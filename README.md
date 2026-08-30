@@ -30,7 +30,6 @@ Note: there is no .env.production.local; production secrets are stored as Azure 
 ### 1. DB setup
 1. Install PostgreSQL, take all the defaults (they should match backend/.env), create a DB called "pigeon_pool", note the password
 2. Run database/schema.sql to create the DB schema
-3. Add yourself as an admin user and pigeon using the database/queries/add_user.sql script
 
 ### 2. Backend API setup
 1. Create a backend/.env.development.local file and add these lines:
@@ -54,19 +53,26 @@ pip install -r backend/requirements-dev.txt  # local linting and type checking o
 python -m backend.cli sync-schedule
 ```
 
-4. Run the CLI to sync historic pigeon picks from previous weeks into the DB
+4. Create the initial league and its commissioner account
+```bash
+python -m backend.cli create-league --name "Pigeon Pool" --commissioner-email admin@example.com
+```
+`create-league` creates the commissioner user when needed. Start the app and use **Forgot Password**
+to set the commissioner's password before their first login.
+
+5. Run the CLI to sync historic pigeon picks from previous weeks into the DB
 First, get a copy of picks 2025.xlsx (not checked in for privacy reasons). Then:
 ```bash
 python -m backend.cli import-picks-xlsx
 ```
 
-5. Run the CLI to sync historic scores from previous weeks into the DB
+6. Run the CLI to sync historic scores from previous weeks into the DB
 For example, to sync scores from the first 6 weeks of the season:
 ```bash
 python -m backend.cli sync-scores 6
 ```
 
-6. Start the server
+7. Start the server
 ```bash
 uvicorn backend.main:app --reload --port 8000
 ```
@@ -139,12 +145,44 @@ delete `backend/.env.production.local` once you're done with production CLI work
 Either way, unset `APP_ENV` (or open a new shell) afterward so you don't accidentally point a
 later local command at production.
 
+### Copying a production roster and picks to localhost
+Use a JSON snapshot when you need production pigeon names/numbers and picks for local
+troubleshooting. Snapshots contain pigeon details and picks only; they never include users,
+email addresses, password hashes, or sessions.
+
+First, with the production environment configured as above, export the source tenant:
+```powershell
+conda activate pigeon
+$env:APP_ENV = "production"
+python -m backend.cli export-tenant-picks --tenant 1 --output snapshots/production-tenant-1.json
+```
+
+Open a new PowerShell window (or unset `APP_ENV`) before importing. The local target tenant must
+already exist and have a locally synced NFL schedule. The importer only runs when
+`APP_ENV=development` and the database host is localhost. It displays every planned roster change
+and pick replacement, then requires you to type `yes`:
+```powershell
+conda activate pigeon
+python -m backend.cli sync-schedule
+python -m backend.cli import-tenant-picks --tenant 1 --input snapshots/production-tenant-1.json
+```
+
+Without `--week`, import reconciles pigeons by name first (including renumbering), creates missing
+pigeons, retains non-conflicting local-only pigeons, and replaces all picks in the target tenant.
+To refresh just one week's picks later in the season without changing pigeons, use:
+```powershell
+python -m backend.cli import-tenant-picks --tenant 1 --input snapshots/production-tenant-1.json --week 6
+```
+Source and target tenant IDs and names are shown for comparison but never changed; different IDs
+are allowed. Import stops before making changes if a local-only pigeon occupies a number needed by
+the snapshot or if its games do not match the local schedule.
+
 ### League (tenant) management
 ```bash
 python -m backend.cli list-leagues
 # Read-only roster validation for all leagues (add --tenant ID or --json as needed)
 python -m backend.cli validate-rosters
-# Create a new league (commissioner must already have a user account)
+# Create a new league (creates the commissioner user if needed)
 python -m backend.cli create-league --name "My Pool" --commissioner-email admin@example.com
 # Delete a league and all its data (orphaned users are also deleted)
 python -m backend.cli delete-league <tenant_id> --yes
@@ -156,7 +194,7 @@ Integrity errors return a nonzero exit code. Global users with no tenant or pige
 are printed as informational warnings and are never deleted by this command.
 
 New-league onboarding flow:
-1. Run `create-league` — creates the tenant and a placeholder "Commissioner" player
+1. Run `create-league` — creates the commissioner user if needed, plus the tenant and a placeholder "Commissioner" player
 2. Commissioner logs in; their new league appears in the tenant switcher
 3. Commissioner goes to League Settings → Roster to add pigeons with their owner and optional managers
 4. New users visit the site and use "Forgot Password" to set their password before first login

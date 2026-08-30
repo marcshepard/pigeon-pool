@@ -120,6 +120,9 @@ never repairs or deletes data and exits nonzero only when integrity errors are p
 
 - **No self-registration.** A commissioner always creates users; a user with no tenant is a
   setup error, not a UX state.
+- **League bootstrap creates its commissioner.** `create-league` creates the global commissioner
+  user when it does not exist; the commissioner sets their password through "Forgot Password"
+  before first login.
 - **No invite email.** New users go to the site and use "Forgot Password" to set their
   password before first login — avoids spam-folder issues with transactional email from a
   new domain, and keeps the CLI-driven onboarding simple.
