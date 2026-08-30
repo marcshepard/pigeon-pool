@@ -105,6 +105,68 @@ async def get_week_picks(
 
 
 # ---------------------------------------------------------------------------
+# Admin week pick-submission status (who has / hasn't entered picks)
+#
+# This does NOT expose pick contents, so it is safe to call before a week
+# locks -- unlike get_week_picks / the player-facing results endpoints, which
+# read the lock-gated v_week_picks_with_names view. The commissioner uses this
+# to nag players who have not submitted yet.
+# ---------------------------------------------------------------------------
+
+WEEK_PICK_STATUS_SQL = text("""
+    SELECT
+      pl.pigeon_number,
+      pl.pigeon_name,
+      COUNT(pk.game_id) > 0
+        AND COUNT(pk.game_id) = (SELECT COUNT(*) FROM games WHERE week_number = :week)
+        AS submitted
+    FROM players pl
+    LEFT JOIN picks pk ON pk.player_id = pl.player_id
+    LEFT JOIN games  g  ON g.game_id = pk.game_id AND g.week_number = :week
+    WHERE pl.tenant_id = :tenant_id
+    GROUP BY pl.pigeon_number, pl.pigeon_name
+    ORDER BY submitted, pl.pigeon_number
+""")
+
+
+class PickStatusRow(BaseModel):
+    """One pigeon's pick-submission status for a week (no pick contents)."""
+    pigeon_number: int
+    pigeon_name: str
+    submitted: bool  # all games picked; a partial set counts as not submitted
+
+
+@router.get(
+    "/weeks/{week}/pick-status",
+    response_model=list[PickStatusRow],
+    summary="Per-pigeon pick-submission status for a week (commissioner only)",
+)
+async def get_week_pick_status(
+    week: int,
+    db: AsyncSession = Depends(get_db),
+    me=Depends(require_admin),
+):
+    """
+    Return every pigeon in the tenant with a flag for whether it has entered
+    picks for the week. Contains no pick contents, so it is safe before lock.
+    """
+    debug("admin: get_week_pick_status called", user=me.pigeon_number, week=week)
+    rows = (await db.execute(
+        WEEK_PICK_STATUS_SQL, {"week": week, "tenant_id": me.tenant_id}
+    )).fetchall()
+    info("admin: week pick-status rows", week=week, count=len(rows))
+
+    return [
+        PickStatusRow(
+            pigeon_number=r[0],
+            pigeon_name=r[1],
+            submitted=bool(r[2]),
+        )
+        for r in rows
+    ]
+
+
+# ---------------------------------------------------------------------------
 # League (tenant) settings
 # ---------------------------------------------------------------------------
 

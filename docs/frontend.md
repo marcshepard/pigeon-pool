@@ -31,6 +31,12 @@ React + TypeScript + Vite + MUI application.
   while failed mutations leave displayed state unchanged. The optional Notes and Status columns
   can be hidden from the Columns menu; visibility is stored in the browser per tenant. New and
   Delete are hidden once any week is locked.
+- **Admin Locks & Picks page**: The week selector offers only not-yet-started weeks. For a week
+  that has not locked yet it shows a pick-submission status list from `/admin/weeks/{week}/pick-status`
+  (pigeon number, name, and a Submitted / Not submitted chip, with a filter defaulting to
+  "Not submitted") — never the picks themselves, so the commissioner gains no preview of margins.
+  Once a week has locked it shows the full picks grid from `/admin/weeks/{week}/picks`. See
+  architecture.md "Pre-lock pick visibility".
 - **Roster people fields**: Owner and additional managers are edited together with free-text email
   autocomplete over people already visible in the league roster. The owner is optional; a pigeon
   with no assigned people is displayed as “Not using the app.” Email text can be copied and pasted

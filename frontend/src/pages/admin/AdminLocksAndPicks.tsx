@@ -7,11 +7,22 @@ import {
   Alert,
   Box,
   Button,
+  Chip,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
+  Paper,
+  Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   Typography,
 } from "@mui/material";
 import { useSchedule } from "../../hooks/useSchedule";
@@ -21,11 +32,13 @@ import {
   adminGetWeeksLocks,
   adminAdjustWeekLock,
   adminGetWeekPicks,
+  adminGetWeekPickStatus,
   adminBulkImportPicks,
 } from "../../backend/fetch";
 import {
     AdminWeekLock,
     Game,
+    PickStatusRow,
     WeekPicksRow,
 } from "../../backend/types";
 import { LabeledSelect, PickCell } from "../../components/CommonComponents";
@@ -153,6 +166,93 @@ function ViewPicks({ week }: { week: number }) {
   );
 }
 
+type StatusFilter = "not_submitted" | "submitted" | "all";
+
+/**
+ * Pre-lock view: shows only whether each pigeon has entered picks, never the
+ * picks themselves, so the commissioner can nag non-submitters without gaining
+ * an unfair preview of everyone's margins.
+ */
+function PickStatus({ week }: { week: number }) {
+  const [rows, setRows] = useState<PickStatusRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState<StatusFilter>("not_submitted");
+
+  useEffect(() => {
+    setLoading(true);
+    setError(null);
+    adminGetWeekPickStatus(week)
+      .then(setRows)
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+      .finally(() => setLoading(false));
+  }, [week]);
+
+  const notSubmitted = rows.filter((r) => !r.submitted);
+  const submitted = rows.filter((r) => r.submitted);
+  const visible =
+    filter === "not_submitted" ? notSubmitted : filter === "submitted" ? submitted : rows;
+
+  return (
+    <Box p={3}>
+      {loading && <Alert severity="info">Loading…</Alert>}
+      {error && <Alert severity="error">{error}</Alert>}
+      {!loading && !error && (
+        <Stack spacing={2} alignItems="center">
+          <ToggleButtonGroup
+            size="small"
+            exclusive
+            value={filter}
+            onChange={(_, next: StatusFilter | null) => next && setFilter(next)}
+          >
+            <ToggleButton value="not_submitted">
+              Not submitted ({notSubmitted.length})
+            </ToggleButton>
+            <ToggleButton value="submitted">Submitted ({submitted.length})</ToggleButton>
+            <ToggleButton value="all">All ({rows.length})</ToggleButton>
+          </ToggleButtonGroup>
+
+          <TableContainer component={Paper} variant="outlined" sx={{ maxWidth: 480 }}>
+            <Table size="small" aria-label={`Pick status for week ${week}`}>
+              <TableHead>
+                <TableRow>
+                  <TableCell align="right" sx={{ width: 72 }}>Number</TableCell>
+                  <TableCell>Pigeon</TableCell>
+                  <TableCell sx={{ width: 130 }}>Status</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {visible.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={3} align="center">
+                      No pigeons match this filter.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  visible.map((r) => (
+                    <TableRow key={r.pigeon_number} hover>
+                      <TableCell align="right">{r.pigeon_number}</TableCell>
+                      <TableCell sx={{ overflowWrap: "anywhere" }}>{r.pigeon_name}</TableCell>
+                      <TableCell>
+                        <Chip
+                          size="small"
+                          variant="outlined"
+                          color={r.submitted ? "success" : "warning"}
+                          label={r.submitted ? "Submitted" : "Not submitted"}
+                        />
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Stack>
+      )}
+    </Box>
+  );
+}
+
 export default function AdminLocksAndPicks() {
   const { me } = useAuth();
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -225,6 +325,12 @@ export default function AdminLocksAndPicks() {
   const eligible = isFutureWeek || isCurrentScheduled;
   const lockRow = weekLocks.find((l) => l.week_number === selectedWeek);
   const firstKickoff = games.length > 0 ? new Date(games[0].kickoff_at) : null;
+
+  // Before a week locks, players must not see each other's picks, so the
+  // commissioner only gets submission status. Once locked, the full grid is safe.
+  const shownWeek = selectedWeek ?? nextUnstartedWeek;
+  const shownWeekLock = weekLocks.find((l) => l.week_number === shownWeek);
+  const shownWeekLocked = shownWeekLock != null && shownWeekLock.lock_at.getTime() <= Date.now();
 
   return (
     <Box sx={{ mt: 4 }}>
@@ -393,7 +499,11 @@ export default function AdminLocksAndPicks() {
         </Box>
       )}
 
-      <ViewPicks week={selectedWeek ?? nextUnstartedWeek} />
+      {shownWeekLocked ? (
+        <ViewPicks week={shownWeek} />
+      ) : (
+        <PickStatus week={shownWeek} />
+      )}
     </Box>
   );
 }

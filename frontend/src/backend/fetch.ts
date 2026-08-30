@@ -17,6 +17,7 @@ import {
   PickOut,
   PicksBulkIn,
   WeekPicksRow,
+  PickStatusRow,
   type AdminBulkEmailRequest,
   type PayoutRow,
 } from "./types";
@@ -363,6 +364,21 @@ export function adminGetWeekPicks(week: number): Promise<WeekPicksRow[]> {
     factory: (data: unknown) => {
       if (!Array.isArray(data)) throw new Error("Invalid payload: expected array");
       return data.map((row) => new WeekPicksRow(row));
+    },
+  });
+}
+
+/**
+ * Fetch per-pigeon pick-submission status for a week (admin only).
+ * Contains no pick contents, so it is safe to call before the week locks.
+ * Backend will return 403 if the user is not admin.
+ */
+export function adminGetWeekPickStatus(week: number): Promise<PickStatusRow[]> {
+  return apiFetch(`/admin/weeks/${week}/pick-status`, {
+    method: "GET",
+    factory: (data: unknown) => {
+      if (!Array.isArray(data)) throw new Error("Invalid payload: expected array");
+      return data.map((row) => new PickStatusRow(row));
     },
   });
 }

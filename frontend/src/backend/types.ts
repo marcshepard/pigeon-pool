@@ -414,6 +414,27 @@ export class WeekPicksRow {
   }
 }
 
+/**
+ * One pigeon's pick-submission status for a week (admin only, no pick contents).
+ * Safe to fetch before the week locks.
+ */
+export class PickStatusRow {
+  pigeon_number: number;
+  pigeon_name: string;
+  submitted: boolean; // all games picked; a partial set counts as not submitted
+
+  constructor(data: unknown) {
+    if (!isRecord(data)) throw new DataValidationError("Invalid PickStatusRow (not an object)");
+    if (!isNumber(data.pigeon_number)) throw new DataValidationError("pigeon_number must be number");
+    if (!isString(data.pigeon_name)) throw new DataValidationError("pigeon_name must be string");
+    if (!isBoolean(data.submitted)) throw new DataValidationError("submitted must be boolean");
+
+    this.pigeon_number = data.pigeon_number;
+    this.pigeon_name = data.pigeon_name;
+    this.submitted = data.submitted;
+  }
+}
+
 /** Leaderboard row for one week (lower score is better). */
 export class LeaderboardRow {
   pigeon_number: number;

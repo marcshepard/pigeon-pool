@@ -32,8 +32,10 @@ the durable reference — for directory structure and frontend data flows see
   tenant's picks should be trusted as gated.
 - **`players.season_status`** (`pending` / `active` / `out`) — tracks whether a returning
   pigeon is confirmed in for the season. Resets to `pending` for everyone on `reset-season`.
-  Currently informational only (Roster tab display/edit) — nothing blocks a `pending` player
-  from submitting picks once their week unlocks.
+  **Purely informational and must stay that way**: it is only displayed/edited on the Roster
+  tab and offered as a filter in the "get email addresses" dialog. No query anywhere may gate
+  picks, scoring, standings, leaderboards, YTD, payouts, nag mail, or the admin pick-status
+  list by it. If you find `season_status` affecting any of those, that is a bug.
 - **`players.commissioner_notes`** — private free-text notes (up to 2,000 characters) available
   only through commissioner roster endpoints. Member-facing APIs, results, and emails do not
   expose them.
@@ -103,6 +105,20 @@ tenant-scoped; simultaneous edits of the same pigeon use last-write-wins behavio
 
 The obsolete split `/admin/users` workflow and partial admin pigeon `PATCH` endpoint were removed.
 The member-facing pigeon-name endpoint remains separate because it has different authorization.
+
+### Pre-lock pick visibility
+
+No one — commissioner included — may see another pigeon's pick contents before a week locks,
+because the last person to submit would otherwise gain an unfair preview. The player-facing
+results endpoints and `GET /admin/weeks/{week}/picks` all read `v_week_picks_with_names`, whose
+`WHERE tw.lock_at <= now()` clause enforces this.
+
+So the commissioner can still chase down non-submitters, `GET /admin/weeks/{week}/pick-status`
+returns one row per pigeon with a `submitted` boolean and **no pick contents** — safe to call
+before lock. `submitted` is true only when the pigeon has a pick for every game that week; a
+partial set (which the pick-entry UX should never produce) counts as not submitted. The admin
+Locks & Picks page shows this status list for a not-yet-locked week and the full picks grid once
+the week has locked.
 
 Before deploying roster changes, run the read-only integrity validator:
 

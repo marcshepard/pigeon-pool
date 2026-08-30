@@ -658,3 +658,50 @@ def test_import_picks_xlsx_success_for_original_tenant(client, comm_headers, mon
     assert resp.status_code == 200
     assert resp.json() == {"processed": 7}
     assert captured["week"] == 3
+
+
+# ── pre-lock pick-submission status ──────────────────────────────────────────
+
+def test_pick_status_member_forbidden(client, member_headers, scored_games):
+    week = scored_games["submission_week"]
+    resp = client.get(f"/admin/weeks/{week}/pick-status", headers=member_headers)
+    assert resp.status_code == 403
+
+
+def test_pick_status_unlocked_week_lists_all_pigeons_without_contents(
+    client, comm_headers, test_data, scored_games
+):
+    """
+    The commissioner can see who has / hasn't submitted for a week that has NOT
+    locked yet, but the response never carries pick contents -- so it gives no
+    unfair preview of anyone's margins.
+    """
+    week = scored_games["submission_week"]  # week 17, unlocked for tenant A
+
+    resp = client.get(f"/admin/weeks/{week}/pick-status", headers=comm_headers)
+    assert resp.status_code == 200
+    rows = resp.json()
+
+    # All three tenant-A pigeons appear, none marked submitted, and each row
+    # carries only identity + a boolean flag.
+    assert {r["pigeon_number"] for r in rows} == {1, 2, 3}
+    assert all(r["submitted"] is False for r in rows)
+    assert all(set(r.keys()) == {"pigeon_number", "pigeon_name", "submitted"} for r in rows)
+
+    # The player-facing endpoint for the same week stays locked.
+    assert client.get(f"/results/weeks/{week}/picks", headers=comm_headers).status_code == 409
+
+
+def test_pick_status_partial_slate_counts_as_not_submitted(
+    client, comm_headers, test_data, scored_games, insert_pick
+):
+    """A pigeon that has picked some but not all of the week's games is not 'submitted'."""
+    week = scored_games["submission_week"]
+    insert_pick(test_data["comm_pid"], scored_games["submission_gid"], picked_home=True, predicted_margin=3)
+
+    resp = client.get(f"/admin/weeks/{week}/pick-status", headers=comm_headers)
+    assert resp.status_code == 200
+    rows = {r["pigeon_number"]: r for r in resp.json()}
+
+    # Week 17 has a full real slate, so one inserted pick is a partial set.
+    assert rows[1]["submitted"] is False
