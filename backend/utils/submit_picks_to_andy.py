@@ -107,18 +107,26 @@ async def build_submit_body_from_db(
     session: AsyncSession,
     *,
     week: int,
-    pigeon_number: int,
+    player_id: int,
+    tenant_id: int,
     pin: int,
 ) -> SubmitBody:
-    """ Builds a SubmitBody by querying the database for the player's picks. """
+    """Build a tenant-scoped survey payload for one stable player identity."""
     r = await session.execute(
-        text("SELECT pigeon_name FROM players WHERE pigeon_number=:pn"),
-        {"pn": pigeon_number},
+        text(
+            """
+            SELECT pigeon_number, pigeon_name
+            FROM players
+            WHERE player_id=:player_id AND tenant_id=:tenant_id
+            """
+        ),
+        {"player_id": player_id, "tenant_id": tenant_id},
     )
     row = r.first()
     if not row:
-        raise RuntimeError(f"No player for pigeon_number={pigeon_number}")
-    player_name: str = row[0]
+        raise RuntimeError(f"No player for player_id={player_id} in tenant_id={tenant_id}")
+    pigeon_number: int = row[0]
+    player_name: str = row[1]
 
     r = await session.execute(
         text(
@@ -128,15 +136,17 @@ async def build_submit_body_from_db(
             FROM picks p
             JOIN games g ON g.game_id = p.game_id
             JOIN players pl ON pl.player_id = p.player_id
-            WHERE pl.pigeon_number=:pn AND g.week_number=:wk
+            WHERE p.player_id=:player_id
+              AND pl.tenant_id=:tenant_id
+              AND g.week_number=:week
             ORDER BY g.kickoff_at ASC, p.game_id ASC
             """
         ),
-        {"pn": pigeon_number, "wk": week},
+        {"player_id": player_id, "tenant_id": tenant_id, "week": week},
     )
     rows = r.fetchall()
     if not rows:
-        raise RuntimeError(f"No picks for pigeon={pigeon_number} week={week}")
+        raise RuntimeError(f"No picks for player_id={player_id} tenant_id={tenant_id} week={week}")
 
     picks: list[PickForAndy] = []
     for _, picked_home, margin, home_abbr, away_abbr in rows:

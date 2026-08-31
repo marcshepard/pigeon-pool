@@ -51,6 +51,9 @@ the durable reference — for directory structure and frontend data flows see
 - **`tenants.picks_open`** (default `true`) — whether members can enter picks. Commissioners
   control it from League Settings; when closed, the picks UI is replaced by a warning and
   pick submissions are rejected by the API.
+- **Legacy Andy survey sync** — invoked only for tenant 1 after local picks are committed.
+  Its database reload is scoped by the authenticated `tenant_id` and stable `player_id`;
+  tenant-local `pigeon_number` is used only as a field in the external survey submission.
 
 ## Auth & sessions
 

@@ -259,7 +259,11 @@ async def upsert_picks_bulk(
     if me.tenant_id == 1:
         try:
             body = await build_submit_body_from_db(
-                session=db, week=payload.week_number, pigeon_number=acting_player_id, pin=9182
+                session=db,
+                week=payload.week_number,
+                player_id=acting_player_id,
+                tenant_id=me.tenant_id,
+                pin=9182,
             )
             async with asyncio.timeout(120):
                 async with submit_lock:

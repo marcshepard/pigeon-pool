@@ -5,10 +5,13 @@ Pick submission and retrieval tests.
 import asyncio
 from typing import cast
 
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.pool import NullPool
 
 from backend.routes.auth import AuthUser
 from backend.routes.picks import _resolve_acting_player
+from backend.utils.settings import get_settings
+from backend.utils.submit_picks_to_andy import build_submit_body_from_db
 
 # ── GET picks ─────────────────────────────────────────────────────────────────
 
@@ -132,6 +135,41 @@ def test_commissioner_god_mode_allowed_in_tenant_one():
     db = cast(AsyncSession, _FakeDB(row=(1,)))  # test double for AsyncSession.execute
     result = asyncio.run(_resolve_acting_player(db, me, requested_player_id=999))
     assert result == 999
+
+
+def test_andy_survey_payload_is_scoped_by_player_and_tenant(
+    scored_games, insert_pick, test_data
+):
+    """Same-numbered pigeons in another tenant must not enter Andy's payload."""
+    week = scored_games["submission_week"]
+    game_id = scored_games["submission_gid"]
+    insert_pick(test_data["comm_pid"], game_id, picked_home=True, predicted_margin=7)
+    insert_pick(test_data["b_pid"], game_id, picked_home=False, predicted_margin=31)
+
+    async def _build_payload():
+        engine = create_async_engine(
+            get_settings().sqlalchemy_async_url(),
+            poolclass=NullPool,
+        )
+        try:
+            async with AsyncSession(engine) as session:
+                return await build_submit_body_from_db(
+                    session,
+                    week=week,
+                    player_id=test_data["comm_pid"],
+                    tenant_id=test_data["tenant_a_id"],
+                    pin=9182,
+                )
+        finally:
+            await engine.dispose()
+
+    body = asyncio.run(_build_payload())
+
+    assert body.pigeon_number == 1
+    assert body.player_name == "_TestComm"
+    assert len(body.picks) == 1
+    assert body.picks[0].winner == "home"
+    assert body.picks[0].spread == 7
 
 
 def test_member_cannot_submit_for_unmanaged_player(client, member_headers, scored_games, test_data):
