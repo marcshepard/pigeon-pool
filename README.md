@@ -266,3 +266,4 @@ we go standalone next year, the following changes should be made to the BE (or a
 | [docs/contributing.md](docs/contributing.md) | Running the backend and frontend test suites |
 | [docs/frontend.md](docs/frontend.md) | Frontend directory structure, key data flows, build commands |
 | [docs/architecture.md](docs/architecture.md) | Multi-tenancy data model, auth/JWT, onboarding model, scheduler, known limitations |
+| [LOGIN_FIXES.md](LOGIN_FIXES.md) | Deferred high-priority login and session security work |

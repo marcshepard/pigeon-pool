@@ -68,6 +68,9 @@ async def get_all_player_emails(
     - If provided: only users mapped to those players.
     - include_viewers=False will exclude viewer-only accounts.
     """
+    if player_ids is not None and not player_ids:
+        return []
+
     base_sql = """
         SELECT DISTINCT lower(u.email) AS email
           FROM user_players up
@@ -77,7 +80,7 @@ async def get_all_player_emails(
     params = {}
     filters = []
 
-    if player_ids:
+    if player_ids is not None:
         filters.append("up.player_id IN :nums")
         params["nums"] = tuple({int(n) for n in player_ids})
     if not include_viewers:

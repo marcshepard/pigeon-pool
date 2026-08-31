@@ -1151,6 +1151,7 @@ async def import_picks_xlsx_api(
             import_picks_pivot_xlsx_with_engine,
             tmp_path,
             week,
+            me.tenant_id,
         )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Import failed: {exc}") from exc

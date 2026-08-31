@@ -109,6 +109,27 @@ def test_commissioner_cannot_submit_for_unmanaged_player_outside_tenant_one(clie
     assert resp.status_code == 403
 
 
+def test_cannot_submit_for_owned_player_in_another_tenant(
+    client, comm_headers, scored_games, test_data
+):
+    """Ownership elsewhere must not authorize a pick write from the active tenant."""
+    assert test_data["tenant_a_id"] != 1
+    resp = client.post(
+        f"/picks?player_id={test_data['b_pid']}",
+        json={
+            "week_number": scored_games["submission_week"],
+            "picks": [{
+                "game_id": scored_games["submission_gid"],
+                "picked_home": True,
+                "predicted_margin": 10,
+            }],
+        },
+        headers=comm_headers,
+    )
+
+    assert resp.status_code == 403
+
+
 class _FakeResult:
     def __init__(self, row):
         self._row = row

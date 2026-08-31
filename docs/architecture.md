@@ -54,6 +54,9 @@ the durable reference — for directory structure and frontend data flows see
 - **Legacy Andy survey sync** — invoked only for tenant 1 after local picks are committed.
   Its database reload is scoped by the authenticated `tenant_id` and stable `player_id`;
   tenant-local `pigeon_number` is used only as a field in the external survey submission.
+  Acting for an owned/managed pigeon is restricted to the active tenant. The reciprocal XLSX
+  import is tenant-1-only and resolves spreadsheet pigeon numbers through a tenant-1 player map
+  before upserting picks.
 
 ## Auth & sessions
 
@@ -165,7 +168,9 @@ sync, and weekly emails, rather than an external trigger service:
 Weekly email jobs (`run_email_sun` / `run_email_mon` / `run_email_tue_warn`) loop per tenant
 and filter recipients by `tenant_id` — required once a second tenant exists, since the
 underlying queries (`tenant_weeks`, `v_weekly_leaderboard`, recipient lists) are otherwise
-tenant-agnostic.
+tenant-agnostic. Recipient helpers distinguish an omitted player scope (all players) from an
+empty scope (no recipients), so a tenant with no missing picks cannot fall through to a global
+email list.
 
 ## Known limitations / out of scope
 

@@ -639,8 +639,9 @@ def test_import_picks_xlsx_success_for_original_tenant(client, comm_headers, mon
 
     captured = {}
 
-    def fake_import(tmp_path, week):
+    def fake_import(tmp_path, week, tenant_id):
         captured["week"] = week
+        captured["tenant_id"] = tenant_id
         return 7
 
     monkeypatch.setattr("backend.routes.admin.import_picks_pivot_xlsx_with_engine", fake_import)
@@ -658,6 +659,7 @@ def test_import_picks_xlsx_success_for_original_tenant(client, comm_headers, mon
     assert resp.status_code == 200
     assert resp.json() == {"processed": 7}
     assert captured["week"] == 3
+    assert captured["tenant_id"] == 1
 
 
 # ── pre-lock pick-submission status ──────────────────────────────────────────

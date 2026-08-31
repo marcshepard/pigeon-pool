@@ -11,6 +11,7 @@ import type { ReactNode } from "react";
 import { apiMe, apiLogin, apiLogout, apiSelectTenantContext } from "../backend/fetch";
 import { type AuthContextValue, type AuthState, AuthCtx } from "./authContextObjects";
 import { LoginPayload } from "../backend/types";
+import { useAppCache } from "../hooks/useAppCache";
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>({ status: "unknown" });
@@ -20,12 +21,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const user = await apiMe();
       setState({ status: "signedIn", user });
     } catch {
+      useAppCache.getState().invalidateAll();
       setState({ status: "signedOut" });
     }
   };
 
   const signIn = async (payload: LoginPayload) => {
     await apiLogin(payload);
+    useAppCache.getState().invalidateAll();
     await refresh();
   };
 
@@ -33,12 +36,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await apiLogout();
     } finally {
+      useAppCache.getState().invalidateAll();
       setState({ status: "signedOut" });
     }
   };
 
   const switchTenant = async (tenant_id: number) => {
     await apiSelectTenantContext(tenant_id);
+    useAppCache.getState().invalidateAll();
     // Reload so all page-level data re-fetches against the new tenant.
     // TODO (future milestone): invalidate per-page query caches instead of full reload.
     window.location.reload();

@@ -154,7 +154,13 @@ export const useAppCache = create<AppCacheState>()(
         return Date.now() - entry.at > get().ttlMs ? null : entry.data;
       },
 
-      invalidateAll: () => set({ resultsByWeek: {}, ytd: null, payouts: null, poolInfo: null }),
+      invalidateAll: () => set({
+        currentWeek: null,
+        resultsByWeek: {},
+        ytd: null,
+        payouts: null,
+        poolInfo: null,
+      }),
 
       sweep: () => {
         const now = Date.now();

@@ -103,8 +103,10 @@ AUTHZ_SQL = text("""
     SELECT 1
       FROM user_players up
       JOIN users u ON u.user_id = up.user_id
+      JOIN players p ON p.player_id = up.player_id
      WHERE lower(u.email) = lower(:email)
        AND up.player_id = :player_id
+       AND p.tenant_id = :tenant_id
        AND up.role IN ('owner','manager')
      LIMIT 1
 """)
@@ -171,7 +173,12 @@ async def _resolve_acting_player(
 
     # Must be owner or manager for that player
     row = (await db.execute(
-        AUTHZ_SQL, {"email": me.email, "player_id": requested_player_id}
+        AUTHZ_SQL,
+        {
+            "email": me.email,
+            "player_id": requested_player_id,
+            "tenant_id": me.tenant_id,
+        },
     )).first()
     if not row:
         raise HTTPException(status_code=403, detail=f"Not allowed for player {requested_player_id}")

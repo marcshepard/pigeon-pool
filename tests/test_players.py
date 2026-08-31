@@ -33,12 +33,12 @@ def test_rename_unowned_pigeon_forbidden(client, member_headers, test_data):
     assert resp.status_code == 403
 
 
-def test_rename_cross_tenant_not_found(client, tenant_b_headers, test_data):
+def test_rename_cross_tenant_forbidden(client, tenant_b_headers, test_data):
     """Token scoped to Tenant B trying to rename a Tenant A player (even one the same login owns)."""
     resp = client.patch(
         f"/players/{test_data['comm_pid']}/name", json={"pigeon_name": "Hijacked"}, headers=tenant_b_headers
     )
-    assert resp.status_code == 404
+    assert resp.status_code == 403
 
 
 def test_rename_duplicate_name_conflict(client, member_headers, test_data):
