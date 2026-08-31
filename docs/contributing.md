@@ -93,6 +93,22 @@ migration. Application rollback normally leaves additive schema in place; do not
 downgrade production. If a migration fails, inspect the startup/Alembic logs and `current` from
 Kudu/SSH; never use `stamp` to conceal the failure.
 
+### Migration failure and recovery
+
+- If an upgrade fails, preserve its error output and check `alembic current` before retrying.
+  PostgreSQL migrations are transactional where supported, so confirm whether the failed revision
+  rolled back rather than guessing from partial logs.
+- Fix a revision in place only when it has never succeeded in a shared environment. Once a
+  revision has reached another developer database or production, make the repair in a new
+  corrective revision.
+- If application deployment fails after a backward-compatible additive migration, leave the
+  schema in place and roll back the application artifact. Do not downgrade reflexively.
+- If a destructive migration damages production data, stop writes if necessary and use Azure
+  point-in-time restore. Before reconnecting the application, verify both the restored data and
+  its Alembic revision are compatible with the deployed backend.
+- `stamp` records a revision without applying its DDL. It was used only for the completed baseline
+  enrollment and is not a normal repair, upgrade, or deployment command.
+
 ## Backend static checks
 
 Install the local-only tools from `backend/requirements-dev.txt`, then run Ruff and

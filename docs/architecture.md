@@ -178,6 +178,11 @@ database rollback is a restore operation, not an automatic Alembic downgrade. If
 later scaled beyond the current B1 topology or moved to deployment slots, revisit the release
 orchestration and health verification while retaining database-level serialization.
 
+The Alembic cutover was verified on August 31, 2026. Desktop, laptop, and Azure were enrolled at
+baseline revision `0001`, then each applied the harmless real revision `0002` through normal
+backend startup and reported `0002 (head)`. The obsolete SQL-file workflow and arbitrary SQL CLI
+were removed after that end-to-end proof.
+
 ## Scheduler
 
 The backend runs an in-process asyncio scheduler (1-minute heartbeat) for score sync, kickoff

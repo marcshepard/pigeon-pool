@@ -7,9 +7,9 @@ Read the documentation before making any design decisions. Update the relevant d
 | File | Contains |
 |------|----------|
 | `README.md` | Localhost quickstart (DB setup, backend, frontend steps), brief architecture table, environment config, Azure/ops notes, DB cloning commands for the multi-tenant dev DB |
-| `docs/contributing.md` | How to run the test suite, snapshot update workflow (`pytest --update-snapshots`) |
+| `docs/contributing.md` | Test suite, Alembic development/deployment workflow, and migration recovery |
 | `docs/frontend.md` | Frontend directory layout, key data flows (auth, results, analytics, YTD), build/type-check commands |
-| `docs/architecture.md` | Durable design decisions: multi-tenancy data model, auth/JWT, onboarding model, scheduler, known limitations |
+| `docs/architecture.md` | Durable design decisions: multi-tenancy, auth/JWT, schema management, onboarding, scheduler, known limitations |
 | `docs/preseason_testing.md` | Temporary: plan for testing against live preseason NFL data. Delete once implemented and no longer needed (planned: August) |
 
 ## Minimize changes
