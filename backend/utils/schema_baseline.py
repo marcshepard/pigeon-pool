@@ -43,7 +43,18 @@ class SchemaBaselineIssue:
     actual: Any = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {key: value for key, value in asdict(self).items() if value is not None}
+        values = {
+            "object_type": self.object_type,
+            "object_name": self.object_name,
+            "problem": self.problem,
+            "expected": self.expected,
+            "actual": self.actual,
+        }
+        return {
+            key: _json_safe(value)
+            for key, value in values.items()
+            if value is not None
+        }
 
 
 @dataclass(frozen=True)
@@ -80,6 +91,20 @@ def _column(
     identity: str = "",
 ) -> ColumnSpec:
     return ColumnSpec(data_type, nullable, default, identity)
+
+
+def _json_safe(value: Any) -> Any:
+    """Convert nested schema diff values to deterministic JSON-compatible data."""
+
+    if isinstance(value, (ColumnSpec, FunctionSpec)):
+        return {key: _json_safe(item) for key, item in asdict(value).items()}
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (set, frozenset)):
+        return sorted((_json_safe(item) for item in value), key=str)
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    return value
 
 
 _BASELINE_COLUMNS: dict[str, dict[str, ColumnSpec]] = {
