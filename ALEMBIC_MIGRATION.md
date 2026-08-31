@@ -14,9 +14,9 @@ baseline first gives those changes a versioned and repeatable deployment path.
 ## Execution status
 
 Phase 1 implementation began on 2026-08-30. The semantic baseline inventory and read-only
-`verify-schema-baseline` CLI command are implemented, and the desktop development database passes.
-Laptop verification, Azure verification from an allowed Azure-hosted context, and recording the
-final baseline commit remain pending. Do not begin stamping until all Phase 1 checks pass.
+`verify-schema-baseline` CLI command are implemented, and both the desktop and laptop development
+databases pass. Azure verification from an allowed Azure-hosted context and recording the final
+baseline commit remain pending. Do not begin stamping until all Phase 1 checks pass.
 
 The frozen pre-Alembic inventory currently consists of:
 
