@@ -13,10 +13,31 @@ baseline first gives those changes a versioned and repeatable deployment path.
 
 ## Execution status
 
-Phase 1 implementation began on 2026-08-30. The semantic baseline inventory and read-only
-`verify-schema-baseline` CLI command are implemented, and both the desktop and laptop development
-databases pass. Azure verification from an allowed Azure-hosted context and recording the final
-baseline commit remain pending. Do not begin stamping until all Phase 1 checks pass.
+Phase 1 was completed on 2026-08-30. The semantic baseline inventory and read-only
+`verify-schema-baseline` CLI command are implemented, and the desktop development, laptop
+development, and Azure production databases all pass. The frozen baseline commit deployed on
+`main` and Azure is `eee8584a6dc1b1d1f42624ad15646a3d69a5e74e`.
+
+Phase 2 was completed on `dev` on 2026-08-30. Alembic 1.19 is a production dependency;
+`backend/alembic.ini`, the credential-safe synchronous psycopg migration environment, the typed
+revision template, and the versions directory are in place. The empty migration graph reports no
+heads or history, `alembic current` connects successfully without creating a version table, and
+the pre-Alembic schema verifier still passes. At the end of that phase, no revision had been
+created and no database had been stamped.
+
+Phase 3 was completed on `dev` on 2026-08-30. Revision `0001_current_schema_baseline` contains the
+complete pre-Alembic application schema and refuses a destructive downgrade. Automated migration
+tests create a uniquely named local database, upgrade base to `0001`, validate the semantic
+inventory, confirm a second upgrade is a no-op, exercise core relationships and views, and remove
+the database. The full backend suite also passes against a separate database created solely by
+`alembic upgrade head` after adding the minimal reference rows required by the shared fixtures.
+At the end of Phase 3, no persistent database had been stamped or otherwise changed.
+
+Phase 4 began on 2026-08-30. The desktop development database passed the preflight verifier, had no
+current Alembic revision, and was stamped at `0001`. Its post-stamp semantic verification passes,
+and `alembic current` reports `0001 (head)`. The only database object added during enrollment was
+Alembic's version table. Laptop and Azure enrollment remain pending distribution of the exact
+validated `0001` revision.
 
 The frozen pre-Alembic inventory currently consists of:
 
@@ -468,12 +489,12 @@ application compatibility.
 
 ## Completion checklist
 
-- [ ] Baseline object inventory is reviewed.
-- [ ] Read-only baseline verifier exists and passes on desktop, laptop, and Azure.
-- [ ] Alembic is installed and configured without committed credentials.
-- [ ] `0001` creates the exact baseline on an empty database.
-- [ ] Empty-database migration tests and backend tests pass.
-- [ ] Desktop is stamped and smoke-tested.
+- [x] Baseline object inventory is reviewed.
+- [x] Read-only baseline verifier exists and passes on desktop, laptop, and Azure.
+- [x] Alembic is installed and configured without committed credentials.
+- [x] `0001` creates the exact baseline on an empty database.
+- [x] Empty-database migration tests and backend tests pass.
+- [x] Desktop is stamped and smoke-tested.
 - [ ] Laptop is stamped and smoke-tested.
 - [ ] Azure backup/PITR is confirmed, then Azure is stamped and smoke-tested.
 - [ ] All environments report the same single Alembic head.

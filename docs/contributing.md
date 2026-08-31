@@ -31,6 +31,17 @@ Run a specific file:
 pytest tests/test_results.py -v
 ```
 
+To verify that Alembic can construct a fresh database capable of running the full backend suite:
+
+```bash
+python tests/run_alembic_database_suite.py
+```
+
+This command only runs against a localhost PostgreSQL server. It creates a uniquely named
+`pigeon_pool_alembic_suite_*` database, upgrades it from Alembic base to head, adds minimal NFL
+reference rows required by the fixtures, runs all backend tests against it, and drops that exact
+temporary database afterward.
+
 ## Backend static checks
 
 Install the local-only tools from `backend/requirements-dev.txt`, then run Ruff and

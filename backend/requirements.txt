@@ -6,6 +6,7 @@
 psycopg[binary] >=3.1,<4.0         # PostgreSQL driver (modern async support)
 asyncpg >=0.29,<1.0
 SQLAlchemy[asyncio] >=2.0,<3.0     # ORM + async engine support
+alembic >=1.19,<2.0                # Versioned PostgreSQL schema migrations
 python-dotenv >=1.0.1              # Load .env files for local config/secrets
 
 # --- Utilities & typing ---
