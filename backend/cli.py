@@ -10,10 +10,9 @@ Commands:
 - import-tenant-picks : Interactively import a JSON snapshot into localhost
 - list-leagues   : Show all tenants with member/player counts
 - validate-rosters : Read-only roster integrity checks across one or all tenants
-- verify-schema-baseline : Read-only verification of the pre-Alembic schema
+- verify-schema-baseline : Read-only verification of the frozen Alembic baseline
 - create-league  : Create a new league/tenant and assign a commissioner
 - delete-league  : Permanently delete a league and its data
-- run-sql        : Execute a SQL migration file using the app's DB connection
 - setup-fe-tests : Create Playwright FE test fixtures; write playwright/.test-state.json
 - teardown-fe-tests : Remove FE test fixtures created by setup-fe-tests
 - -help          : Show help/usage
@@ -32,7 +31,6 @@ Example usage:
 - python -m backend.cli verify-schema-baseline
 - python -m backend.cli create-league --name "My Pool" --commissioner-email admin@example.com
 - python -m backend.cli delete-league 2 --yes
-- python -m backend.cli run-sql database/migration_stage11.sql
 """
 # pylint: disable=line-too-long
 
@@ -944,29 +942,6 @@ def cmd_create_league(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_run_sql(args: argparse.Namespace) -> int:
-    """
-    Execute a SQL file against the configured database.
-    Used for applying migration scripts without requiring a separate psql install.
-    """
-    path = args.path
-    try:
-        with open(path, encoding="utf-8") as f:
-            sql = f.read()
-    except FileNotFoundError:
-        print(f"error: file not found: {path}")
-        return 1
-
-    settings = get_settings()
-    cfg = settings.psycopg_kwargs()
-    with get_connection(cfg) as conn:
-        with conn.cursor() as cur:
-            cur.execute(sql)  # type: ignore[arg-type]
-        conn.commit()
-    print(f"[cli] Applied: {path}")
-    return 0
-
-
 def cmd_delete_league(args: argparse.Namespace) -> int:
     """
     Permanently delete a league and all its data.
@@ -1498,10 +1473,10 @@ def build_parser() -> argparse.ArgumentParser:
     # verify-schema-baseline
     p_verify_schema = sub.add_parser(
         "verify-schema-baseline",
-        help="Verify the pre-Alembic PostgreSQL schema without changing it.",
+        help="Verify the frozen Alembic baseline schema without changing it.",
         description=(
             "Compares tables, columns, constraints, indexes, views, functions, and triggers "
-            "with the intended pre-Alembic baseline. Performs no writes."
+            "with the frozen Alembic baseline. Performs no writes."
         ),
     )
     p_verify_schema.add_argument(
@@ -1540,15 +1515,6 @@ def build_parser() -> argparse.ArgumentParser:
     p_delete.add_argument("tenant_id", type=int, help="tenant_id to delete (see list-leagues)")
     p_delete.add_argument("--yes", action="store_true", help="Skip interactive confirmation")
     p_delete.set_defaults(func=cmd_delete_league)
-
-    # run-sql
-    p_run_sql = sub.add_parser(
-        "run-sql",
-        help="Execute a SQL file against the configured database (for migrations).",
-        description="Reads a .sql file and executes it in a single transaction using the app DB connection.",
-    )
-    p_run_sql.add_argument("path", help="Path to .sql file")
-    p_run_sql.set_defaults(func=cmd_run_sql)
 
     # setup-fe-tests
     p_setup_fe = sub.add_parser(

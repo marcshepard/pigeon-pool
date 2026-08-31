@@ -27,12 +27,11 @@ Note: there is no .env.production.local; production secrets are stored as Azure 
 
 ## Quick start (localhost deployment)
 
-### 1. DB setup
-1. Install PostgreSQL, take all the defaults (they should match backend/.env), create a DB called "pigeon_pool", note the password
-2. Run database/schema.sql to create the DB schema
+### 1. Database and backend API setup
 
-### 2. Backend API setup
-1. Create a backend/.env.development.local file and add these lines:
+1. Install PostgreSQL, take all the defaults (they should match `backend/.env`), create a
+   database called `pigeon_pool`, and note the password.
+2. Create a `backend/.env.development.local` file and add these lines:
 ```env
 POSTGRES_PASSWORD=whatever password you used when installing postgresql
 JWT_SECRET=any-string-you-like
@@ -40,7 +39,7 @@ EMAIL_ACCESS_KEY=<get from Marc or Joe>
 ```
 Note: this file constains secrets and will be .gitignored. Never check in secrets.
 
-2. Create and activate an anaconda environment
+3. Create and activate an Anaconda environment:
 ```bash
 conda create -n pigeon python=3.12
 conda activate pigeon
@@ -48,31 +47,37 @@ pip install -r backend/requirements.txt
 pip install -r backend/requirements-dev.txt  # local linting and type checking only
 ```
 
-3. Run the CLI to populate the DB with the NFL schedule
+4. Build the database schema from the Alembic migration history:
+
+```bash
+python -m alembic -c backend/alembic.ini upgrade head
+```
+
+5. Run the CLI to populate the database with the NFL schedule:
 ```bash
 python -m backend.cli sync-schedule
 ```
 
-4. Create the initial league and its commissioner account
+6. Create the initial league and its commissioner account:
 ```bash
 python -m backend.cli create-league --name "Pigeon Pool" --commissioner-email admin@example.com
 ```
 `create-league` creates the commissioner user when needed. Start the app and use **Forgot Password**
 to set the commissioner's password before their first login.
 
-5. Run the CLI to sync historic pigeon picks from previous weeks into the DB
+7. Run the CLI to sync historic pigeon picks from previous weeks into the database.
 First, get a copy of picks 2025.xlsx (not checked in for privacy reasons). Then:
 ```bash
 python -m backend.cli import-picks-xlsx
 ```
 
-6. Run the CLI to sync historic scores from previous weeks into the DB
+8. Run the CLI to sync historic scores from previous weeks into the database.
 For example, to sync scores from the first 6 weeks of the season:
 ```bash
 python -m backend.cli sync-scores 6
 ```
 
-7. Start the server
+9. Start the server:
 ```bash
 uvicorn backend.main:app --reload --port 8000
 ```
@@ -106,61 +111,60 @@ python -m backend.cli reset-season
 ```
 Archives are written to `archive/<tenant_id>_<year>_picks.csv` in the repo root.
 
-### Running CLI commands against production
-`backend.cli` picks its DB target from `APP_ENV` (see `backend/utils/settings.py`), which
-defaults to `development` — i.e. localhost. To point a CLI command at production instead, set
-`APP_ENV=production` plus the three secrets that are normally supplied by Azure App Service
-config (`POSTGRES_PASSWORD`, `JWT_SECRET`, `EMAIL_ACCESS_KEY`).
+### Database schema migrations
 
-Use `conda activate pigeon` + `python -m backend.cli ...`, **not**
-`conda run -n pigeon python -m backend.cli ...`. Commands like `reset-season` and
-`delete-league` prompt for an interactive `yes` confirmation via `input()`, and in Windows
-PowerShell `conda run` doesn't forward an interactive TTY for that prompt — it fails
-immediately with `[cli] Aborted (no TTY — use --yes to skip confirmation)`. `conda activate`
-runs the command directly in your shell, so the prompt works normally.
+Alembic revisions under `backend/migrations/versions/` are the only supported schema-change
+workflow. From the repository root:
 
-**Option A — per-shell env vars** (no secrets on disk):
-```powershell
-conda activate pigeon
-$env:APP_ENV = "production"
-$env:POSTGRES_PASSWORD = "<from Azure App Service Configuration>"
-$env:JWT_SECRET = "<from Azure App Service Configuration>"
-$env:EMAIL_ACCESS_KEY = "<from Azure App Service Configuration>"
-python -m backend.cli <command> [args]
+```bash
+python -m alembic -c backend/alembic.ini current
+python -m alembic -c backend/alembic.ini heads
+python -m alembic -c backend/alembic.ini history
+python -m alembic -c backend/alembic.ini upgrade head
 ```
 
-**Option B — `backend/.env.production.local`** (fewer commands per session): copy the same
-three secrets from Azure App Service Configuration into a local `backend/.env.production.local`
-file (same `KEY=value` format as `.env.development.local`). `settings.py` loads it automatically
-whenever `APP_ENV=production`, so you only need:
-```powershell
-conda activate pigeon
-$env:APP_ENV = "production"
-python -m backend.cli <command> [args]
-```
-This file is covered by the repo's `.env.*.local` gitignore pattern, so it won't get committed
-— but it does put real production secrets at rest on your machine. Treat the copy as temporary:
-delete `backend/.env.production.local` once you're done with production CLI work.
+See [docs/contributing.md](docs/contributing.md#database-migrations) before creating or editing a
+revision.
 
-Either way, unset `APP_ENV` (or open a new shell) afterward so you don't accidentally point a
-later local command at production.
+### Running database commands against production
+
+The production PostgreSQL firewall does not permit direct access from developer machines. Run
+production Alembic and database-backed CLI commands from the backend App Service's Kudu/SSH
+console, using the environment and approved network path already provided to the application.
+Do not copy production secrets locally or temporarily widen the firewall.
+
+Azure deployments are extracted under `/tmp/<deployment-id>`. Work from the directory containing
+the deployed `backend` package, not `/home/site/wwwroot` when that directory contains only the
+compressed deployment artifact:
+
+```bash
+pwd
+ls backend/cli.py backend/alembic.ini
+python -m alembic -c backend/alembic.ini current
+python -m backend.cli validate-rosters
+```
+
+Every command prints the selected environment files, and schema verification prints the non-secret
+database host/name. Confirm that production is selected before a mutating command. For a production
+migration, first confirm Azure PITR, deploy a backward-compatible artifact containing the revision,
+then run `current`, `upgrade head`, and `current` exactly once from Kudu/SSH. Never run Alembic from
+web-worker startup.
 
 ### Copying a production roster and picks to localhost
 Use a JSON snapshot when you need production pigeon names/numbers and picks for local
 troubleshooting. Snapshots contain pigeon details and picks only; they never include users,
 email addresses, password hashes, or sessions.
 
-First, with the production environment configured as above, export the source tenant:
-```powershell
-conda activate pigeon
-$env:APP_ENV = "production"
+First, from the production App Service's Kudu/SSH console, export the source tenant to a temporary
+file and transfer it securely to the development machine before the App Service instance is
+recycled:
+```bash
 python -m backend.cli export-tenant-picks --tenant 1 --output snapshots/production-tenant-1.json
 ```
 
-Open a new PowerShell window (or unset `APP_ENV`) before importing. The local target tenant must
-already exist and have a locally synced NFL schedule. The importer only runs when
-`APP_ENV=development` and the database host is localhost. It displays every planned roster change
-and pick replacement, then requires you to type `yes`:
+The local target tenant must already exist and have a locally synced NFL schedule. The importer
+only runs when `APP_ENV=development` and the database host is localhost. It displays every planned
+roster change and pick replacement, then requires you to type `yes`:
 ```powershell
 conda activate pigeon
 python -m backend.cli sync-schedule
@@ -193,8 +197,7 @@ membership, primary-pigeon, role, numbering, and commissioner invariants without
 Integrity errors return a nonzero exit code. Global users with no tenant or pigeon relationships
 are printed as informational warnings and are never deleted by this command.
 
-During the Alembic baseline transition, verify that the configured database matches the intended
-pre-Alembic schema without changing it:
+To diagnose schema drift without changing the configured database, run:
 ```bash
 python -m backend.cli verify-schema-baseline
 python -m backend.cli verify-schema-baseline --json
@@ -216,7 +219,7 @@ python -m backend.cli run-job email_sun --dry-run
 python -m backend.cli show-email-recipients --which tue
 ```
 
-### 3. FE setup
+### 2. Frontend setup
 1. Install node.js from https://nodejs.org/en/download
 
 2. Install the frontend
@@ -241,7 +244,7 @@ DEBUG (auth.py:350): password-reset: reset link = http://localhost:5173/reset-pa
 Type that link into a browser to complete the password reset
 
 
-### 4. Subsequent runs
+### 3. Subsequent runs
 From VS Code, run the `pigeon pool` task to start both the backend and frontend. You can also run
 `pigeon BE` and `pigeon FE` separately if you only need one side.
 Once those are running, point your browser to http://localhost:5173

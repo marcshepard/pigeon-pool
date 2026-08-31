@@ -1,7 +1,7 @@
 """Read-only verification of the pre-Alembic database baseline.
 
-The expected inventory in this module is the semantic form of the schema in
-``database/schema.sql`` at the Alembic cutover.  It deliberately ignores
+The expected inventory in this module is the semantic form of Alembic revision
+``0001_current_schema_baseline`` at the cutover. It deliberately ignores
 physical column order and generated constraint names, but verifies the schema
 behavior that the application depends on.
 """

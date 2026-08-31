@@ -42,6 +42,48 @@ This command only runs against a localhost PostgreSQL server. It creates a uniqu
 reference rows required by the fixtures, runs all backend tests against it, and drops that exact
 temporary database afterward.
 
+## Database migrations
+
+Alembic revisions are the sole source of truth for the PostgreSQL schema. Run all commands from
+the repository root with the backend environment active:
+
+```bash
+python -m alembic -c backend/alembic.ini current
+python -m alembic -c backend/alembic.ini history
+python -m alembic -c backend/alembic.ini heads
+python -m alembic -c backend/alembic.ini upgrade head
+```
+
+Before developing on a branch, update the branch and run `upgrade head` against the local database.
+If `current` is behind, upgrade it; never use `stamp` to conceal a failed or unapplied migration.
+
+Create a new revision with:
+
+```bash
+python -m alembic -c backend/alembic.ini revision -m "short description"
+```
+
+The application does not maintain SQLAlchemy schema metadata, so autogeneration is intentionally
+disabled. Handwrite `upgrade()` and add a `downgrade()` only when reversal is safe and useful.
+Revisions must be self-contained: they may not load mutable SQL files at runtime. Once a revision
+has been applied to a shared environment, do not edit or reorder it; add a corrective revision.
+
+Keep the graph at exactly one head. If concurrent branches create multiple heads, reconcile them
+with an explicit merge revision before merging. For every schema change:
+
+1. Test upgrading representative data from the prior revision.
+2. Run `python tests/run_alembic_database_suite.py` to test base-to-head creation and the backend
+   suite against an Alembic-built database.
+3. Run Ruff and Pyright as described below.
+4. Commit the revision with backward-compatible application code, unless an expand-and-contract
+   rollout deliberately separates the releases.
+
+Production migrations are explicit deployment operations, never application-startup behavior.
+First confirm Azure PITR, deploy a backward-compatible artifact containing the new revision, and
+then run `current`, `upgrade head`, and `current` once from the backend App Service's Kudu/SSH
+console. Deploy code that requires the new schema only after the upgrade succeeds. Application
+rollback normally leaves an additive schema in place; do not automatically downgrade production.
+
 ## Backend static checks
 
 Install the local-only tools from `backend/requirements-dev.txt`, then run Ruff and

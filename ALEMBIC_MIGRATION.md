@@ -33,12 +33,29 @@ the database. The full backend suite also passes against a separate database cre
 `alembic upgrade head` after adding the minimal reference rows required by the shared fixtures.
 At the end of Phase 3, no persistent database had been stamped or otherwise changed.
 
-Phase 4 began on 2026-08-30. The desktop development database passed the preflight verifier, had no
-current Alembic revision, and was stamped at `0001`. Its post-stamp semantic verification passes,
+Phase 4 schema enrollment was completed on 2026-08-31. The desktop development database passed the
+preflight verifier, had no current Alembic revision, and was stamped at `0001`. Its post-stamp semantic verification passes,
 and `alembic current` reports `0001 (head)`. The only database object added during enrollment was
 Alembic's version table. The laptop development database subsequently passed the same preflight,
-was stamped at `0001`, and passed both the revision and semantic post-stamp verification. Azure
-enrollment remains pending deployment of the exact validated `0001` revision.
+was stamped at `0001`, and passed both the revision and semantic post-stamp verification. On
+2026-08-31, the exact validated revision was deployed to Azure production. Azure initially
+reported no current revision and one head (`0001`), was stamped at `0001`, and then reported
+`0001 (head)`. Its post-stamp schema and roster validations both passed with no integrity errors.
+All three persistent environments therefore report the same single Alembic head. Azure's built-in
+PITR was confirmed in the portal with seven-day retention and seven available snapshots. The
+production application smoke test exposed
+missing historical picks and an unrelated pre-existing week-filter bug in the commissioner status
+display; because `stamp` only wrote `alembic_version`, the operator explicitly deferred that data
+incident rather than treating it as schema-enrollment failure.
+
+Phase 5 was completed on 2026-08-31. The README, contributing guide, and architecture guide now
+use Alembic as the only schema workflow and document the Kudu/SSH production procedure. The
+arbitrary `backend.cli run-sql` command and all 15 tracked files in the obsolete SQL directory were
+removed. The migration graph test now requires exactly one head, and a PostgreSQL-backed backend CI
+workflow runs Ruff, Pyright, and the complete backend suite against a disposable database built
+from Alembic base to head. The Azure backend deployment also waits for a fast exactly-one-head gate.
+Locally, that Alembic-built suite passes all 111 tests, Ruff passes, and Pyright reports no errors
+or warnings.
 
 The frozen pre-Alembic inventory currently consists of:
 
@@ -497,14 +514,16 @@ application compatibility.
 - [x] Empty-database migration tests and backend tests pass.
 - [x] Desktop is stamped and smoke-tested.
 - [x] Laptop is stamped and smoke-tested.
-- [ ] Azure backup/PITR is confirmed, then Azure is stamped and smoke-tested.
-- [ ] All environments report the same single Alembic head.
-- [ ] README, contributing, and architecture documentation use the Alembic workflow.
-- [ ] Ad hoc schema migration paths are retired or clearly restricted.
-- [ ] No code, tests, workflows, tasks, or documentation reference `database/`.
-- [ ] The obsolete `database/` directory has been deleted after baseline and enrollment
+- [x] Azure PITR is confirmed with seven-day retention and seven snapshots; Azure is stamped and
+      passes revision, schema, and roster checks.
+      The unrelated application-data anomaly found during smoke testing is deferred separately.
+- [x] All environments report the same single Alembic head.
+- [x] README, contributing, and architecture documentation use the Alembic workflow.
+- [x] Ad hoc schema migration paths are retired or clearly restricted.
+- [x] No code, tests, workflows, tasks, or operational documentation depends on `database/`.
+- [x] The obsolete `database/` directory has been deleted after baseline and enrollment
       verification.
-- [ ] CI rejects multiple migration heads and tests base-to-head upgrades.
+- [x] CI rejects multiple migration heads and tests base-to-head upgrades.
 - [ ] `password_reset_uses` is adopted by a post-baseline revision.
 - [ ] Request-time table creation is removed.
 - [ ] The first login-related schema migration is deployed using the documented expand-and-contract
