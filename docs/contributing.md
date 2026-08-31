@@ -5,7 +5,8 @@
 See [README.md](../README.md) for full local setup (DB, backend, frontend).
 
 Short version:
-- Backend: `uvicorn backend.main:app --reload --port 8000` (or VS Code task `pigeon BE`)
+- Backend: `uvicorn backend.main:app --reload --port 8000` (or VS Code task `pigeon BE`, which first
+  applies pending Alembic revisions)
 - Frontend: `cd frontend && npm run dev` (or VS Code task `pigeon FE`)
 - Both at once: VS Code task `pigeon pool`
 
@@ -78,11 +79,19 @@ with an explicit merge revision before merging. For every schema change:
 4. Commit the revision with backward-compatible application code, unless an expand-and-contract
    rollout deliberately separates the releases.
 
-Production migrations are explicit deployment operations, never application-startup behavior.
-First confirm Azure PITR, deploy a backward-compatible artifact containing the new revision, and
-then run `current`, `upgrade head`, and `current` once from the backend App Service's Kudu/SSH
-console. Deploy code that requires the new schema only after the upgrade succeeds. Application
-rollback normally leaves an additive schema in place; do not automatically downgrade production.
+Both the VS Code `pigeon BE` task and Azure's `backend/startup.sh` invoke
+`python -m backend.migrate` before Uvicorn. The runner identifies the target without printing
+credentials, takes a PostgreSQL advisory lock to serialize concurrent App Service starts, and runs
+`upgrade head`. If it fails, the new backend does not start; Azure's post-deployment health check
+then fails as well. Thus the normal operator workflow is to merge/sync the tested change to `main`
+and monitor the deployment—no Kudu migration command is normally required.
+
+The revision must still be compatible with the previously deployed backend while Azure replaces
+the running instance. Prefer additive expand-and-contract changes. For a destructive or otherwise
+incompatible change, split the work across releases so the old code remains safe during the first
+migration. Application rollback normally leaves additive schema in place; do not automatically
+downgrade production. If a migration fails, inspect the startup/Alembic logs and `current` from
+Kudu/SSH; never use `stamp` to conceal the failure.
 
 ## Backend static checks
 

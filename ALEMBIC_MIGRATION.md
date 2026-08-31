@@ -390,33 +390,24 @@ or a revocation table.
 
 ## Deployment policy
 
-Do not run Alembic from every web worker or from FastAPI startup. Database migration and web
-process startup have different failure and concurrency behavior, and migrations should be visible
-as a distinct deployment step.
+Alembic is not run from FastAPI lifespan code or separately by web workers. It runs as a visible,
+fail-closed process phase before Uvicorn. `python -m backend.migrate` holds a PostgreSQL advisory
+lock while applying `upgrade head`, which serializes concurrent App Service starts and releases the
+lock automatically if the migration process dies.
 
 The preferred production sequence is:
 
 1. confirm backup/PITR availability;
-2. deploy a migration-enablement artifact containing the new revision while keeping application
-   behavior compatible with both the old and new schema;
-3. from the App Service's Kudu/SSH console, run
-   `python -m alembic -c backend/alembic.ini current`;
-4. verify the expected starting revision and non-secret database identity;
-5. run `python -m alembic -c backend/alembic.ini upgrade head` exactly once;
-6. verify the resulting revision;
-7. deploy the backend code that requires the new schema;
-8. run smoke tests and inspect logs.
+2. merge a tested, backward-compatible revision and application change to `main`;
+3. let App Service startup run the serialized migration phase inside Azure's approved database
+   network path;
+4. start Uvicorn only after the migration reaches `head`;
+5. require the public `/ping` health check to succeed;
+6. smoke-test the affected behavior and inspect logs.
 
-Initially, keep the production upgrade as a documented manual operator step from the backend App
-Service's Kudu/SSH console. The migration revision must arrive in an earlier
-backward-compatible deployment, allowing it to be applied before code that requires the new schema
-is released. This uses the App Service's existing environment settings and allowed PostgreSQL
-network path without exposing the database to the developer's IP address.
-
-Do not embed migration execution in `startup.sh`. Automation can later be added as a distinct,
-serialized Azure-hosted job with deployment approval and a clear failure policy. A GitHub-hosted
-runner is suitable only if it is deliberately given a secure network path to Azure PostgreSQL; the
-current deployment workflow should not be assumed to have database access.
+Kudu/SSH remains the diagnostic and recovery path for checking `current` after a failure, but it is
+not part of a normal successful deployment. Do not retry by stamping. Fix an unpublished revision
+only if it has never succeeded in a shared environment; otherwise add a corrective revision.
 
 The backend deployment workflow currently triggers only for `backend/**` and the workflow file.
 Keeping revisions under `backend` ensures migration-only commits trigger deployment packaging. If
@@ -441,6 +432,9 @@ For each database-affecting change:
 7. Update documentation whenever behavior or operations change.
 8. Commit the migration and compatible application code together unless the expand-and-contract
    rollout intentionally requires separate commits/releases.
+
+The normal developer/operator action after these checks is only to merge/sync the change to
+`main` and monitor the backend workflow. The Azure startup migration and health gate are automatic.
 
 When moving between branches, run `alembic current` and `alembic heads`. Never stamp over an
 unknown revision or use `stamp head` to suppress an upgrade failure.
@@ -524,6 +518,8 @@ application compatibility.
 - [x] The obsolete `database/` directory has been deleted after baseline and enrollment
       verification.
 - [x] CI rejects multiple migration heads and tests base-to-head upgrades.
+- [x] VS Code and Azure apply pending revisions before backend startup; Azure serializes upgrades
+      with a database advisory lock and fails closed on migration errors.
 - [ ] `password_reset_uses` is adopted by a post-baseline revision.
 - [ ] Request-time table creation is removed.
 - [ ] The first login-related schema migration is deployed using the documented expand-and-contract

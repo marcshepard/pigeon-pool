@@ -65,3 +65,10 @@ jobs:
           slot-name: 'Production'
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_9434C8B104FA42D698A263DF9534D244 }}
           package: ${{ env.ZIP_NAME }}
+
+      - name: Require the migrated backend to become healthy
+        run: >-
+          curl --fail --silent --show-error
+          --retry 30 --retry-delay 10 --retry-all-errors
+          --connect-timeout 10 --max-time 15
+          https://pigeon-pool-backend.azurewebsites.net/ping

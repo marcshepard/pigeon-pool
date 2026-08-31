@@ -33,3 +33,20 @@ After changing frontend code, run the existing frontend lint check from the repo
 cd frontend
 npm run lint
 ```
+
+## Database schema changes
+
+Alembic revisions under `backend/migrations/versions/` are the sole schema source of truth. Any
+change to a table, column, constraint, index, view, function, or trigger must include a handwritten
+Alembic revision; do not add request-time DDL or recreate a `schema.sql` workflow. Autogeneration is
+intentionally unavailable because the application has no SQLAlchemy schema metadata.
+
+Before coding, run `python -m alembic -c backend/alembic.ini upgrade head`. Keep exactly one
+migration head, preserve existing data, and make production migrations backward compatible with
+the previously deployed application during rollout. Test every schema change with
+`python tests/run_alembic_database_suite.py` in addition to the normal backend checks. Never edit a
+revision that has reached a shared environment; add a corrective revision instead.
+
+The VS Code backend task and Azure startup both run the serialized `python -m backend.migrate`
+phase before Uvicorn. A migration failure must prevent the new backend from starting. Do not bypass
+that phase, stamp over a failed upgrade, or put schema changes outside Alembic.

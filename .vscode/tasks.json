@@ -19,7 +19,7 @@
       "args": [
         "/d",
         "/c",
-        "conda activate pigeon && uvicorn backend.main:app --reload --port 8000"
+        "conda activate pigeon && python -m backend.migrate && uvicorn backend.main:app --reload --port 8000"
       ],
       "options": {
         "cwd": "${workspaceFolder}"

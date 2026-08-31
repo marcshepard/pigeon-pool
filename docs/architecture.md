@@ -162,22 +162,21 @@ self-contained; schema changes are never loaded from separate mutable SQL files.
 
 The migration graph must have exactly one head. CI constructs a disposable local PostgreSQL
 database from Alembic base to head, validates the resulting schema, and runs the backend suite
-against it. Persistent development databases are advanced with an explicit `alembic upgrade head`
-when branches are updated.
+against it. The VS Code backend task advances the persistent development database through the
+serialized migration runner before starting Uvicorn.
 
-Production migrations are separate, serialized deployment operations and never run during FastAPI
-or web-worker startup. The rollout order is:
-
-1. Confirm Azure point-in-time restore availability.
-2. Deploy a backward-compatible artifact containing the new revision.
-3. From the backend App Service's Kudu/SSH environment, confirm the current revision and production
-   database identity.
-4. Run `alembic upgrade head` once and verify the resulting revision.
-5. Deploy application code that requires the new schema and smoke-test it.
+Azure's process startup has a distinct, fail-closed migration phase before Uvicorn. The runner
+takes a PostgreSQL advisory lock, so concurrent App Service instance starts cannot apply the graph
+at the same time. It upgrades to `head`, releases the lock, and only then starts the web process.
+The deployment workflow verifies that `/ping` becomes healthy. This keeps the database operation
+inside Azure's approved PostgreSQL network path while making a normal merge to `main` sufficient
+to deploy both the revision and the application code.
 
 Migrations should use expand-and-contract changes so the previous backend remains compatible during
 deployment. Application rollback normally leaves additive schema changes in place. A destructive
-database rollback is a restore operation, not an automatic Alembic downgrade.
+database rollback is a restore operation, not an automatic Alembic downgrade. If the App Service is
+later scaled beyond the current B1 topology or moved to deployment slots, revisit the release
+orchestration and health verification while retaining database-level serialization.
 
 ## Scheduler
 

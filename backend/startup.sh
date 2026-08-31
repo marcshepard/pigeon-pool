@@ -1,6 +1,17 @@
 #!/bin/bash
 set -u
 
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR/.."
+
+echo "Applying database migrations..."
+if python -m backend.migrate; then
+    echo "Database migration phase completed."
+else
+    echo "ERROR: Database migration failed; refusing to start the backend." >&2
+    exit 1
+fi
+
 # /home is the App Service's persistent filesystem. Keeping the browser there
 # avoids downloading it again on every deployment or container replacement.
 export PLAYWRIGHT_BROWSERS_PATH="${PLAYWRIGHT_BROWSERS_PATH:-/home/.cache/ms-playwright}"

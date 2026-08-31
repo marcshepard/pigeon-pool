@@ -124,7 +124,9 @@ python -m alembic -c backend/alembic.ini upgrade head
 ```
 
 See [docs/contributing.md](docs/contributing.md#database-migrations) before creating or editing a
-revision.
+revision. The VS Code `pigeon BE` task runs the serialized migration runner before Uvicorn, so a
+normal local launch automatically advances the configured development database to `head` and
+refuses to start the backend if an upgrade fails.
 
 ### Running database commands against production
 
@@ -145,10 +147,12 @@ python -m backend.cli validate-rosters
 ```
 
 Every command prints the selected environment files, and schema verification prints the non-secret
-database host/name. Confirm that production is selected before a mutating command. For a production
-migration, first confirm Azure PITR, deploy a backward-compatible artifact containing the revision,
-then run `current`, `upgrade head`, and `current` exactly once from Kudu/SSH. Never run Alembic from
-web-worker startup.
+database host/name. Confirm that production is selected before a mutating command. Normal `main`
+deployments run `python -m backend.migrate` before Uvicorn starts. That runner takes a PostgreSQL
+advisory lock, applies all pending revisions, and prevents the new backend from starting if the
+upgrade fails. The deployment workflow then requires `/ping` to become healthy. Kudu/SSH is still
+available for `current` and other diagnostics, but a normal deployment does not require a manual
+`upgrade head` command.
 
 ### Copying a production roster and picks to localhost
 Use a JSON snapshot when you need production pigeon names/numbers and picks for local
@@ -246,7 +250,8 @@ Type that link into a browser to complete the password reset
 
 ### 3. Subsequent runs
 From VS Code, run the `pigeon pool` task to start both the backend and frontend. You can also run
-`pigeon BE` and `pigeon FE` separately if you only need one side.
+`pigeon BE` and `pigeon FE` separately if you only need one side. The backend task automatically
+runs the configured development database to Alembic `head` before starting Uvicorn.
 Once those are running, point your browser to http://localhost:5173
 
 ## Implementation notes
