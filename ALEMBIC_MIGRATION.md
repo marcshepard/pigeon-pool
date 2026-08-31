@@ -36,8 +36,9 @@ At the end of Phase 3, no persistent database had been stamped or otherwise chan
 Phase 4 began on 2026-08-30. The desktop development database passed the preflight verifier, had no
 current Alembic revision, and was stamped at `0001`. Its post-stamp semantic verification passes,
 and `alembic current` reports `0001 (head)`. The only database object added during enrollment was
-Alembic's version table. Laptop and Azure enrollment remain pending distribution of the exact
-validated `0001` revision.
+Alembic's version table. The laptop development database subsequently passed the same preflight,
+was stamped at `0001`, and passed both the revision and semantic post-stamp verification. Azure
+enrollment remains pending deployment of the exact validated `0001` revision.
 
 The frozen pre-Alembic inventory currently consists of:
 
@@ -495,7 +496,7 @@ application compatibility.
 - [x] `0001` creates the exact baseline on an empty database.
 - [x] Empty-database migration tests and backend tests pass.
 - [x] Desktop is stamped and smoke-tested.
-- [ ] Laptop is stamped and smoke-tested.
+- [x] Laptop is stamped and smoke-tested.
 - [ ] Azure backup/PITR is confirmed, then Azure is stamped and smoke-tested.
 - [ ] All environments report the same single Alembic head.
 - [ ] README, contributing, and architecture documentation use the Alembic workflow.
