@@ -11,6 +11,7 @@ import psycopg
 import pytest
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 from psycopg import sql
 from sqlalchemy import URL, create_engine, pool
 
@@ -109,7 +110,15 @@ def test_empty_database_upgrades_to_baseline_and_accepts_relational_data(
 
         with conn.cursor() as cur:
             cur.execute("SELECT version_num FROM alembic_version")
-            assert cur.fetchone() == ("0001",)
+            expected_head = ScriptDirectory.from_config(
+                Config(str(_CONFIG_PATH))
+            ).get_current_head()
+            assert cur.fetchone() == (expected_head,)
+
+            cur.execute(
+                "SELECT obj_description('public.tenants'::regclass, 'pg_class')"
+            )
+            assert cur.fetchone() == ("One row per Pigeon Pool league",)
 
             cur.execute(
                 "INSERT INTO teams (abbr, name) VALUES ('HOM', 'Home'), ('AWY', 'Away')"

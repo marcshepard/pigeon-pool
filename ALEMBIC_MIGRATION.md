@@ -57,6 +57,13 @@ from Alembic base to head. The Azure backend deployment also waits for a fast ex
 Locally, that Alembic-built suite passes all 111 tests, Ruff passes, and Pyright reports no errors
 or warnings.
 
+Phase 6 is the final delivery canary. Revision `0002_document_tenants_table` makes a harmless,
+transactional catalog change by documenting the `tenants` table. It changes no application data,
+columns, constraints, indexes, or runtime behavior. The phase is complete when normal backend
+startup—not a manual Alembic command—advances the desktop, laptop, and Azure databases from `0001`
+to `0002`, and all three applications pass their smoke tests. Desktop startup applied the canary
+successfully on 2026-08-31 and `/ping` returned 200; laptop and Azure verification remain.
+
 The frozen pre-Alembic inventory currently consists of:
 
 - 12 application tables: `teams`, `weeks`, `games`, `tenants`, `tenant_weeks`, `users`,
@@ -112,7 +119,8 @@ backend/
     script.py.mako
     versions/
       0001_current_schema_baseline.py
-      0002_manage_auth_schema.py
+      0002_document_tenants_table.py
+      0003_manage_auth_schema.py
 ```
 
 The Azure artifact already packages the entire `backend` directory, so this layout avoids a
@@ -352,10 +360,32 @@ After all three databases report `0001`:
 6. Add a CI check that the migration graph has exactly one head. Multiple heads require an explicit
    merge revision and must not reach deployment accidentally.
 
-## Phase 6: adopt the login-related schema
+## Phase 6: prove automated delivery with revision `0002`
 
-Once every environment is stamped at `0001`, create
-`0002_manage_auth_schema.py` for the database portion of the related `LOGIN_FIXES.md` work.
+Create `0002_document_tenants_table.py` as a harmless real migration. Its upgrade adds the
+PostgreSQL comment `One row per Pigeon Pool league` to the `tenants` table, and its downgrade
+removes that comment. The comment is permanent once the revision reaches a shared environment;
+do not delete or renumber the revision after deployment.
+
+Verify it in deployment order:
+
+1. Launch the desktop backend through the VS Code task and confirm startup reports the upgrade and
+   `alembic current` reports `0002 (head)`.
+2. Commit and push the revision to `dev`; on the laptop, sync `dev`, launch through VS Code without
+   running Alembic manually, and confirm `0002 (head)`.
+3. Merge/sync `dev` to `main` and let Azure startup apply the revision. Confirm the migration log,
+   successful `/ping` deployment gate, application smoke test, and optionally `0002 (head)` from
+   Kudu/SSH.
+
+This proves revision discovery, the PostgreSQL connection, advisory-lock serialization,
+transactional DDL, version-table advancement, startup ordering, and deployment health reporting.
+Future revisions still require tests for their own schema and data behavior.
+
+## Post-cutover follow-up: adopt the login-related schema
+
+After the canary has reached every environment at `0002`, create
+`0003_manage_auth_schema.py` (or smaller consecutive revisions) for the database portion of the
+related `LOGIN_FIXES.md` work.
 
 The revision should:
 
@@ -372,15 +402,15 @@ The revision should:
 
 Deploy this as an expand-and-contract sequence:
 
-1. Apply revision `0002` while the old backend is still running. Both changes are additive and the
+1. Apply revision `0003` while the old backend is still running. Both changes are additive and the
    old backend should ignore them.
 2. Deploy backend code that atomically claims a reset-token JTI and reads/increments
    `session_version`.
 3. Remove `ensure_reset_table()` and the request-time DDL in that same backend release or a small
-   follow-up once `0002` is guaranteed everywhere.
+   follow-up once `0003` is guaranteed everywhere.
 4. Run the authentication tests and production smoke tests.
 
-If the password and session work is split into separate application releases, split `0002` into
+If the password and session work is split into separate application releases, split `0003` into
 small, single-purpose consecutive revisions. The revision boundary should follow deployability,
 not an arbitrary preference for fewer files.
 
@@ -520,6 +550,8 @@ application compatibility.
 - [x] CI rejects multiple migration heads and tests base-to-head upgrades.
 - [x] VS Code and Azure apply pending revisions before backend startup; Azure serializes upgrades
       with a database advisory lock and fails closed on migration errors.
+- [ ] The harmless `0002` canary is applied by normal startup and smoke-tested on desktop, laptop,
+      and Azure without a manual upgrade command.
 - [ ] `password_reset_uses` is adopted by a post-baseline revision.
 - [ ] Request-time table creation is removed.
 - [ ] The first login-related schema migration is deployed using the documented expand-and-contract
