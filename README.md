@@ -193,6 +193,16 @@ membership, primary-pigeon, role, numbering, and commissioner invariants without
 Integrity errors return a nonzero exit code. Global users with no tenant or pigeon relationships
 are printed as informational warnings and are never deleted by this command.
 
+During the Alembic baseline transition, verify that the configured database matches the intended
+pre-Alembic schema without changing it:
+```bash
+python -m backend.cli verify-schema-baseline
+python -m backend.cli verify-schema-baseline --json
+```
+The command checks tables, columns, constraints, indexes, views, functions, and triggers, and
+returns a nonzero exit code when it detects drift. It permits the lazily created
+`password_reset_uses` table to be either absent or present with its exact expected definition.
+
 New-league onboarding flow:
 1. Run `create-league` — creates the commissioner user if needed, plus the tenant and a placeholder "Commissioner" player
 2. Commissioner logs in; their new league appears in the tenant switcher

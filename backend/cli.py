@@ -10,6 +10,7 @@ Commands:
 - import-tenant-picks : Interactively import a JSON snapshot into localhost
 - list-leagues   : Show all tenants with member/player counts
 - validate-rosters : Read-only roster integrity checks across one or all tenants
+- verify-schema-baseline : Read-only verification of the pre-Alembic schema
 - create-league  : Create a new league/tenant and assign a commissioner
 - delete-league  : Permanently delete a league and its data
 - run-sql        : Execute a SQL migration file using the app's DB connection
@@ -28,6 +29,7 @@ Example usage:
 - python -m backend.cli reset-season --year 2024
 - python -m backend.cli list-leagues
 - python -m backend.cli validate-rosters --json
+- python -m backend.cli verify-schema-baseline
 - python -m backend.cli create-league --name "My Pool" --commissioner-email admin@example.com
 - python -m backend.cli delete-league 2 --yes
 - python -m backend.cli run-sql database/migration_stage11.sql
@@ -57,7 +59,10 @@ from sqlalchemy import text
 # Settings currently announce loaded env files on stdout during imports.  Keep
 # stdout machine-readable for `validate-rosters --json` by sending only those
 # import-time diagnostics to stderr for that invocation.
-_json_validation_mode = "validate-rosters" in sys.argv and "--json" in sys.argv
+_json_validation_mode = (
+    any(command in sys.argv for command in ("validate-rosters", "verify-schema-baseline"))
+    and "--json" in sys.argv
+)
 with redirect_stdout(sys.stderr) if _json_validation_mode else nullcontext():
     from backend.routes.auth import make_session_token
     from backend.utils.db import AsyncSessionLocal
@@ -72,6 +77,10 @@ with redirect_stdout(sys.stderr) if _json_validation_mode else nullcontext():
         run_email_tue_warn,
         run_kickoff_sync,
         run_poll_scores,
+    )
+    from backend.utils.schema_baseline import (
+        format_schema_baseline_report,
+        verify_schema_baseline,
     )
     from backend.utils.score_sync import ScoreSync
     from backend.utils.settings import get_settings
@@ -833,6 +842,32 @@ def cmd_validate_rosters(args: argparse.Namespace) -> int:
     return 0 if report.is_valid else 1
 
 
+def cmd_verify_schema_baseline(args: argparse.Namespace) -> int:
+    """Verify the current PostgreSQL schema without changing it."""
+
+    settings = get_settings()
+    cfg = settings.psycopg_kwargs()
+    with psycopg.connect(**cfg) as conn:  # pylint: disable=no-member
+        conn.read_only = True
+        report = verify_schema_baseline(conn)
+
+    target = {
+        "host": settings.pg_host,
+        "port": settings.pg_port,
+        "database": settings.pg_db,
+    }
+    if args.as_json:
+        payload = {"target": target, **report.to_dict()}
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        print(
+            f"[cli] Schema baseline target: "
+            f"{settings.pg_host}:{settings.pg_port}/{settings.pg_db}"
+        )
+        print(format_schema_baseline_report(report))
+    return 0 if report.is_valid else 1
+
+
 def cmd_create_league(args: argparse.Namespace) -> int:
     """
     Create a new league/tenant.
@@ -1459,6 +1494,23 @@ def build_parser() -> argparse.ArgumentParser:
     p_validate.add_argument("--json", dest="as_json", action="store_true",
                             help="Emit a machine-readable JSON report")
     p_validate.set_defaults(func=cmd_validate_rosters)
+
+    # verify-schema-baseline
+    p_verify_schema = sub.add_parser(
+        "verify-schema-baseline",
+        help="Verify the pre-Alembic PostgreSQL schema without changing it.",
+        description=(
+            "Compares tables, columns, constraints, indexes, views, functions, and triggers "
+            "with the intended pre-Alembic baseline. Performs no writes."
+        ),
+    )
+    p_verify_schema.add_argument(
+        "--json",
+        dest="as_json",
+        action="store_true",
+        help="Emit a machine-readable JSON report",
+    )
+    p_verify_schema.set_defaults(func=cmd_verify_schema_baseline)
 
     # create-league
     p_create = sub.add_parser(
