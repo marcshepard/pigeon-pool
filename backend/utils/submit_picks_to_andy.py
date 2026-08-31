@@ -1,8 +1,8 @@
 """
 API to submit picks to Andy's Pigeon Pool survey site using Playwright.
 
-For Azure startup:
-python -m playwright install chromium && <old startup command>
+The Azure startup script installs the version-matched Chromium build into the
+App Service's persistent ``/home`` filesystem before starting the API.
 """
 
 # pylint: disable=line-too-long,broad-exception-caught, too-many-locals, too-many-statements

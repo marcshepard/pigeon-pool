@@ -272,6 +272,14 @@ we go standalone next year, the following changes should be made to the BE (or a
 * Azure/yml: Rework startup to remove all the playwrite installation (which takes forever)
 * Code: remove import_picks_xlsx & utils/submit_picks_to_andy.py
 
+Until that integration is retired, the production App Service's Debian 11 runtime requires
+`playwright==1.61.0`; Playwright 1.62 and later no longer support that OS. `backend/startup.sh`
+stores the matching Chromium build under persistent `/home/.cache/ms-playwright`. Backend CI
+installs and launches that browser in a Debian 11 container, while the deployment workflow rejects
+an incompatible Playwright requirement before packaging Azure. After deploying a Playwright change,
+confirm the startup log reports `Playwright Chromium is ready`, launch Chromium once from Kudu/SSH,
+and then perform an intended Tenant 1 submission.
+
 ## Learn more
 
 | Document | Contents |

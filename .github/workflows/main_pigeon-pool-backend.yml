@@ -25,6 +25,10 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Require the Debian 11 compatible Playwright pin
+        run: >-
+          python -c "from pathlib import Path; requirement = next(line.split('#', 1)[0].strip() for line in Path('backend/requirements.txt').read_text(encoding='utf-8').splitlines() if line.split('#', 1)[0].strip().startswith('playwright')); assert requirement == 'playwright==1.61.0', f'Azure Debian 11 requires playwright==1.61.0, found {requirement}'"
+
       - name: Require exactly one Alembic head
         run: |
           python -m pip install "alembic>=1.19,<2.0"

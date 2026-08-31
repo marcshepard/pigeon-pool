@@ -67,3 +67,23 @@ jobs:
 
       - name: Test Alembic base-to-head database and backend suite
         run: python tests/run_alembic_database_suite.py
+
+  playwright-debian-11:
+    runs-on: ubuntu-latest
+    container:
+      image: python:3.12-bullseye
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install the repository's Playwright requirement
+        run: |
+          requirement="$(python -c "from pathlib import Path; print(next(line.split('#', 1)[0].strip() for line in Path('backend/requirements.txt').read_text(encoding='utf-8').splitlines() if line.split('#', 1)[0].strip().startswith('playwright')))")"
+          test "$requirement" = "playwright==1.61.0"
+          python -m pip install "$requirement"
+
+      - name: Install and launch Chromium on Debian 11
+        run: |
+          python -m playwright install --with-deps chromium
+          python -c "from playwright.sync_api import sync_playwright; pw = sync_playwright().start(); browser = pw.chromium.launch(args=['--no-sandbox']); print(f'Chromium launch succeeded: {browser.version}'); browser.close(); pw.stop()"
