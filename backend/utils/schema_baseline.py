@@ -480,6 +480,7 @@ def _collect_constraints(cur: Any) -> dict[str, set[str]]:
     cur.execute(
         """
         SELECT c.conrelid::regclass::text,
+               c.contype,
                pg_get_constraintdef(c.oid, true)
           FROM pg_constraint c
           JOIN pg_namespace n ON n.oid = c.connamespace
@@ -488,7 +489,14 @@ def _collect_constraints(cur: Any) -> dict[str, set[str]]:
         """
     )
     constraints: dict[str, set[str]] = {}
-    for table, definition in cur.fetchall():
+    for table, constraint_type, definition in cur.fetchall():
+        # Newer PostgreSQL versions expose NOT NULL attributes in
+        # pg_constraint (contype='n'); older versions expose them only through
+        # pg_attribute.attnotnull.  Columns are already compared semantically
+        # by _collect_columns(), so including these rows would make identical
+        # schemas look different across PostgreSQL versions.
+        if constraint_type == "n":
+            continue
         constraints.setdefault(str(table).removeprefix("public."), set()).add(
             _normalize_sql(str(definition)) or ""
         )

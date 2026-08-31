@@ -7,8 +7,20 @@ from backend.utils.schema_baseline import (
     ColumnSpec,
     SchemaBaselineIssue,
     SchemaBaselineReport,
+    _collect_constraints,
     verify_schema_baseline,
 )
+
+
+class _ConstraintCursor:
+    def execute(self, _query):
+        return None
+
+    def fetchall(self):
+        return [
+            ("teams", "n", "NOT NULL abbr"),
+            ("teams", "p", "PRIMARY KEY (abbr)"),
+        ]
 
 
 def test_current_database_matches_schema_baseline(db_conn):
@@ -67,4 +79,10 @@ def test_failing_schema_report_is_json_serializable():
 
     assert '"email"' in encoded
     assert '"password_hash"' in encoded
+
+
+def test_postgresql_not_null_constraints_are_not_double_counted():
+    constraints = _collect_constraints(_ConstraintCursor())
+
+    assert constraints == {"teams": {"primary key(abbr)"}}
 
