@@ -4,6 +4,10 @@ Auth endpoint tests: login, /me, select-context, password reset.
 
 from unittest.mock import patch
 
+import pytest
+
+from backend.utils.passwords import provision_password_hash
+
 # ── login ─────────────────────────────────────────────────────────────────────
 
 def test_login_success(client, test_data):
@@ -33,6 +37,37 @@ def test_login_unknown_email(client):
         "password": "irrelevant",
     })
     assert resp.status_code == 401
+
+
+def test_login_rejects_legacy_plaintext_value(client, db_conn, test_data):
+    with db_conn.cursor() as cur:
+        cur.execute(
+            "UPDATE users SET password_hash = 'legacy-password' WHERE user_id = %s",
+            (test_data["member_uid"],),
+        )
+    db_conn.commit()
+    try:
+        resp = client.post("/auth/login", json={
+            "email": "testmember@example.com",
+            "password": "legacy-password",
+        })
+        assert resp.status_code == 401
+        assert resp.json()["detail"] == "Invalid credentials"
+    finally:
+        with db_conn.cursor() as cur:
+            cur.execute(
+                "UPDATE users SET password_hash = %s WHERE user_id = %s",
+                (provision_password_hash(), test_data["member_uid"]),
+            )
+        db_conn.commit()
+
+
+def test_login_rejects_oversized_password(client):
+    resp = client.post("/auth/login", json={
+        "email": "testcomm@example.com",
+        "password": "x" * 129,
+    })
+    assert resp.status_code == 422
 
 
 # ── /auth/me ──────────────────────────────────────────────────────────────────
@@ -110,3 +145,21 @@ def test_password_reset_unknown_email_still_200(client):
     with patch("backend.routes.auth.send_email"):
         resp = client.post("/auth/password-reset", json={"email": "ghost@example.com"})
     assert resp.status_code == 200
+
+
+@pytest.mark.parametrize("length", [0, 7, 129])
+def test_password_reset_rejects_password_outside_policy(client, length):
+    resp = client.post("/auth/password-reset/confirm", json={
+        "token": "invalid-token",
+        "new_password": "x" * length,
+    })
+    assert resp.status_code == 422
+
+
+@pytest.mark.parametrize("length", [8, 128])
+def test_password_reset_accepts_policy_boundaries(client, length):
+    resp = client.post("/auth/password-reset/confirm", json={
+        "token": "invalid-token",
+        "new_password": "x" * length,
+    })
+    assert resp.status_code == 401

@@ -3,6 +3,7 @@ import { useSearchParams, useNavigate } from "react-router-dom";
 import { Box, Button, Stack, TextField, Typography, Alert } from "@mui/material";
 import { apiConfirmPasswordReset } from "../backend/fetch";
 import type { PasswordResetConfirm } from "../backend/types";
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "../utils/passwordPolicy";
 
 export default function PasswordResetConfirmPage() {
   const [searchParams] = useSearchParams();
@@ -22,8 +23,8 @@ export default function PasswordResetConfirmPage() {
       setError("Missing or invalid reset token.");
       return;
     }
-    if (password.length < 8) {
-      setError("Password must be at least 8 characters.");
+    if (password.length < PASSWORD_MIN_LENGTH || password.length > PASSWORD_MAX_LENGTH) {
+      setError(`Password must be ${PASSWORD_MIN_LENGTH}–${PASSWORD_MAX_LENGTH} characters.`);
       return;
     }
     if (password !== confirm) {
@@ -57,7 +58,7 @@ export default function PasswordResetConfirmPage() {
     <Box sx={{ maxWidth: 400, mx: "auto", mt: 2, p: 3, textAlign: "center" }}>
       <Typography variant="h5" gutterBottom>Set a New Password</Typography>
       <Typography variant="body2" gutterBottom>
-        Enter your new password below. Password must be at least 8 characters.
+        Enter your new password below. Password must be 8–128 characters.
       </Typography>
       <Stack component="form" gap={2} onSubmit={handleSubmit}>
         <TextField
@@ -65,6 +66,7 @@ export default function PasswordResetConfirmPage() {
           type="password"
           value={password}
           onChange={e => setPassword(e.target.value)}
+          slotProps={{ htmlInput: { maxLength: PASSWORD_MAX_LENGTH } }}
           required
           autoFocus
         />
@@ -73,6 +75,7 @@ export default function PasswordResetConfirmPage() {
           type="password"
           value={confirm}
           onChange={e => setConfirm(e.target.value)}
+          slotProps={{ htmlInput: { maxLength: PASSWORD_MAX_LENGTH } }}
           required
         />
         <Button type="submit" variant="contained" disabled={busy}>

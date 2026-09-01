@@ -41,7 +41,6 @@ import asyncio
 import csv
 import json
 import os
-import secrets
 import sys
 from collections.abc import Awaitable, Callable
 from contextlib import nullcontext, redirect_stdout
@@ -49,10 +48,9 @@ from pathlib import Path
 from typing import Any, NoReturn
 
 import psycopg
-from passlib.hash import (
-    bcrypt as _bcrypt,  # pyright: ignore[reportAttributeAccessIssue]
-)
 from sqlalchemy import text
+
+from backend.utils.passwords import hash_password, provision_password_hash
 
 # Settings currently announce loaded env files on stdout during imports.  Keep
 # stdout machine-readable for `validate-rosters --json` by sending only those
@@ -888,7 +886,7 @@ def cmd_create_league(args: argparse.Namespace) -> int:
             if not row:
                 cur.execute(
                     "INSERT INTO users (email, password_hash) VALUES (%s, %s) RETURNING user_id",
-                    (email, _bcrypt.hash(secrets.token_urlsafe(32))),
+                    (email, provision_password_hash()),
                 )
                 user_id = cur.fetchone()[0]  # type: ignore[index]
                 commissioner_created = True
@@ -1143,7 +1141,7 @@ def cmd_setup_fe_tests(_: argparse.Namespace) -> int:
             """, (tenant_id,))
             player_id = cur.fetchone()[0]  # type: ignore[index]
 
-            pw_hash = _bcrypt.hash("testpass")
+            pw_hash = hash_password("testpass")
             cur.execute(
                 "INSERT INTO users (email, password_hash) VALUES ('_testfe@example.com', %s) RETURNING user_id",
                 (pw_hash,),

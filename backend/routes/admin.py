@@ -8,8 +8,6 @@ within the active tenant. All data-access routes are scoped to me.tenant_id.
 from __future__ import annotations
 
 import os
-import secrets
-import string
 import tempfile
 from datetime import UTC, datetime, timedelta
 from typing import Literal
@@ -34,6 +32,7 @@ from backend.utils.db import get_db
 from backend.utils.emailer import send_bulk_email_to_all_users
 from backend.utils.import_picks_xlsx import import_picks_pivot_xlsx_with_engine
 from backend.utils.logger import debug, info, warn
+from backend.utils.passwords import provision_password_hash
 from backend.utils.validation import validate_pigeon_name
 
 from .auth import require_admin, require_user
@@ -638,11 +637,6 @@ class PigeonUpdate(PigeonAggregateIn):
     season_status: Literal["pending", "active", "out"]
 
 
-def _random_password_hash(length: int = 16) -> str:
-    alphabet = string.ascii_letters + string.digits + string.punctuation
-    return "".join(secrets.choice(alphabet) for _ in range(length))
-
-
 def _normalize_email(email: EmailStr | str) -> str:
     return str(email).strip().casefold()
 
@@ -691,7 +685,7 @@ async def _find_or_create_user(db: AsyncSession, email: EmailStr | str) -> tuple
 
     created = (await db.execute(INSERT_USER_SQL, {
         "email": normalized,
-        "password_hash": _random_password_hash(),
+        "password_hash": provision_password_hash(),
     })).first()
     if created:
         return created[0], created[1]

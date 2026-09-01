@@ -9,7 +9,7 @@ coordinated database, backend, and frontend migration.
 | Stage | Required schema change | Required backend/API change |
 |------|-------------------------|-----------------------------|
 | 1. Rate limiting | None by default | Add per-IP and normalized-account throttles to login and reset requests; return `429` with generic behavior. |
-| 2. Password hardening | None; `users.password_hash TEXT NOT NULL` is sufficient | Remove plaintext comparison, enforce the password policy, use an unusable marker for new accounts, and add a legacy-hash inventory command. |
+| 2. Password hardening | None; `users.password_hash TEXT NOT NULL` is sufficient | Remove plaintext comparison, enforce the password policy, provision accounts with bcrypt hashes of discarded random tokens, and inventory legacy values. |
 | 3. Session invalidation | Add `users.session_version INTEGER NOT NULL DEFAULT 0`; no index is needed | Put the version in session JWTs, compare it in `current_user`, and increment it after password reset or sign-out-everywhere. |
 | 4. Atomic reset use | Make `password_reset_uses` a required Alembic-managed table | Atomically claim the reset JTI in the password-update transaction and remove request-time DDL. |
 | 5. HttpOnly cookie and CSRF | None for a stateless signed-cookie design | Set/read/clear the session cookie, require CSRF proof on mutations, update CORS/cookie settings, and retire bearer-token responses after transition. |
@@ -45,30 +45,30 @@ Add focused tests for each limiter, window expiry, generic responses, and truste
 
 ## 2. Require hashed passwords and enforce a password policy
 
-Login currently accepts any non-bcrypt `users.password_hash` value as a plaintext password.
-Before removing that compatibility path:
+Login previously accepted any non-bcrypt `users.password_hash` value as a plaintext password.
+The hardening rollout is:
 
 1. Inventory production rows whose value is not a recognized bcrypt hash.
 2. Force password reset for any real legacy account in that set.
-3. Give newly provisioned users an explicitly unusable password marker rather than a random
-   plaintext placeholder.
+3. Give each newly provisioned user a bcrypt hash of an independently generated random token
+   that is immediately discarded.
 4. Remove plaintext comparison from login and accept only supported password hashes.
 
-Password reset should validate a reasonable passphrase policy (recommended: 12–128 characters)
+Password reset validates an 8–128 character policy
 on both the backend model and frontend form. Do not impose composition rules that discourage
 password managers or long passphrases.
 
 **Schema/Alembic:** No migration is required. The existing `users.password_hash TEXT NOT NULL`
-column can store supported hashes and an explicit unusable marker. Do not add a bcrypt-specific
-database constraint: it would complicate future algorithm upgrades and the unusable marker.
+column can store supported hashes. Do not add a bcrypt-specific database constraint because it
+would complicate future algorithm upgrades.
 
-**Backend/API:** Add one shared password-policy validator, initially 12–128 characters, and apply
+**Backend/API:** Use one shared password-policy definition, 8–128 characters, and apply
 it to `PasswordResetConfirmIn`; keep the frontend validation identical. Bound login password input
 as well so deliberately huge values cannot waste hashing resources. Replace the current
-`payload.password == stored_hash` fallback with supported-hash verification only. Add a read-only
-CLI inventory for unrecognized values, update every user-creation path to store the unusable
-marker, and require password reset before those users can log in. Preserve generic login failures
-and add tests for legacy plaintext rejection, supported hashes, the marker, and length boundaries.
+`payload.password == stored_hash` fallback with supported-hash verification only. Keep a read-only
+inventory query for unrecognized values, update every user-creation path to use the same random
+token plus bcrypt helper, and require password reset before those users can log in. Preserve generic
+login failures and add tests for legacy plaintext rejection, provisioned hashes, and length boundaries.
 
 ## 3. Invalidate sessions after security-sensitive account changes
 
@@ -158,7 +158,7 @@ tenant switching, expiry, and cross-origin rejection.
 ## Suggested implementation order
 
 1. Rate limits and reset-email abuse protection. No database migration.
-2. Password inventory, password policy, and removal of plaintext compatibility. No database
+2. Password inventory and repair, password policy, and removal of plaintext compatibility. No database
    migration.
 3. Add the session-version column and adopt the reset-use table in an additive Alembic revision;
    then deploy atomic reset consumption and session-version invalidation.

@@ -13,6 +13,7 @@ import PasswordResetRequestForm from "./PasswordResetRequestForm";
 import { useAuth } from "../auth/useAuth";
 import { LoginPayload } from "../backend/types";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { PASSWORD_MAX_LENGTH } from "../utils/passwordPolicy";
 
 type InstallPlatform = "ios" | "android";
 
@@ -101,7 +102,7 @@ export default function LoginPage() {
       if (isUnauthorized) {
         setSnack({
           open: true,
-          message: "Incorrect email or password. Please try again.",
+          message: "Incorrect email or password. For a first sign-in or a new password, use Reset password below.",
           severity: "error",
         });
         setHighlightReset(true);
@@ -194,6 +195,7 @@ export default function LoginPage() {
           autoComplete="current-password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
+          slotProps={{ htmlInput: { maxLength: PASSWORD_MAX_LENGTH } }}
           required
         />
         <Button type="submit" variant="contained" disabled={busy}>

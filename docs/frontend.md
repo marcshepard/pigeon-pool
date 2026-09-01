@@ -22,6 +22,8 @@ React + TypeScript + Vite + MUI application.
 - **Auth**: `useAuth` → JWT stored in localStorage → `Authorization: Bearer` header on every API call.
   Signing in, signing out, or switching tenants invalidates all in-memory application caches;
   tenant switching then reloads the page so cached results can never cross an auth context.
+  Login failures remain generic and point first-time users to password reset. The reset form
+  mirrors the backend's 8–128 character password policy.
 - **Picks/Results**: `useResults(week)` fetches `/results/weeks/{week}/picks` and `/results/weeks/{week}/leaderboard`, then shapes via `resultsShaping.ts`
 - **Analytics**: Both "Your Picks" and "Top 5" tabs consume the same `useResults` data, displayed differently
 - **YTD leaderboard**: `useYtd` fetches `/results/leaderboard` (all locked weeks concatenated)

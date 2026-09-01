@@ -26,13 +26,11 @@ so the unlocked week is always separate from the locked scoring weeks.
 
 import psycopg
 import pytest
-from passlib.hash import (
-    bcrypt as _bcrypt,  # pyright: ignore[reportAttributeAccessIssue]
-)
 from starlette.testclient import TestClient
 
 from backend.main import app
 from backend.routes.auth import make_session_token
+from backend.utils.passwords import hash_password, provision_password_hash
 from backend.utils.settings import get_settings
 
 # ── scoring formula (mirrors v_results) ──────────────────────────────────────
@@ -113,7 +111,7 @@ def test_data(db_conn):
 
     Users:
         testcomm@example.com   — bcrypt hash of "testpass" (used by login test)
-        testmember@example.com — placeholder hash "x" (token minted directly; never logs in)
+        testmember@example.com — bcrypt hash of a discarded random provisioning token
     """
     # Guard against leftover data from a previously-aborted session.
     db_conn.rollback()
@@ -154,14 +152,15 @@ def test_data(db_conn):
         b_pid = cur.fetchone()[0]
 
         # Users
-        pw = _bcrypt.hash("testpass")
+        pw = hash_password("testpass")
         cur.execute(
             "INSERT INTO users (email, password_hash) VALUES ('testcomm@example.com', %s) RETURNING user_id",
             (pw,),
         )
         comm_uid = cur.fetchone()[0]
         cur.execute(
-            "INSERT INTO users (email, password_hash) VALUES ('testmember@example.com', 'x') RETURNING user_id"
+            "INSERT INTO users (email, password_hash) VALUES ('testmember@example.com', %s) RETURNING user_id",
+            (provision_password_hash(),),
         )
         member_uid = cur.fetchone()[0]
 

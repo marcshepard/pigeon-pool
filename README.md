@@ -62,8 +62,9 @@ python -m backend.cli sync-schedule
 ```bash
 python -m backend.cli create-league --name "Pigeon Pool" --commissioner-email admin@example.com
 ```
-`create-league` creates the commissioner user when needed. Start the app and use **Forgot Password**
-to set the commissioner's password before their first login.
+`create-league` creates the commissioner user when needed. All new accounts receive a bcrypt hash
+of a discarded random token, so start the app and use **Forgot Password** to set a known password
+before the first login.
 
 7. Run the CLI to sync historic pigeon picks from previous weeks into the database.
 First, get a copy of picks 2025.xlsx (not checked in for privacy reasons). Then:

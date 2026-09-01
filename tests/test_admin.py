@@ -3,6 +3,7 @@ Commissioner (admin) endpoint tests.
 """
 
 import pytest
+from passlib.hash import bcrypt  # pyright: ignore[reportAttributeAccessIssue]
 
 from backend.main import app
 from backend.routes.auth import AuthUser, require_admin
@@ -149,6 +150,15 @@ def test_create_pigeon_builds_complete_aggregate_and_fills_lowest_gap(
         (manager_email, "manager", "member", body["player_id"]),
         (owner_email, "owner", "member", body["player_id"]),
     ]
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            "SELECT password_hash FROM users WHERE LOWER(email) = ANY(%s)",
+            ([owner_email, manager_email],),
+        )
+        provisioned_hashes = [row[0] for row in cur.fetchall()]
+    assert len(provisioned_hashes) == 2
+    assert all(bcrypt.identify(password_hash) for password_hash in provisioned_hashes)
 
 
 def test_create_unclaimed_pigeon_without_creating_membership(

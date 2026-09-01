@@ -148,6 +148,10 @@ never repairs or deletes data and exits nonzero only when integrity errors are p
 - **No invite email.** New users go to the site and use "Forgot Password" to set their
   password before first login — avoids spam-folder issues with transactional email from a
   new domain, and keeps the CLI-driven onboarding simple.
+- **Provisioned credentials are never shared.** Every user-creation path stores a bcrypt hash of
+  an independently generated high-entropy token that is immediately discarded. Login verifies
+  bcrypt only. A user establishes their first known password through "Forgot Password"; reset
+  passwords must be 8–128 characters.
 - **Tenant creation is CLI-only**, run by the operator (`list-leagues` / `create-league` /
   `delete-league` — see README's CLI reference for usage). No API endpoint exists, so there's
   no auth surface to protect; sufficient for a curated-pool model where leagues aren't

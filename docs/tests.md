@@ -104,7 +104,9 @@ The `make_session_token()` helper is the same function the `/auth/login` endpoin
 - email: `testcomm@pigeon.test`
 - password: `testpass`
 
-For this to work, `test_data` inserts the commissioner user with a bcrypt hash of `"testpass"` (via `passlib.hash.bcrypt.hash("testpass")`). The member user gets a placeholder hash `"x"` since the login endpoint is never called for them.
+For this to work, `test_data` inserts the commissioner user with a bcrypt hash of `"testpass"`.
+The member user gets a bcrypt hash of a discarded random provisioning token, matching production
+new-user behavior even though tests authenticate that member with pre-minted sessions.
 
 ---
 

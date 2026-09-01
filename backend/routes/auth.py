@@ -20,11 +20,16 @@ import jwt
 import psycopg
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from passlib.hash import bcrypt  # pyright: ignore[reportAttributeAccessIssue]
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 
 from backend.utils.emailer import send_email
 from backend.utils.logger import debug, error, info, warn
+from backend.utils.passwords import (
+    PASSWORD_MAX_LENGTH,
+    PASSWORD_MIN_LENGTH,
+    hash_password,
+    verify_password,
+)
 from backend.utils.settings import get_settings
 
 # --- Config ---
@@ -50,7 +55,7 @@ def db():
 # --- Models ---
 class LoginIn(BaseModel):
     email: EmailStr
-    password: str
+    password: str = Field(min_length=1, max_length=PASSWORD_MAX_LENGTH)
 
 class AltPigeon(BaseModel):
     player_id: int
@@ -90,7 +95,10 @@ class PasswordResetRequestIn(BaseModel):
 
 class PasswordResetConfirmIn(BaseModel):
     token: str
-    new_password: str
+    new_password: str = Field(
+        min_length=PASSWORD_MIN_LENGTH,
+        max_length=PASSWORD_MAX_LENGTH,
+    )
 
 # --- JWT helpers ---
 def make_session_token(player_id: int, tenant_id: int, email: str, uid: int) -> tuple[str, int]:
@@ -345,16 +353,7 @@ def login(payload: LoginIn):
 
         uid, email, stored_hash = user_row
 
-        ok = False
-        try:
-            if stored_hash and stored_hash.startswith("$2"):
-                ok = bcrypt.verify(payload.password, stored_hash)
-            else:
-                ok = payload.password == stored_hash
-        except (ValueError, TypeError):
-            ok = False
-
-        if not ok:
+        if not verify_password(payload.password, stored_hash):
             raise HTTPException(status_code=401, detail="Invalid credentials")
 
         ctx = select_tenant_context(cur, uid)
@@ -488,7 +487,7 @@ def confirm_password_reset(payload: PasswordResetConfirmIn):
                     raise HTTPException(status_code=401, detail="Invalid reset token")
                 email = row[0]
 
-                new_hash = bcrypt.hash(payload.new_password)
+                new_hash = hash_password(payload.new_password)
                 cur.execute("UPDATE users SET password_hash = %s WHERE user_id = %s", (new_hash, uid))
                 if cur.rowcount != 1:
                     warn("password-reset: couldn't update user", uid=uid, jti=jti)
