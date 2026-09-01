@@ -1,18 +1,19 @@
-# Login security follow-up
+# Post-season login security backlog
 
-This file tracks the high-priority authentication work intentionally deferred from the
-multi-tenancy isolation fixes. These items should be handled together because several require a
-coordinated database, backend, and frontend migration.
+This file tracks authentication hardening intentionally deferred until after the 2026 season.
+The season begins in less than two weeks, after substantial multi-tenancy and login changes, so
+these items should not be implemented during the season unless an actual security incident changes
+the risk calculation. Several should be handled together because they require a coordinated
+database, backend, and frontend migration.
 
 ## Schema and backend summary
 
 | Stage | Required schema change | Required backend/API change |
 |------|-------------------------|-----------------------------|
 | 1. Rate limiting | None by default | Add per-IP and normalized-account throttles to login and reset requests; return `429` with generic behavior. |
-| 2. Password hardening | None; `users.password_hash TEXT NOT NULL` is sufficient | Remove plaintext comparison, enforce the password policy, provision accounts with bcrypt hashes of discarded random tokens, and inventory legacy values. |
-| 3. Session invalidation | Add `users.session_version INTEGER NOT NULL DEFAULT 0`; no index is needed | Put the version in session JWTs, compare it in `current_user`, and increment it after password reset or sign-out-everywhere. |
-| 4. Atomic reset use | Make `password_reset_uses` a required Alembic-managed table | Atomically claim the reset JTI in the password-update transaction and remove request-time DDL. |
-| 5. HttpOnly cookie and CSRF | None for a stateless signed-cookie design | Set/read/clear the session cookie, require CSRF proof on mutations, update CORS/cookie settings, and retire bearer-token responses after transition. |
+| 2. Session invalidation | Add `users.session_version INTEGER NOT NULL DEFAULT 0`; no index is needed | Put the version in session JWTs, compare it in `current_user`, and increment it after password reset or sign-out-everywhere. |
+| 3. Atomic reset use | Make `password_reset_uses` a required Alembic-managed table | Atomically claim the reset JTI in the password-update transaction and remove request-time DDL. |
+| 4. HttpOnly cookie and CSRF | None for a stateless signed-cookie design | Set/read/clear the session cookie, require CSRF proof on mutations, update CORS/cookie settings, and retire bearer-token responses after transition. |
 
 The session-version column and reset-use table can ship together in one additive revision, using
 the next available revision number. If the Alembic canary consumes `0002`, this work starts at
@@ -43,38 +44,16 @@ Keep `POST /auth/password-reset` returning the same success body for known and u
 make their timing reasonably comparable, and never log passwords, tokens, or full reset URLs.
 Add focused tests for each limiter, window expiry, generic responses, and trusted-proxy handling.
 
-## 2. Require hashed passwords and enforce a password policy
-
-Login previously accepted any non-bcrypt `users.password_hash` value as a plaintext password.
-The hardening rollout is:
-
-1. Inventory production rows whose value is not a recognized bcrypt hash.
-2. Force password reset for any real legacy account in that set.
-3. Give each newly provisioned user a bcrypt hash of an independently generated random token
-   that is immediately discarded.
-4. Remove plaintext comparison from login and accept only supported password hashes.
-
-Password reset validates an 8–128 character policy
-on both the backend model and frontend form. Do not impose composition rules that discourage
-password managers or long passphrases.
-
-**Schema/Alembic:** No migration is required. The existing `users.password_hash TEXT NOT NULL`
-column can store supported hashes. Do not add a bcrypt-specific database constraint because it
-would complicate future algorithm upgrades.
-
-**Backend/API:** Use one shared password-policy definition, 8–128 characters, and apply
-it to `PasswordResetConfirmIn`; keep the frontend validation identical. Bound login password input
-as well so deliberately huge values cannot waste hashing resources. Replace the current
-`payload.password == stored_hash` fallback with supported-hash verification only. Keep a read-only
-inventory query for unrecognized values, update every user-creation path to use the same random
-token plus bcrypt helper, and require password reset before those users can log in. Preserve generic
-login failures and add tests for legacy plaintext rejection, provisioned hashes, and length boundaries.
-
-## 3. Invalidate sessions after security-sensitive account changes
+## 2. Invalidate sessions after security-sensitive account changes
 
 Session JWTs are self-contained and remain valid until expiry. Resetting a password therefore
 does not revoke a previously stolen token, and the backend logout endpoint cannot invalidate a
 copied token.
+
+The current session lifetime is intentionally one week. A previous one-day lifetime required users
+to sign in too frequently and generated complaints, so shortening it is not the chosen mitigation.
+Keep the one-week lifetime through the 2026 season and revisit server-side invalidation after the
+season rather than trading away usability now.
 
 Add a server-checked session generation/version to `users`, include it in each session token, and
 compare it in `current_user`. Increment it after password reset and when the user chooses a
@@ -97,7 +76,7 @@ increments the version. Ordinary bearer-token logout remains client-side until t
 do not claim that it revokes copied tokens. Test that old tokens fail after reset/sign-out-everywhere
 and that tenant switching preserves the current version.
 
-## 4. Consume password-reset tokens atomically
+## 3. Consume password-reset tokens atomically
 
 Reset confirmation currently checks whether a JWT ID was used and records it later. Concurrent
 requests can both pass the initial check. Move `password_reset_uses` into the normal schema and
@@ -128,7 +107,7 @@ claim, the bcrypt password update, the `session_version` increment, tenant-conte
 retry remains possible. A conflict returns the existing generic invalid/used-token response. Add a
 concurrency test proving two confirmations cannot both succeed and a rollback/retry test.
 
-## 5. Protect browser session tokens from script access
+## 4. Protect browser session tokens from script access
 
 The frontend stores the bearer JWT in `localStorage`, so any successful same-origin script
 injection can steal it. Prefer an `HttpOnly`, `Secure`, appropriately `SameSite` session cookie.
@@ -158,11 +137,9 @@ tenant switching, expiry, and cross-origin rejection.
 ## Suggested implementation order
 
 1. Rate limits and reset-email abuse protection. No database migration.
-2. Password inventory and repair, password policy, and removal of plaintext compatibility. No database
-   migration.
-3. Add the session-version column and adopt the reset-use table in an additive Alembic revision;
+2. Add the session-version column and adopt the reset-use table in an additive Alembic revision;
    then deploy atomic reset consumption and session-version invalidation.
-4. Migrate to HttpOnly cookies and CSRF protection. No database migration unless individual
+3. Migrate to HttpOnly cookies and CSRF protection. No database migration unless individual
    server-side sessions are deliberately added to scope.
 
 Each change should include focused backend tests. The cookie migration also needs browser tests
