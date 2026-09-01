@@ -1,6 +1,7 @@
 """Safety tests for the orphan-user inventory and localhost cleanup SQL."""
 
 from pathlib import Path
+from typing import LiteralString, cast
 
 import psycopg
 
@@ -9,11 +10,15 @@ from backend.utils.settings import get_settings
 
 def test_orphan_user_scripts_only_delete_unreferenced_users():
     repository_root = Path(__file__).resolve().parents[1]
-    find_sql = (repository_root / "scripts" / "find_orphan_users.sql").read_text(
-        encoding="utf-8"
+    find_sql = cast(
+        LiteralString,
+        (repository_root / "scripts" / "find_orphan_users.sql").read_text(encoding="utf-8"),
     )
-    delete_sql = (repository_root / "scripts" / "delete_orphan_users_local.sql").read_text(
-        encoding="utf-8"
+    delete_sql = cast(
+        LiteralString,
+        (repository_root / "scripts" / "delete_orphan_users_local.sql").read_text(
+            encoding="utf-8"
+        ),
     )
 
     settings = get_settings()
@@ -30,12 +35,10 @@ def test_orphan_user_scripts_only_delete_unreferenced_users():
         conn.execute("INSERT INTO tenant_members VALUES (2)")
         conn.execute("INSERT INTO user_players VALUES (3)")
 
-        orphan_rows = conn.execute(
-            find_sql  # pyright: ignore[reportArgumentType]
-        ).fetchall()
+        orphan_rows = conn.execute(find_sql).fetchall()
         assert orphan_rows == [(1, "orphan@example.com")]
 
-        conn.execute(delete_sql)  # pyright: ignore[reportArgumentType]
+        conn.execute(delete_sql)
 
         remaining_rows = conn.execute("SELECT user_id FROM users ORDER BY user_id").fetchall()
         assert remaining_rows == [(2,), (3,)]

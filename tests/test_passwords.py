@@ -1,6 +1,7 @@
 """Tests for shared password behavior."""
 
 from pathlib import Path
+from typing import LiteralString, cast
 
 import psycopg
 
@@ -32,11 +33,17 @@ def test_verify_password_rejects_plaintext_and_malformed_values():
 
 def test_password_repair_sql_is_guarded_and_idempotent():
     repository_root = Path(__file__).resolve().parents[1]
-    repair_sql = (repository_root / "scripts" / "repair_non_bcrypt_passwords.sql").read_text(
-        encoding="utf-8"
+    repair_sql = cast(
+        LiteralString,
+        (repository_root / "scripts" / "repair_non_bcrypt_passwords.sql").read_text(
+            encoding="utf-8"
+        ),
     )
-    check_sql = (repository_root / "scripts" / "check_password_hashes.sql").read_text(
-        encoding="utf-8"
+    check_sql = cast(
+        LiteralString,
+        (repository_root / "scripts" / "check_password_hashes.sql").read_text(
+            encoding="utf-8"
+        ),
     )
     target_users = [
         (14, "gray@grayskysolutions.com"),
@@ -58,7 +65,7 @@ def test_password_repair_sql_is_guarded_and_idempotent():
                 target_users,
             )
 
-        conn.execute(repair_sql)  # pyright: ignore[reportArgumentType]
+        conn.execute(repair_sql)
         first_hashes = dict(conn.execute("SELECT user_id, password_hash FROM users").fetchall())
         assert len(first_hashes) == 6
         assert all(
@@ -67,11 +74,11 @@ def test_password_repair_sql_is_guarded_and_idempotent():
         )
         assert all(value.startswith("$2b$") for value in first_hashes.values())
 
-        conn.execute(repair_sql)  # pyright: ignore[reportArgumentType]
+        conn.execute(repair_sql)
         second_hashes = dict(conn.execute("SELECT user_id, password_hash FROM users").fetchall())
         assert second_hashes == first_hashes
 
-        check_result = conn.execute(check_sql)  # pyright: ignore[reportArgumentType]
+        check_result = conn.execute(check_sql)
         while check_result.nextset():
             pass
         assert check_result.fetchone() == (6, 6, 0)
