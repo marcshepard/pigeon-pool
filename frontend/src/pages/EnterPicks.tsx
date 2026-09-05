@@ -737,14 +737,16 @@ export default function EnterPicksPage() {
         </DialogTitle>
         <DialogContent>
           {me?.tenant_id === 1 && !submitDialog.error && (
-            <Alert severity="warning" sx={{ mb: 2 }}>
-              Saving your picks in the app, then submitting them to CrowdStrike. CrowdStrike
-              submission usually takes 1–2 minutes.
-              <br />
-              <strong>Important:</strong> CrowdStrike is the official record. If its submission
-              fails, Andy will not receive your picks even if they appear saved here. Keep this
-              window open so you can see if the submission succeeds.
-            </Alert>
+            <>
+              <Typography variant="body2" sx={{ mb: 2 }}>
+                Saving your picks in the app, then submitting them to CrowdStrike. CrowdStrike
+                submission usually takes 1–2 minutes.
+              </Typography>
+              <Alert severity="warning" sx={{ mb: 2 }}>
+                If the CrowdStrike submission fails, Andy will not receive your picks even if they
+                appear saved here. Keep this window open so you can see if the submission succeeds.
+              </Alert>
+            </>
           )}
           <Loading error={submitDialog.error ?? undefined} />
         </DialogContent>
