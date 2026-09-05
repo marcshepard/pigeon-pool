@@ -739,11 +739,11 @@ export default function EnterPicksPage() {
           {me?.tenant_id === 1 && !submitDialog.error && (
             <>
               <Typography variant="body2" sx={{ mb: 2 }}>
-                Saving your picks in the app, then submitting them to CrowdStrike. CrowdStrike
+                Saving your picks in the app, then submitting them to CrowdSignal. CrowdSignal
                 submission usually takes 1–2 minutes.
               </Typography>
               <Alert severity="warning" sx={{ mb: 2 }}>
-                If the CrowdStrike submission fails, Andy will not receive your picks even if they
+                If the CrowdSignal submission fails, Andy will not receive your picks even if they
                 appear saved here. Keep this window open so you can see if the submission succeeds.
               </Alert>
             </>

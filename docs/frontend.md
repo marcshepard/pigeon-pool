@@ -19,6 +19,8 @@ React + TypeScript + Vite + MUI application.
 - **Mobile sign-in**: iOS and Android browsers show platform-specific Home Screen installation
   instructions at the bottom of the sign-in page. The prompt is hidden when the app is already
   running in standalone mode.
+- **Home feedback**: The centered feedback link opens an email to Marc with the current pigeon's
+  name and active pool name prefilled; the message body retains a `<feedback>` placeholder.
 - **Auth**: `useAuth` → JWT stored in localStorage → `Authorization: Bearer` header on every API call.
   Signing in, signing out, or switching tenants invalidates all in-memory application caches;
   tenant switching then reloads the page so cached results can never cross an auth context.

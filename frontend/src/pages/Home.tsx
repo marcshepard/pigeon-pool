@@ -54,6 +54,9 @@ const tiles = [
 export default function HomePage() {
     const { me } = useAuth();
     const tenantName = me?.activeTenant?.name ?? "Pigeon Pool";
+    const feedbackEmail = "marcshepard@outlook.com";
+    const feedbackBody = `Hey Marc,\n\nI'm ${me?.pigeon_name ?? "<pigeon name>"} from ${tenantName}.\n\n<feedback>`;
+    const feedbackMailto = `mailto:${feedbackEmail}?subject=${encodeURIComponent("Pigeon Pool feedback")}&body=${encodeURIComponent(feedbackBody)}`;
     return (
         <PageScroll sx={{ px: 1 }}>
             <Box sx={{ width: "100%", maxWidth: NORMAL_PAGE_MAX_WIDTH, mx: "auto" }}>
@@ -81,7 +84,7 @@ export default function HomePage() {
             </Box>
 
             <Box sx={{ width: "100%", maxWidth: NORMAL_PAGE_MAX_WIDTH, mx: "auto" }}>
-                <Stack spacing={3} mt={3} mb={1}>
+                <Stack spacing={{ xs: 1.5, sm: 3 }} mt={{ xs: 2, sm: 3 }} mb={0}>
                     {tiles.map((tile) => (
                         <Paper
                             key={tile.path}
@@ -117,6 +120,12 @@ export default function HomePage() {
                         </Paper>
                     ))}
                 </Stack>
+                <Typography variant="body2" color="text.secondary" align="center" sx={{ mt: { xs: 1.5, sm: 3 }, mb: 2 }}>
+                    Bugs/feedback? {" "}
+                    <Box component="a" href={feedbackMailto} sx={{ color: "inherit" }}>
+                        {feedbackEmail}
+                    </Box>
+                </Typography>
             </Box>
         </PageScroll>
     );

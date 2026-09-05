@@ -51,9 +51,9 @@ the durable reference — for directory structure and frontend data flows see
 - **`tenants.picks_open`** (default `true`) — whether members can enter picks. Commissioners
   control it from League Settings; when closed, the picks UI is replaced by a warning and
   pick submissions are rejected by the API.
-- **Legacy Andy/CrowdStrike survey sync** — tenant 1's CrowdStrike site is the official source
+- **Legacy Andy/CrowdSignal survey sync** — tenant 1's CrowdSignal site is the official source
   of truth for picks; this app is an optional entry point and local cache. The app deliberately
-  commits local picks first, then submits them to CrowdStrike. If that external submission fails,
+  commits local picks first, then submits them to CrowdSignal. If that external submission fails,
   the local picks can still appear saved but Andy has not received them, so the tenant-1 submission
   dialog warns users before the slow (typically 1–2 minute) external step. Its database reload is
   scoped by the authenticated `tenant_id` and stable `player_id`; tenant-local `pigeon_number` is
