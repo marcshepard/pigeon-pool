@@ -17,6 +17,21 @@ fi
 export PLAYWRIGHT_BROWSERS_PATH="${PLAYWRIGHT_BROWSERS_PATH:-/home/.cache/ms-playwright}"
 mkdir -p "$PLAYWRIGHT_BROWSERS_PATH"
 
+# Debian 11 LTS has ended, and its stale security index references packages
+# that are no longer available. The base and updates repositories still
+# contain compatible versions of Chromium's runtime dependencies. Apply this
+# only to Bullseye so a future App Service runtime keeps its security source.
+if grep -Fqx 'VERSION_CODENAME=bullseye' /etc/os-release; then
+    echo "Disabling Debian 11's unavailable security repository..."
+    if [ -f /etc/apt/sources.list ]; then
+        sed -i \
+            '/^[[:space:]]*deb .*debian-security.*bullseye-security/s/^[[:space:]]*/# Disabled unavailable Debian 11 security repository: /' \
+            /etc/apt/sources.list
+    fi
+    rm -f /etc/apt/apt.conf.d/99pigeon-pool-archive
+    rm -f /var/lib/apt/lists/*debian-security*
+fi
+
 # App Service images can be replaced independently of the persistent browser cache.
 # Chromium requires this library even when the matching browser is already cached in /home.
 if ! ldconfig -p | grep -Fq "libglib-2.0.so.0"; then
@@ -31,17 +46,10 @@ PLAYWRIGHT_INSTALLED=false
 if python -m playwright install --with-deps chromium; then
     PLAYWRIGHT_INSTALLED=true
 else
-    echo "Playwright dependency installation failed; using Debian's historical archive and retrying once..." >&2
+    echo "Playwright dependency installation failed; refreshing Apt metadata and retrying once..." >&2
     apt-get clean
     rm -rf /var/lib/apt/lists/*
-    if [ -f /etc/apt/sources.list ]; then
-        sed -i \
-            -e 's|http://deb.debian.org/debian-security|http://archive.debian.org/debian-security|g' \
-            -e 's|http://security.debian.org/debian-security|http://archive.debian.org/debian-security|g' \
-            /etc/apt/sources.list
-    fi
-    printf 'Acquire::Check-Valid-Until "false";\n' > /etc/apt/apt.conf.d/99pigeon-pool-archive
-    if apt-get -o Acquire::Check-Valid-Until=false update && python -m playwright install --with-deps chromium; then
+    if apt-get update && python -m playwright install --with-deps chromium; then
         PLAYWRIGHT_INSTALLED=true
     fi
 fi

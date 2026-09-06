@@ -282,9 +282,9 @@ Until that integration is retired, the production App Service's Debian 11 runtim
 `playwright==1.61.0`; Playwright 1.62 and later no longer support that OS. `backend/startup.sh`
 stores the matching Chromium build under persistent `/home/.cache/ms-playwright`. Backend CI
 installs and launches that browser in a Debian 11 container, while the deployment workflow rejects
-an incompatible Playwright requirement before packaging Azure. After deploying a Playwright change,
-the startup script retries a failed dependency installation once with refreshed Apt metadata and
-Debian's historical security archive, then performs a 15-second Chromium launch check. Confirm the
+an incompatible Playwright requirement before packaging Azure. On Debian 11, the startup script
+disables the unavailable security repository before installing Chromium dependencies; it retries
+a failed installation once with refreshed Apt metadata, then performs a 15-second Chromium launch check. Confirm the
 startup log reports `Playwright Chromium is ready`, then perform an intended Tenant 1 submission.
 
 ## Learn more
