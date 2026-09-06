@@ -26,7 +26,7 @@ React + TypeScript + Vite + MUI application.
   tenant switching then reloads the page so cached results can never cross an auth context.
   Login failures remain generic and point first-time users to password reset. The reset form
   mirrors the backend's 8–128 character password policy.
-- **Picks/Results**: `useResults(week)` fetches `/results/weeks/{week}/picks` and `/results/weeks/{week}/leaderboard`, then shapes via `resultsShaping.ts`. CrowdSignal submission is temporarily disabled for tenant 1; its Submit action directs members to submit directly to CrowdSignal while the integration is repaired.
+- **Picks/Results**: `useResults(week)` fetches `/results/weeks/{week}/picks` and `/results/weeks/{week}/leaderboard`, then shapes via `resultsShaping.ts`. For tenant 1, the submission dialog keeps local picks distinct from CrowdSignal confirmation; a failure explains the retry/direct-submission fallback and displays the server HTTP status in its title.
 - **Analytics**: Both "Your Picks" and "Top 5" tabs consume the same `useResults` data, displayed differently
 - **YTD leaderboard**: `useYtd` fetches `/results/leaderboard` (all locked weeks concatenated)
 - **Schedule/games**: `useSchedule` and `useAppCache` fetch from `/schedule`
