@@ -17,6 +17,15 @@ fi
 export PLAYWRIGHT_BROWSERS_PATH="${PLAYWRIGHT_BROWSERS_PATH:-/home/.cache/ms-playwright}"
 mkdir -p "$PLAYWRIGHT_BROWSERS_PATH"
 
+# App Service images can be replaced independently of the persistent browser cache.
+# Chromium requires this library even when the matching browser is already cached in /home.
+if ! ldconfig -p | grep -Fq "libglib-2.0.so.0"; then
+    echo "Installing missing Chromium dependency: libglib2.0-0..."
+    if ! apt-get update || ! apt-get install -y --no-install-recommends libglib2.0-0; then
+        echo "ERROR: Could not install libglib2.0-0; CrowdSignal submission will be unavailable." >&2
+    fi
+fi
+
 echo "Ensuring Playwright Chromium is installed at $PLAYWRIGHT_BROWSERS_PATH..."
 if python -m playwright install --with-deps chromium; then
     echo "Playwright Chromium is ready."

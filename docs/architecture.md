@@ -54,8 +54,10 @@ the durable reference — for directory structure and frontend data flows see
 - **Legacy Andy/CrowdSignal survey sync** — tenant 1's CrowdSignal site is the official source
   of truth for picks; this app is an optional entry point and local cache. The app deliberately
   commits local picks first, then submits them to CrowdSignal. If that external submission fails,
-  the local picks can still appear saved but Andy has not received them, so the tenant-1 submission
-  dialog warns users before the slow (typically 1–2 minute) external step. Its database reload is
+  the local picks remain saved but are not confirmed for scoring. The tenant-1 submission dialog
+  advises users to retry in a few minutes, then submit directly to CrowdSignal if needed; its title
+  includes the server HTTP status for troubleshooting. A CrowdSignal attempt has a 150-second
+  deadline and waits no more than 75 seconds for the single-submission queue. Its database reload is
   scoped by the authenticated `tenant_id` and stable `player_id`; tenant-local `pigeon_number` is
   used only as a field in the external survey submission. Acting for an owned/managed pigeon is
   restricted to the active tenant. The reciprocal Wednesday XLSX import is tenant-1-only and

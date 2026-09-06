@@ -27,12 +27,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.utils.logger import debug, info, warn
 
 # ---- Tunable timeouts (ms / s) ----
-DEFAULT_DEADLINE_SEC          = 90      # whole coroutine deadline
+DEFAULT_DEADLINE_SEC          = 150     # whole coroutine deadline
 SURVEY_JSON_READY_TIMEOUT_MS  = 25000   # wait for window.survey to be populated
 PLAYWRIGHT_ELEMENT_TIMEOUT_MS = 25000   # per-element waits (selectors, fill, check)
 PLAYWRIGHT_NAV_TIMEOUT_MS     = 45000   # navigation/goto (external site can be slow)
 FINISH_CLICK_TIMEOUT_MS       = 25000   # clicking the Finish button
 SUCCESS_WAIT_TIMEOUT_MS       = 45000   # wait for success text (server-side processing)
+
+
+class CrowdSignalSubmissionTimeoutError(RuntimeError):
+    """Raised when a CrowdSignal submission exceeds its dedicated deadline."""
 
 # --- Helper functions for translating the game names on the form with the game names in the database ---"""
 def _dbg_log(msg: str) -> None:
@@ -376,7 +380,7 @@ async def submit_to_andy(body: SubmitBody, deadline_sec: int = DEFAULT_DEADLINE_
             t.join(deadline_sec)
             if t.is_alive():
                 warn("[submit] Timed out waiting for Playwright worker thread")
-                raise RuntimeError("timeout")
+                raise CrowdSignalSubmissionTimeoutError("CrowdSignal submission timed out")
             kind, payload = q.get_nowait()
             if kind == "ok":
                 return  # success (None)
@@ -391,4 +395,4 @@ async def submit_to_andy(body: SubmitBody, deadline_sec: int = DEFAULT_DEADLINE_
         await asyncio.wait_for(_run(), timeout=deadline_sec)
     except TimeoutError:
         warn("[submit] Timed out waiting for Playwright submit coroutine")
-        raise
+        raise CrowdSignalSubmissionTimeoutError("CrowdSignal submission timed out") from None

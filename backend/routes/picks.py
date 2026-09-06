@@ -15,12 +15,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.utils.db import get_db
 from backend.utils.logger import error
-from backend.utils.submit_picks_to_andy import build_submit_body_from_db, submit_to_andy
+from backend.utils.submit_picks_to_andy import (
+    CrowdSignalSubmissionTimeoutError,
+    build_submit_body_from_db,
+    submit_to_andy,
+)
 
 from .auth import require_user
 
 router = APIRouter(prefix="/picks", tags=["picks"])
 submit_lock = asyncio.Lock()
+SUBMISSION_QUEUE_TIMEOUT_SECONDS = 75
 
 #pylint: disable=line-too-long
 
@@ -272,19 +277,37 @@ async def upsert_picks_bulk(
                 tenant_id=me.tenant_id,
                 pin=9182,
             )
-            async with asyncio.timeout(120):
-                async with submit_lock:
-                    await submit_to_andy(body)
+        except Exception as exc:  # pylint: disable=broad-except
+            error(f"Failed to submit picks to Andy for player {acting_player_id}, week {payload.week_number}: {exc}")
+            raise HTTPException(
+                status_code=500,
+                detail="CrowdSignal submission failed. Try again in a few minutes."
+            ) from exc
+
+        try:
+            await asyncio.wait_for(
+                submit_lock.acquire(), timeout=SUBMISSION_QUEUE_TIMEOUT_SECONDS
+            )
         except TimeoutError as exc:
             raise HTTPException(
                 status_code=503,
-                detail="Submission queue is busy, please retry shortly"
+                detail="CrowdSignal is busy processing another submission. Try again in a few minutes."
+            ) from exc
+
+        try:
+            await submit_to_andy(body)
+        except CrowdSignalSubmissionTimeoutError as exc:
+            raise HTTPException(
+                status_code=504,
+                detail="CrowdSignal took too long to confirm your picks. Try again in a few minutes."
             ) from exc
         except Exception as exc:  # pylint: disable=broad-except
             error(f"Failed to submit picks to Andy for player {acting_player_id}, week {payload.week_number}: {exc}")
             raise HTTPException(
                 status_code=500,
-                detail="Failed to submit to Andy's form (so you'll have to do that yourself)"
+                detail="CrowdSignal submission failed. Try again in a few minutes."
             ) from exc
+        finally:
+            submit_lock.release()
 
     return out

@@ -66,6 +66,7 @@ export default function EnterPicksPage() {
   const [confirmState, setConfirmState] = useState<{ open: boolean; message: string; pending: null | (() => Promise<void>) }>({ open: false, message: "", pending: null });
   const [homeDialogOpen, setHomeDialogOpen] = useState(false);
   const [submitDialog, setSubmitDialog] = useState<{ open: boolean; error: string | null }>({ open: false, error: null });
+  const submitErrorStatus = submitDialog.error?.match(/^API error (\d{3}):/)?.[1];
   const [touchedPickSide, setTouchedPickSide] = useState<Record<number, boolean>>({});
   // Track unsaved changes
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -733,7 +734,9 @@ export default function EnterPicksPage() {
         disableEscapeKeyDown={!submitDialog.error}
       >
         <DialogTitle sx={{ textAlign: 'center' }}>
-          {submitDialog.error ? 'Submission failed' : 'Submitting picks…'}
+          {submitDialog.error
+            ? `CrowdSignal submission failed${submitErrorStatus ? ` (${submitErrorStatus})` : ''}`
+            : 'Submitting picks…'}
         </DialogTitle>
         <DialogContent>
           {me?.tenant_id === 1 && !submitDialog.error && (
@@ -748,7 +751,19 @@ export default function EnterPicksPage() {
               </Alert>
             </>
           )}
-          <Loading error={submitDialog.error ?? undefined} />
+          {submitDialog.error ? (
+            me?.tenant_id === 1 ? (
+              <Stack spacing={2} sx={{ py: 1 }}>
+                <Alert severity="warning">
+                  Your picks have been saved in Pigeon Pool, but we could not confirm that CrowdSignal received them.
+                  Picks saved only here will not be scored.
+                </Alert>
+                <Typography variant="body2">
+                  Please try again in a few minutes (recommended). If that doesn&apos;t work, submit your picks directly to CrowdSignal.
+                </Typography>
+              </Stack>
+            ) : <Loading error={submitDialog.error} />
+          ) : <Loading />}
         </DialogContent>
         {submitDialog.error && (
           <DialogActions sx={{ justifyContent: 'center', pt: 0 }}>
