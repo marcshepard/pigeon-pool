@@ -65,7 +65,11 @@ export default function EnterPicksPage() {
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity?: "success" | "error" | "info" | "warning"; }>({ open: false, message: "" });
   const [confirmState, setConfirmState] = useState<{ open: boolean; message: string; pending: null | (() => Promise<void>) }>({ open: false, message: "", pending: null });
   const [homeDialogOpen, setHomeDialogOpen] = useState(false);
-  const [submitDialog, setSubmitDialog] = useState<{ open: boolean; error: string | null }>({ open: false, error: null });
+  const [submitDialog, setSubmitDialog] = useState<{
+    open: boolean;
+    error: string | null;
+    crowdSignal: boolean;
+  }>({ open: false, error: null, crowdSignal: false });
   const submitErrorStatus = submitDialog.error?.match(/^API error (\d{3}):/)?.[1];
   const [touchedPickSide, setTouchedPickSide] = useState<Record<number, boolean>>({});
   // Track unsaved changes
@@ -382,6 +386,7 @@ export default function EnterPicksPage() {
 
   const actuallySubmit = async () => {
     if (typeof week !== "number" || !games) return;
+    const crowdSignalSubmission = me?.tenant_id === 1;
     // Prepare payload
     const picks = games.map((g) => ({
       game_id: g.game_id,
@@ -391,19 +396,19 @@ export default function EnterPicksPage() {
 
     try {
       // Show submitting dialog
-      setSubmitDialog({ open: true, error: null });
+      setSubmitDialog({ open: true, error: null, crowdSignal: crowdSignalSubmission });
       // Always pass selected pigeon (falls back to primary)
       await setMyPicks({ week_number: week, picks }, selectedPigeon ?? me?.player_id);
       // Update lastSubmission to now
       setLastSubmission(new Date().toISOString());
       // Close dialog immediately once submission succeeds
-      setSubmitDialog({ open: false, error: null });
+      setSubmitDialog({ open: false, error: null, crowdSignal: false });
       setSnackbar({ open: true, message: "Picks submitted!", severity: "success" });
       setHasUnsavedChanges(false);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Failed to submit picks";
       // Keep dialog open and show error
-      setSubmitDialog({ open: true, error: msg });
+      setSubmitDialog({ open: true, error: msg, crowdSignal: crowdSignalSubmission });
       return;
     }
 
@@ -727,7 +732,7 @@ export default function EnterPicksPage() {
       <Dialog
         open={submitDialog.open}
         onClose={() => {
-          if (submitDialog.error) setSubmitDialog({ open: false, error: null });
+          if (submitDialog.error) setSubmitDialog({ open: false, error: null, crowdSignal: false });
         }}
         maxWidth="xs"
         fullWidth
@@ -735,11 +740,13 @@ export default function EnterPicksPage() {
       >
         <DialogTitle sx={{ textAlign: 'center' }}>
           {submitDialog.error
-            ? `CrowdSignal submission failed${submitErrorStatus ? ` (${submitErrorStatus})` : ''}`
+            ? submitDialog.crowdSignal
+              ? `CrowdSignal submission failed${submitErrorStatus ? ` (${submitErrorStatus})` : ''}`
+              : 'Submission failed'
             : 'Submitting picks…'}
         </DialogTitle>
         <DialogContent>
-          {me?.tenant_id === 1 && !submitDialog.error && (
+          {submitDialog.crowdSignal && !submitDialog.error && (
             <>
               <Typography variant="body2" sx={{ mb: 2 }}>
                 Saving your picks in the app, then submitting them to CrowdSignal. CrowdSignal
@@ -752,7 +759,7 @@ export default function EnterPicksPage() {
             </>
           )}
           {submitDialog.error ? (
-            me?.tenant_id === 1 ? (
+            submitDialog.crowdSignal ? (
               <Stack spacing={2} sx={{ py: 1 }}>
                 <Alert severity="warning">
                   Your picks have been saved in Pigeon Pool, but we could not confirm that CrowdSignal received them.
@@ -767,7 +774,7 @@ export default function EnterPicksPage() {
         </DialogContent>
         {submitDialog.error && (
           <DialogActions sx={{ justifyContent: 'center', pt: 0 }}>
-            <Button onClick={() => setSubmitDialog({ open: false, error: null })} variant="contained">Close</Button>
+            <Button onClick={() => setSubmitDialog({ open: false, error: null, crowdSignal: false })} variant="contained">Close</Button>
           </DialogActions>
         )}
       </Dialog>

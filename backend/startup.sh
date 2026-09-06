@@ -31,9 +31,12 @@ PLAYWRIGHT_INSTALLED=false
 if python -m playwright install --with-deps chromium; then
     PLAYWRIGHT_INSTALLED=true
 else
-    echo "Playwright dependency installation failed; refreshing Apt metadata and retrying once..." >&2
+    echo "Playwright dependency installation failed; using Debian's direct security archive and retrying once..." >&2
     apt-get clean
     rm -rf /var/lib/apt/lists/*
+    if [ -f /etc/apt/sources.list ]; then
+        sed -i 's|http://deb.debian.org/debian-security|http://security.debian.org/debian-security|g' /etc/apt/sources.list
+    fi
     if apt-get update && python -m playwright install --with-deps chromium; then
         PLAYWRIGHT_INSTALLED=true
     fi
