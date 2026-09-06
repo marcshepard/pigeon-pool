@@ -31,13 +31,17 @@ PLAYWRIGHT_INSTALLED=false
 if python -m playwright install --with-deps chromium; then
     PLAYWRIGHT_INSTALLED=true
 else
-    echo "Playwright dependency installation failed; using Debian's direct security archive and retrying once..." >&2
+    echo "Playwright dependency installation failed; using Debian's historical archive and retrying once..." >&2
     apt-get clean
     rm -rf /var/lib/apt/lists/*
     if [ -f /etc/apt/sources.list ]; then
-        sed -i 's|http://deb.debian.org/debian-security|http://security.debian.org/debian-security|g' /etc/apt/sources.list
+        sed -i \
+            -e 's|http://deb.debian.org/debian-security|http://archive.debian.org/debian-security|g' \
+            -e 's|http://security.debian.org/debian-security|http://archive.debian.org/debian-security|g' \
+            /etc/apt/sources.list
     fi
-    if apt-get update && python -m playwright install --with-deps chromium; then
+    printf 'Acquire::Check-Valid-Until "false";\n' > /etc/apt/apt.conf.d/99pigeon-pool-archive
+    if apt-get -o Acquire::Check-Valid-Until=false update && python -m playwright install --with-deps chromium; then
         PLAYWRIGHT_INSTALLED=true
     fi
 fi

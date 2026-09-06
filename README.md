@@ -284,7 +284,7 @@ stores the matching Chromium build under persistent `/home/.cache/ms-playwright`
 installs and launches that browser in a Debian 11 container, while the deployment workflow rejects
 an incompatible Playwright requirement before packaging Azure. After deploying a Playwright change,
 the startup script retries a failed dependency installation once with refreshed Apt metadata and
-Debian's direct security archive, then performs a 15-second Chromium launch check. Confirm the
+Debian's historical security archive, then performs a 15-second Chromium launch check. Confirm the
 startup log reports `Playwright Chromium is ready`, then perform an intended Tenant 1 submission.
 
 ## Learn more
