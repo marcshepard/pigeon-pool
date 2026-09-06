@@ -27,8 +27,26 @@ if ! ldconfig -p | grep -Fq "libglib-2.0.so.0"; then
 fi
 
 echo "Ensuring Playwright Chromium is installed at $PLAYWRIGHT_BROWSERS_PATH..."
+PLAYWRIGHT_INSTALLED=false
 if python -m playwright install --with-deps chromium; then
-    echo "Playwright Chromium is ready."
+    PLAYWRIGHT_INSTALLED=true
+else
+    echo "Playwright dependency installation failed; refreshing Apt metadata and retrying once..." >&2
+    apt-get clean
+    rm -rf /var/lib/apt/lists/*
+    if apt-get update && python -m playwright install --with-deps chromium; then
+        PLAYWRIGHT_INSTALLED=true
+    fi
+fi
+
+if [ "$PLAYWRIGHT_INSTALLED" = true ]; then
+    if timeout 15s python -m backend.verify_playwright; then
+        echo "Playwright Chromium is ready."
+    else
+        # The application serves both tenants and most features do not use a browser.
+        # Keep it online if Chromium cannot launch; tenant 1 submission will fail explicitly.
+        echo "ERROR: Playwright Chromium launch check failed; CrowdSignal submission is unavailable." >&2
+    fi
 else
     # The application serves both tenants and most features do not use a browser.
     # Keep it online if an apt/CDN failure is transient; tenant 1 survey submission
