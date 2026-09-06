@@ -335,6 +335,11 @@ export default function EnterPicksPage() {
   };
 
   const handleSubmit = async () => {
+    if (me?.tenant_id === 1) {
+      setSubmitDialog({ open: true, error: "crowdSignalUnavailable", crowdSignal: true });
+      return;
+    }
+
     if (typeof week !== "number" || !games) return;
 
 
@@ -387,6 +392,10 @@ export default function EnterPicksPage() {
   const actuallySubmit = async () => {
     if (typeof week !== "number" || !games) return;
     const crowdSignalSubmission = me?.tenant_id === 1;
+    if (crowdSignalSubmission) {
+      setSubmitDialog({ open: true, error: "crowdSignalUnavailable", crowdSignal: true });
+      return;
+    }
     // Prepare payload
     const picks = games.map((g) => ({
       game_id: g.game_id,
@@ -739,7 +748,9 @@ export default function EnterPicksPage() {
         disableEscapeKeyDown={!submitDialog.error}
       >
         <DialogTitle sx={{ textAlign: 'center' }}>
-          {submitDialog.error
+          {submitDialog.error === 'crowdSignalUnavailable'
+            ? 'CrowdSignal integration unavailable'
+            : submitDialog.error
             ? submitDialog.crowdSignal
               ? `CrowdSignal submission failed${submitErrorStatus ? ` (${submitErrorStatus})` : ''}`
               : 'Submission failed'
@@ -759,7 +770,11 @@ export default function EnterPicksPage() {
             </>
           )}
           {submitDialog.error ? (
-            submitDialog.crowdSignal ? (
+            submitDialog.error === 'crowdSignalUnavailable' ? (
+              <Typography variant="body2" sx={{ py: 1 }}>
+                Sorry — the CrowdSignal integration is not currently available. We are working on a fix. In the meantime, please submit your picks directly to CrowdSignal; Andy will import the CrowdSignal picks into the app on Wednesday, so you&apos;ll be able to see all the picks here, and live scoring, then.
+              </Typography>
+            ) : submitDialog.crowdSignal ? (
               <Stack spacing={2} sx={{ py: 1 }}>
                 <Alert severity="warning">
                   Your picks have been saved in Pigeon Pool, but we could not confirm that CrowdSignal received them.
