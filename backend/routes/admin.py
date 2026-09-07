@@ -117,11 +117,11 @@ WEEK_PICK_STATUS_SQL = text("""
       pl.pigeon_number,
       pl.pigeon_name,
       COUNT(pk.game_id) > 0
-        AND COUNT(pk.game_id) = (SELECT COUNT(*) FROM games WHERE week_number = :week)
+        AND COUNT(pk.game_id) = COUNT(g.game_id)
         AS submitted
     FROM players pl
-    LEFT JOIN picks pk ON pk.player_id = pl.player_id
-    LEFT JOIN games  g  ON g.game_id = pk.game_id AND g.week_number = :week
+    LEFT JOIN games g ON g.week_number = :week
+    LEFT JOIN picks pk ON pk.player_id = pl.player_id AND pk.game_id = g.game_id
     WHERE pl.tenant_id = :tenant_id
     GROUP BY pl.pigeon_number, pl.pigeon_name
     ORDER BY submitted, pl.pigeon_number

@@ -717,3 +717,63 @@ def test_pick_status_partial_slate_counts_as_not_submitted(
 
     # Week 17 has a full real slate, so one inserted pick is a partial set.
     assert rows[1]["submitted"] is False
+
+
+def test_pick_status_is_scoped_to_the_selected_week(
+    client, comm_headers, db_conn, insert_pick, scored_games, test_data
+):
+    """Picks in other weeks must not mark a pigeon submitted for this week."""
+    comparison_week = 18
+
+    with db_conn.cursor() as cur:
+        cur.execute("""
+            SELECT home.abbr, away.abbr
+            FROM teams AS home
+            CROSS JOIN teams AS away
+            WHERE home.abbr <> away.abbr
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM games
+                  WHERE week_number = %s
+                    AND home_abbr = home.abbr
+                    AND away_abbr = away.abbr
+              )
+            ORDER BY home.abbr, away.abbr
+            LIMIT 1
+        """, (comparison_week,))
+        home_abbr, away_abbr = cur.fetchone()
+        cur.execute("""
+            INSERT INTO games (week_number, kickoff_at, home_abbr, away_abbr, status)
+            VALUES (%s, '2099-09-08 20:00:00+00', %s, %s, 'scheduled')
+            RETURNING game_id
+        """, (comparison_week, home_abbr, away_abbr))
+        comparison_game_id = cur.fetchone()[0]
+    db_conn.commit()
+    scored_games["synthetic_ids"].append(comparison_game_id)
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            "SELECT COUNT(*) FROM games WHERE week_number = %s", (comparison_week,)
+        )
+        comparison_game_count = cur.fetchone()[0]
+        cur.execute("""
+            SELECT game_id
+            FROM games
+            WHERE week_number <> %s
+            ORDER BY game_id
+            LIMIT %s
+        """, (comparison_week, comparison_game_count))
+        other_week_game_ids = [row[0] for row in cur.fetchall()]
+
+    assert len(other_week_game_ids) == comparison_game_count
+    for game_id in other_week_game_ids:
+        insert_pick(test_data["comm_pid"], game_id, picked_home=True, predicted_margin=3)
+
+    comparison_rows = {
+        row["pigeon_number"]: row
+        for row in client.get(
+            f"/admin/weeks/{comparison_week}/pick-status", headers=comm_headers
+        ).json()
+    }
+
+    assert comparison_rows[1]["submitted"] is False
