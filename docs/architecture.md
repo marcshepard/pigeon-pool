@@ -194,6 +194,13 @@ were removed after that end-to-end proof.
 
 ## Scheduler
 
+ESPN schedule, score, and kickoff syncs request `dates=YYYY&seasontype=N&week=W`.
+The season year comes from the calendar or stored kickoff dates (January/February
+belong to the previous year's season), and the season type comes from configuration.
+Responses must identify the requested season, type, and week before any games are
+written. Do not substitute `year=` (previously ignored by ESPN) or date ranges
+(observed returning HTTP 400 in September 2026).
+
 The backend runs an in-process asyncio scheduler (1-minute heartbeat) for score sync, kickoff
 sync, and weekly emails, rather than an external trigger service:
 

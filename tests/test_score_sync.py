@@ -1,51 +1,102 @@
-"""
-Unit tests for the pure helper functions in backend/utils/score_sync.py.
+"""Scoreboard selection and calendar parsing tests, without network or database access."""
 
-These cover the date-range/calendar-parsing logic added to work around ESPN's
-`week=` query param being unreliable for a season that hasn't started yet (see
-the module docstring note above `_fetch_scoreboard` in score_sync.py). No DB or
-network access — pure functions only.
-"""
+import asyncio
+from datetime import UTC, datetime
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
-from datetime import UTC, date, datetime
+import httpx
+import pytest
 
+from backend.utils import score_sync
 from backend.utils.score_sync import (
     _calendar_week_ranges,
-    _dates_param,
-    _pad_date_range,
+    _fetch_week_scoreboard,
     _parse_iso_utc,
+    _season_year,
 )
 
-# ── _parse_iso_utc ────────────────────────────────────────────────────────────
 
 def test_parse_iso_utc_with_trailing_z():
     assert _parse_iso_utc("2026-09-10T00:20Z") == datetime(2026, 9, 10, 0, 20, tzinfo=UTC)
 
 
 def test_parse_iso_utc_with_explicit_offset():
-    assert _parse_iso_utc("2026-09-09T17:00-07:00") == datetime(2026, 9, 10, 0, 0, tzinfo=UTC)
+    assert _parse_iso_utc("2026-09-09T17:00-07:00") == datetime(2026, 9, 10, tzinfo=UTC)
 
 
-# ── _dates_param ──────────────────────────────────────────────────────────────
-
-def test_dates_param_formats_range():
-    assert _dates_param(date(2026, 9, 9), date(2026, 9, 16)) == "20260909-20260916"
-
-
-# ── _pad_date_range ───────────────────────────────────────────────────────────
-
-def test_pad_date_range_widens_by_one_day_each_side():
-    min_dt = datetime(2026, 9, 13, 17, 0, tzinfo=UTC)
-    max_dt = datetime(2026, 9, 15, 0, 15, tzinfo=UTC)
-    assert _pad_date_range(min_dt, max_dt) == (date(2026, 9, 12), date(2026, 9, 16))
+@pytest.mark.parametrize("kickoff, expected", [
+    (datetime(2026, 9, 18, tzinfo=UTC), 2026),
+    (datetime(2027, 1, 4, tzinfo=UTC), 2026),
+    (datetime(2027, 2, 7, tzinfo=UTC), 2026),
+    (datetime(2026, 8, 6, tzinfo=UTC), 2026),
+])
+def test_season_year_uses_schedule(kickoff, expected):
+    assert _season_year(kickoff) == expected
 
 
-def test_pad_date_range_single_game_week_still_widens():
-    same = datetime(2026, 9, 10, 0, 20, tzinfo=UTC)
-    assert _pad_date_range(same, same) == (date(2026, 9, 9), date(2026, 9, 11))
+@pytest.mark.parametrize("season_type", ["1", "2", "3"])
+def test_week_request_selects_explicit_season(monkeypatch, season_type):
+    payload = {"season": {"year": 2026, "type": int(season_type)},
+               "week": {"number": 2}, "events": [{"id": "401872932"}]}
+    def handle(request):
+        assert dict(request.url.params) == {
+            "dates": "2026", "seasontype": season_type, "week": "2",
+        }
+        return httpx.Response(200, json=payload)
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handle))
+    monkeypatch.setattr(score_sync.httpx, "AsyncClient", lambda **kwargs: client)
+    monkeypatch.setattr(score_sync, "get_settings",
+                        lambda: SimpleNamespace(nfl_season_type=season_type))
+    assert asyncio.run(_fetch_week_scoreboard(season=2026, week=2)) == payload
 
 
-# ── _calendar_week_ranges ─────────────────────────────────────────────────────
+@pytest.mark.parametrize("payload", [
+    {"events": []},
+    {"season": {"year": 2025, "type": 2}, "week": {"number": 2}},
+    {"season": {"year": 2026, "type": 1}, "week": {"number": 2}},
+    {"season": {"year": 2026, "type": 2}, "week": {"number": 3}},
+])
+def test_week_request_rejects_missing_or_wrong_metadata(monkeypatch, payload):
+    monkeypatch.setattr(score_sync, "get_settings",
+                        lambda: SimpleNamespace(nfl_season_type="2"))
+    monkeypatch.setattr(score_sync, "_fetch_scoreboard", AsyncMock(return_value=payload))
+    with pytest.raises(ValueError, match="ESPN scoreboard mismatch"):
+        asyncio.run(_fetch_week_scoreboard(season=2026, week=2))
+
+
+@pytest.mark.parametrize("method", ["sync_scores_and_status", "refresh_kickoffs"])
+def test_invalid_scoreboard_does_not_write_games(monkeypatch, method):
+    session = AsyncMock()
+    syncer = score_sync.ScoreSync(session)
+    monkeypatch.setattr(syncer, "_week_kickoff_bounds", AsyncMock(return_value=(
+        datetime(2027, 1, 3, tzinfo=UTC), datetime(2027, 1, 4, tzinfo=UTC),
+    )))
+    fetch = AsyncMock(side_effect=ValueError("ESPN scoreboard mismatch"))
+    monkeypatch.setattr(score_sync, "_fetch_week_scoreboard", fetch)
+    with pytest.raises(ValueError, match="ESPN scoreboard mismatch"):
+        asyncio.run(getattr(syncer, method)(18))
+    fetch.assert_awaited_once_with(season=2026, week=18)
+    session.execute.assert_not_awaited()
+    session.commit.assert_not_awaited()
+
+
+def test_schedule_import_uses_calendar_season_for_january(monkeypatch):
+    session = AsyncMock()
+    monkeypatch.setattr(score_sync, "get_settings",
+                        lambda: SimpleNamespace(nfl_season_type="2"))
+    monkeypatch.setattr(score_sync, "_fetch_current_calendar", AsyncMock(return_value=[{
+        "value": "2", "entries": [{
+            "value": "18", "startDate": "2027-01-06T08:00Z",
+            "endDate": "2027-01-13T07:59Z",
+        }],
+    }]))
+    fetch = AsyncMock(return_value={"events": []})
+    monkeypatch.setattr(score_sync, "_fetch_week_scoreboard", fetch)
+    assert asyncio.run(score_sync.ScoreSync(session).load_schedule()) == 0
+    fetch.assert_awaited_once_with(season=2026, week=18)
+
 
 _FAKE_CALENDAR = [
     {

@@ -12,7 +12,7 @@ This file intentionally keeps things simple:
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -60,9 +60,8 @@ class ScoreSync:
         Populate/refresh the current season’s schedule for weeks 1–18.
 
         Behavior:
-        - Fetches the regular-season week-by-week date ranges from ESPN's calendar
-          (see module docstring note on `_fetch_scoreboard`'s `dates=` param) and
-          fetches each week's games by date range rather than by `week=` number.
+        - Reads weeks from ESPN's calendar and fetches each by explicit season/year
+          (`dates=YYYY`), configured season type, and week number.
         - Upserts `weeks` first (computes lock_at from earliest kickoff each week).
         - Upserts `teams` (home/away) to satisfy FK.
         - Upserts `games` by (week_number, home_abbr, away_abbr), sets espn_event_id,
@@ -76,12 +75,8 @@ class ScoreSync:
 
         for week in sorted(week_ranges):
             start_dt, end_dt = week_ranges[week]
-            sb = await _fetch_scoreboard(dates=_dates_param(start_dt.date(), end_dt.date()))
-            # ESPN's `dates=` filter isn't exact — it can include a game from just
-            # outside the requested range (observed around week boundaries), which
-            # would otherwise get inserted under two different weeks and collide on
-            # the games.espn_event_id unique constraint. Re-filter to the calendar's
-            # precise window.
+            sb = await _fetch_week_scoreboard(season=_season_year(start_dt), week=week)
+            # Keep imported games within the calendar week window.
             events = [
                 ev for ev in (sb.get("events", []) or [])
                 if start_dt <= _parse_event_kickoff(ev) <= end_dt
@@ -134,8 +129,8 @@ class ScoreSync:
         For the given week, pull scores/status from ESPN and update matching games.
 
         Behavior:
-        - Fetch ESPN scoreboard by date range, derived from this week's existing
-          kickoff_at values in the DB (padded a day either side).
+        - Fetch ESPN scoreboard by season, configured season type, and week.
+          Derive the season year from the stored kickoff, not today's date.
         - Prefer match by espn_event_id; if missing, fall back to (week, home, away)
         - Update: home_score, away_score, status ('scheduled'|'in_progress'|'final')
         - Only writes when something actually changed (uses IS DISTINCT FROM)
@@ -148,8 +143,7 @@ class ScoreSync:
         bounds = await self._week_kickoff_bounds(week)
         if bounds is None:
             return 0
-        start_date, end_date = _pad_date_range(*bounds)
-        sb = await _fetch_scoreboard(dates=_dates_param(start_date, end_date))
+        sb = await _fetch_week_scoreboard(season=_season_year(bounds[0]), week=week)
         updated_count = 0
 
         for ev in sb.get("events", []):
@@ -185,8 +179,8 @@ class ScoreSync:
         For the given week, fetch schedule and update kickoff_at for any game that differs.
 
         Behavior:
-        - Fetch ESPN scoreboard by date range, derived from this week's existing
-          kickoff_at values in the DB (padded a day either side).
+        - Fetch ESPN scoreboard by season, configured season type, and week.
+          Derive the season year from the stored kickoff, not today's date.
         - Prefer match by espn_event_id; otherwise fall back to (week, home, away)
         - If kickoff_at differs (exact inequality), update it
         Returns:
@@ -198,8 +192,7 @@ class ScoreSync:
         bounds = await self._week_kickoff_bounds(week)
         if bounds is None:
             return 0
-        start_date, end_date = _pad_date_range(*bounds)
-        sb = await _fetch_scoreboard(dates=_dates_param(start_date, end_date))
+        sb = await _fetch_week_scoreboard(season=_season_year(bounds[0]), week=week)
         updates = 0
 
         for ev in sb.get("events", []):
@@ -398,14 +391,8 @@ class ScoreSync:
 # Small HTTP/parse helpers (kept local and simple)
 # -----------------------------------------------------------------------------
 #
-# NOTE on ESPN's `week=` param: it's unreliable for a season that hasn't started
-# yet — passing `week=N` (with any `year=`/`seasontype=`) silently ignores `year`
-# and resolves against whatever season ESPN currently considers "current", which
-# lags behind until the new season is actually underway. Passing `dates=` instead
-# is unaffected and always returns the correct games. So this module never sends
-# `week=`: `load_schedule` reads per-week date ranges from ESPN's own `calendar`
-# block, and `refresh_kickoffs`/`sync_scores_and_status` derive their date range
-# from that week's already-loaded `kickoff_at` values in the DB.
+# Use dates=YYYY with week and seasontype. ESPN ignores year= in some cases,
+# and date-range requests began returning HTTP 400 in September 2026.
 
 
 def _parse_iso_utc(iso: str) -> datetime:
@@ -418,14 +405,27 @@ def _parse_iso_utc(iso: str) -> datetime:
     return dt.astimezone(UTC)
 
 
-def _dates_param(start: date, end: date) -> str:
-    """Build ESPN's `dates=YYYYMMDD-YYYYMMDD` query value for a date range."""
-    return f"{start:%Y%m%d}-{end:%Y%m%d}"
+def _season_year(kickoff: datetime) -> int:
+    """January/February games belong to the NFL season that began the prior year."""
+    return kickoff.year - (kickoff.month <= 2)
 
 
-def _pad_date_range(min_dt: datetime, max_dt: datetime, pad_days: int = 1) -> tuple[date, date]:
-    """Widen a week's known kickoff span by `pad_days` on each side (UTC day-boundary safety)."""
-    return min_dt.date() - timedelta(days=pad_days), max_dt.date() + timedelta(days=pad_days)
+async def _fetch_week_scoreboard(*, season: int, week: int) -> dict[str, Any]:
+    """Reject missing/mismatched metadata before any schedule or score writes."""
+    season_type = get_settings().nfl_season_type
+    scoreboard = await _fetch_scoreboard(params={
+        "dates": str(season), "seasontype": season_type, "week": str(week),
+    })
+    actual_season = scoreboard.get("season") or {}
+    actual_week = scoreboard.get("week") or {}
+    if (str(actual_season.get("year")) != str(season)
+            or str(actual_season.get("type")) != season_type
+            or str(actual_week.get("number")) != str(week)):
+        raise ValueError(
+            f"ESPN scoreboard mismatch: requested season={season} type={season_type} week={week}; "
+            f"received season={actual_season} week={actual_week}"
+        )
+    return scoreboard
 
 
 def _calendar_week_ranges(calendar: list[dict[str, Any]], season_type: str) -> dict[int, tuple[datetime, datetime]]:
@@ -464,10 +464,9 @@ async def _fetch_current_calendar() -> list[dict[str, Any]]:
     return sb["leagues"][0]["calendar"]
 
 
-async def _fetch_scoreboard(*, dates: str | None = None) -> dict[str, Any]:
-    """GET ESPN's NFL scoreboard, optionally for a `dates=YYYYMMDD-YYYYMMDD` range."""
+async def _fetch_scoreboard(*, params: dict[str, str] | None = None) -> dict[str, Any]:
+    """GET ESPN's NFL scoreboard with optional explicit season/week parameters."""
     url = "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard"
-    params = {"dates": dates} if dates else {}
     async with httpx.AsyncClient(timeout=15) as client:
         resp = await client.get(url, params=params)
         resp.raise_for_status()
