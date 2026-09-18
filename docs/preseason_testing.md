@@ -18,14 +18,16 @@ ESPN's scoreboard API uses a `seasontype` parameter:
 - `2` = regular season (18 weeks, the normal operating mode)
 - `3` = postseason
 
-`backend/utils/score_sync.py` never sends `seasontype` (or `week`) directly to ESPN —
-see the module docstring note above `_fetch_scoreboard` for why: passing `week=` is
-unreliable for a season that hasn't started yet (it silently ignores `year` and resolves
-against whatever season ESPN currently considers "current"). Instead, `load_schedule()`
-reads per-week date ranges from ESPN's own `leagues[0].calendar` block — which contains
-*both* seasontype sub-arrays (preseason and regular season) in a single response — and
-fetches each week by `dates=YYYYMMDD-YYYYMMDD` range, using `Settings.nfl_season_type`
-as the calendar block selector.
+`backend/utils/score_sync.py` sends `dates=YYYY&seasontype=N&week=W` for schedule,
+score, and kickoff syncs. Use `dates=YYYY`, not `year=YYYY`: the latter was previously
+ignored by ESPN. Date-range requests began returning HTTP 400 in September 2026.
+
+`load_schedule()` discovers weeks from ESPN's `leagues[0].calendar`, fetched without
+query parameters, using `Settings.nfl_season_type` to select the calendar block.
+The season year comes from those calendar dates or, for score/kickoff syncs, stored
+kickoffs; January/February belong to the preceding season year. The shared
+`_fetch_week_scoreboard()` validates the returned season, type, and week before games
+are written. Upcoming-season and preseason behavior still needs live verification.
 
 ## Implementation (done)
 
@@ -44,8 +46,9 @@ as the calendar block selector.
 
 **`backend/utils/score_sync.py`**
 - `load_schedule()` reads `get_settings().nfl_season_type` instead of a hardcoded
-  constant when calling `_calendar_week_ranges`. This is the only call site; all
-  other sync logic is unaffected.
+  constant when calling `_calendar_week_ranges`.
+- `_fetch_week_scoreboard()` also reads this setting for the `seasontype` query
+  parameter and response validation across all three sync methods.
 
 **Preseason week-numbering quirk** (still unresolved) — ESPN's preseason calendar entries don't number 1–4
 the way you'd expect. Their `entries[].value` for `seasontype="1"` is a sequential index
@@ -63,12 +66,11 @@ toggling to preseason as-is would load Hall of Fame Weekend into `week_number=1`
 "real" Preseason Week 1. Decide (and document here) whether that's acceptable or whether
 `load_schedule` needs a preseason-specific offset/skip before this is turned on.
 
-No other changes needed. Lock-time calculation, nightly score sync, email jobs, and
-leaderboard all operate on whatever game rows are in the DB — they work correctly against
-preseason data with no modifications. Unlike the old `week=`-based loop, the calendar-driven
-approach naturally stops after however many entries the preseason calendar block actually
-has (4) — it doesn't depend on ESPN returning "empty" for out-of-range weeks as a stopping
-signal.
+Lock-time calculation, email jobs, and leaderboard operate on the loaded game rows.
+Score and kickoff syncs must keep `NFL_SEASON_TYPE` aligned with those rows. Verify
+the full flow against live preseason data before relying on it. The calendar-driven
+schedule loop stops after the entries in the selected calendar block; it does not
+depend on empty responses for out-of-range weeks as a stopping signal.
 
 ## Preseason run sequence
 
@@ -103,10 +105,8 @@ from ESPN:
   and intentional. The CSV archive preserves them if needed.
 - When regular season loads, the preseason `week_number` rows (however numbered per the
   quirk above) are overwritten/replaced by `reset-season`.
-- "Is the regular-season schedule available yet" is no longer a *sync returns empty vs.
-  non-empty* check — that was only ever a symptom of the `week=` bug and isn't a reliable
-  signal now that fetches are date-range based. To check availability directly: call ESPN's
-  scoreboard with no query params and look for a `"Regular Season"` (`value: "2"`) block
-  in `leagues[0].calendar` with real entries. When we last verified this (mid-July), the
-  full regular-season calendar was already published — don't assume "early July" as a firm
-  date; check directly instead.
+- To check regular-season schedule availability, inspect the unparameterized scoreboard's
+  `"Regular Season"` (`value: "2"`) calendar block, then verify a season/week request
+  returns matching metadata and games. A published calendar alone does not prove that
+  weekly game data is available. Missing or mismatched response metadata raises an error
+  rather than silently accepting a different season.
