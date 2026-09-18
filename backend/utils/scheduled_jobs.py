@@ -328,6 +328,9 @@ async def run_email_tue_warn(session: AsyncSession) -> dict[str, Any]:
             _format_lock_pt(lock_at_raw.replace(tzinfo=UTC) if lock_at_raw and lock_at_raw.tzinfo is None else lock_at_raw)
             if lock_at_raw else "the upcoming deadline"
         )
+        if tenant_id == 1:
+            # Andy requests an earlier advertised deadline; the actual lock is unchanged.
+            deadline_str = "5 PM Pacific Time"
 
         emails = await get_all_player_emails(session, player_ids)
         if not emails:

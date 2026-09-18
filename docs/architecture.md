@@ -218,6 +218,10 @@ tenant-agnostic. Recipient helpers distinguish an omitted player scope (all play
 empty scope (no recipients), so a tenant with no missing picks cannot fall through to a global
 email list.
 
+Tenant 1's Tuesday reminder advertises a deadline of "5 PM Pacific Time" at Andy's request.
+This overrides only the email text (HTML and plain text); actual pick locking, reminder
+scheduling, Monday emails, and other tenants' displayed deadlines still use existing behavior.
+
 ## Known limitations / out of scope
 
 - **Seasons**: `weeks` (1–18) and `games` implicitly represent one NFL season shared by every
