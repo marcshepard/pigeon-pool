@@ -9,5 +9,7 @@
   "ruff.configurationPreference": "filesystemFirst",
   "python.analysis.diagnosticMode": "workspace",
   "python.analysis.diagnosticsSource": "Pylance + Pyright",
-  "python.analysis.pyrightVersion": "1.1.411"
+  "python.analysis.pyrightVersion": "1.1.411",
+  "python-envs.defaultEnvManager": "ms-python.python:conda",
+  "python-envs.defaultPackageManager": "ms-python.python:conda"
 }
