@@ -255,6 +255,8 @@ async def run_email_mon(session: AsyncSession) -> dict[str, Any]:
             _format_lock_pt(next_lock_row[0].replace(tzinfo=UTC) if next_lock_row[0].tzinfo is None else next_lock_row[0])
             if next_lock_row else "the upcoming deadline"
         )
+        if tenant_id == 1:
+            deadline_str = "5 PM Pacific Time"
 
         emails = await _get_tenant_emails(session, tenant_id)
         if not emails:
@@ -337,20 +339,36 @@ async def run_email_tue_warn(session: AsyncSession) -> dict[str, Any]:
             continue
 
         subject = f"[{tenant_name}] Reminder: Enter Your Picks"
-        plain = (
-            "Friendly Reminder\n\n"
-            "It looks like you haven't submitted your picks for this week. "
-            f"Please make sure to get them in before the pick entry deadline: {deadline_str}.\n\n"
-            "Good luck!\n"
-            f"--{tenant_name}"
-        )
-        html = (
-            "<p><b>Friendly Reminder</b></p>"
-            "<p>It looks like you haven't submitted your picks for this week. "
-            f"Please make sure to get them in before the pick entry deadline: {deadline_str}.</p>"
-            "<p>Good luck!</p>"
-            f"<p>--{tenant_name}</p>"
-        )
+        if tenant_id == 1:
+            plain = (
+                "Friendly Reminder\n\n"
+                "You missed the 5 PM Pacific Time deadline; I've extended the deadline a couple of hours, "
+                "so you might still have time if you get them in quickly.\n\n"
+                "Good luck!\n"
+                f"--{tenant_name}"
+            )
+            html = (
+                "<p><b>Friendly Reminder</b></p>"
+                "<p>You missed the 5 PM Pacific Time deadline; I've extended the deadline a couple of hours, "
+                "so you might still have time if you get them in quickly.</p>"
+                "<p>Good luck!</p>"
+                f"<p>--{tenant_name}</p>"
+            )
+        else:
+            plain = (
+                "Friendly Reminder\n\n"
+                "It looks like you haven't submitted your picks for this week. "
+                f"Please make sure to get them in before the pick entry deadline: {deadline_str}.\n\n"
+                "Good luck!\n"
+                f"--{tenant_name}"
+            )
+            html = (
+                "<p><b>Friendly Reminder</b></p>"
+                "<p>It looks like you haven't submitted your picks for this week. "
+                f"Please make sure to get them in before the pick entry deadline: {deadline_str}.</p>"
+                "<p>Good luck!</p>"
+                f"<p>--{tenant_name}</p>"
+            )
 
         ok = await asyncio.to_thread(send_bulk_email_bcc, emails, subject, plain, html)
         total_recipients += len(emails)

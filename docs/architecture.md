@@ -218,9 +218,10 @@ tenant-agnostic. Recipient helpers distinguish an omitted player scope (all play
 empty scope (no recipients), so a tenant with no missing picks cannot fall through to a global
 email list.
 
-Tenant 1's Tuesday reminder advertises a deadline of "5 PM Pacific Time" at Andy's request.
-This overrides only the email text (HTML and plain text); actual pick locking, reminder
-scheduling, Monday emails, and other tenants' displayed deadlines still use existing behavior.
+Tenant 1's Monday wrap-up advertises a "5 PM Pacific Time" pick deadline. Its Tuesday reminder
+states that recipients missed that deadline but may still submit quickly because it will be held
+open a couple more hours. These are email-text overrides only (HTML and plain text); actual pick
+locking, reminder scheduling, and other tenants' displayed deadlines still use existing behavior.
 
 ## Known limitations / out of scope
 
