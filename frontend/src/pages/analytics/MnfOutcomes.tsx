@@ -10,42 +10,12 @@ import { useResults } from "../../hooks/useResults";
 import { useMnfOutcomes } from "../../hooks/useMnfOutcomes"; // the hook you asked for (aka useMnfWhatIf)
 import type { GameMeta } from "../../hooks/useAppCache";
 import { calculateBestPossibleRank } from "../../utils/bestPossibleRank";
-
-function isSunday(dt: Date) { return dt.getDay() === 0; } // 0=Sun
-function isMonday(dt: Date) { return dt.getDay() === 1; } // 1=Mon
-
-function endOfLocalMondayForWeek(games: GameMeta[]): Date | null {
-  // Prefer a Monday game to anchor the Monday date.
-  const mondayGame = games.find(g => {
-    if (!g.kickoff_at) return false;
-    const d = new Date(g.kickoff_at);
-    return isMonday(d);
-  });
-  if (mondayGame) {
-    const d = new Date(mondayGame.kickoff_at!);
-    const end = new Date(d); end.setHours(23, 59, 59, 999);
-    return end;
-  }
-  // Fallback: derive Monday from any game by finding the Sunday of that week, then +1 day.
-  if (games.length) {
-    const any = new Date(games[0].kickoff_at!);
-    const sunday = new Date(any);
-    // shift back to Sunday
-    const delta = (sunday.getDay() + 7 - 0) % 7; // days since Sunday
-    sunday.setHours(0,0,0,0);
-    sunday.setDate(sunday.getDate() - delta);
-    const monday = new Date(sunday);
-    monday.setDate(monday.getDate() + 1);
-    monday.setHours(23,59,59,999);
-    return monday;
-  }
-  return null;
-}
+import { isNflSunday, nflWeekday } from "../../utils/nflTime";
 
 function allSundayGamesFinal(games: GameMeta[]): boolean {
   const sundayGames = games.filter(g => {
     if (!g.kickoff_at) return false;
-    return isSunday(new Date(g.kickoff_at));
+    return isNflSunday(g.kickoff_at);
   });
   if (sundayGames.length === 0) return false; // conservative: don't show early
   return sundayGames.every(g => g.status === "final");
@@ -62,14 +32,15 @@ export default function MnfOutcomes({ pigeon, week, paidCount = 5 }: MnfOutcomes
   const { shouldShow } = useMemo(() => {
     const now = new Date();
     const sundayDone = allSundayGamesFinal(games);
-    const eom = endOfLocalMondayForWeek(games);
     // If the selected week is completed, always show outcomes (if available)
     if (currentWeek?.status === "final") {
-      return { shouldShow: true, endOfMonday: eom };
+      return { shouldShow: true };
     }
     // Otherwise, use the original logic for the current week
-    const withinWindow = sundayDone && (!!eom && now <= eom);
-    return { shouldShow: withinWindow, endOfMonday: eom };
+    // The scenario window is Sunday through Monday in the NFL's Pacific-time calendar.
+    const weekday = nflWeekday(now);
+    const withinWindow = sundayDone && (weekday === 0 || weekday === 1);
+    return { shouldShow: withinWindow };
   }, [games, currentWeek]);
 
   // Loading states

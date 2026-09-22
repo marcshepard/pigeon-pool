@@ -14,6 +14,7 @@ import { useAppCache, type GameMeta } from "../hooks/useAppCache";
 import Top5Playground from "./analytics/Top5Playground";
 import { useResults } from "../hooks/useResults";
 import { getPayouts } from "../backend/fetch";
+import { isNflSunday } from "../utils/nflTime";
 
 import { PageFit, NORMAL_PAGE_MAX_WIDTH } from "../components/Layout";
 
@@ -117,8 +118,7 @@ export default function AnalyticsPage() {
     
     const sundayGames = games.filter((g: GameMeta) => {
       if (!g.kickoff_at) return false;
-      const d = new Date(g.kickoff_at);
-      return d.getDay() === 0; // Sunday = 0
+      return isNflSunday(g.kickoff_at);
     });
     
     return sundayGames.length > 0 && sundayGames.every((g: GameMeta) => g.status === 'final');

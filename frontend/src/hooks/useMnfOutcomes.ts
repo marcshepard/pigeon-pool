@@ -1,16 +1,14 @@
 import { useMemo } from "react";
 import type { ResultsRow } from "../utils/resultsShaping";
 import type { GameMeta } from "../hooks/useAppCache";
-
-function isMonday(d: Date) { return d.getDay() === 1; } // 0=Sun .. 6=Sat
+import { isNflMonday } from "../utils/nflTime";
 
 function selectMnfGames(games: GameMeta[]): GameMeta[] {
   // For completed weeks, allow MNF games regardless of status
   return games
     .filter(g => {
       if (!g.kickoff_at) return false;
-      const dt = new Date(g.kickoff_at);
-      return isMonday(dt);
+      return isNflMonday(g.kickoff_at);
     })
     .slice(0, 2);
 }
@@ -31,8 +29,7 @@ function computeBaseScores(rows: ResultsRow[], games: GameMeta[]): Map<number, n
   for (const g of games) {
     if (g.status !== "final") continue;
     // Exclude MNF games (Monday games) from baseline
-    const dt = g.kickoff_at ? new Date(g.kickoff_at) : null;
-    if (dt && dt.getDay() === 1) continue;
+    if (g.kickoff_at && isNflMonday(g.kickoff_at)) continue;
     const key = `g_${g.game_id}`;
     const actualSigned = (g.home_score ?? 0) - (g.away_score ?? 0);
     for (const r of rows) {

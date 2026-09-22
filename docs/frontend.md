@@ -27,7 +27,7 @@ React + TypeScript + Vite + MUI application.
   Login failures remain generic and point first-time users to password reset. The reset form
   mirrors the backend's 8–128 character password policy.
 - **Picks/Results**: `useResults(week)` fetches `/results/weeks/{week}/picks` and `/results/weeks/{week}/leaderboard`, then shapes via `resultsShaping.ts`. For tenant 1, the submission dialog keeps local picks distinct from CrowdSignal confirmation; a failure explains the retry/direct-submission fallback and displays the server HTTP status in its title.
-- **Analytics**: Both "Your Picks" and "Top 5" tabs consume the same `useResults` data, displayed differently
+- **Analytics**: Both "Your Picks" and "Top 5" tabs consume the same `useResults` data, displayed differently. Sunday/Monday game classification for the MNF scenarios always uses the NFL's Pacific-time calendar, regardless of the viewer's timezone.
 - **YTD leaderboard**: `useYtd` fetches `/results/leaderboard` (all locked weeks concatenated)
 - **Schedule/games**: `useSchedule` and `useAppCache` fetch from `/schedule`
 - **League administration**: `/admin` opens Settings by default, followed by Roster and Picks.
