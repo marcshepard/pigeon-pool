@@ -223,6 +223,14 @@ states that recipients missed that deadline but may still submit quickly because
 open a couple more hours. These are email-text overrides only (HTML and plain text); actual pick
 locking, reminder scheduling, and other tenants' displayed deadlines still use existing behavior.
 
+Bulk emails send sequential batches of at most 49 BCC recipients plus the fixed To address,
+keeping each request within Azure's default 50-recipient limit. Placeholder addresses are removed
+before batching. Successful batches log their number and recipient count; failures log the batch
+number, exception type, HTTP status when available, and error details. Sending stops at the first
+failed batch and returns false; earlier batches may already have sent. No application retries are
+performed. The scheduler still records completion when a job returns normally, even if a tenant
+send returned false; `run ok` alone does not establish that all emails sent.
+
 ## Known limitations / out of scope
 
 - **Seasons**: `weeks` (1–18) and `games` implicitly represent one NFL season shared by every
