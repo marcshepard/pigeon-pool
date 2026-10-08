@@ -256,7 +256,11 @@ async def run_email_mon(session: AsyncSession) -> dict[str, Any]:
             if next_lock_row else "the upcoming deadline"
         )
         if tenant_id == 1:
-            deadline_str = "5 PM Pacific Time"
+            # Keep the Pacific calendar date, but advertise Andy's earlier time.
+            deadline_str = (
+                f"{deadline_str.split(' at ', 1)[0]} at 5 PM Pacific Time"
+                if next_lock_row else "5 PM Pacific Time"
+            )
 
         emails = await _get_tenant_emails(session, tenant_id)
         if not emails:
@@ -269,7 +273,7 @@ async def run_email_mon(session: AsyncSession) -> dict[str, Any]:
             f"Congratulations to {winner_str} for the first place finish in Week {week}!\n"
             "The final results are available at https://www.pigeonpool.com/picks-and-results.\n"
             "The year-to-date cumulative scores are available at https://www.pigeonpool.com/year-to-date.\n\n"
-            f"Don't forget to enter your picks before the deadline: {deadline_str}.\n\n"
+            f"Don't forget to enter next weeks picks before the deadline: {deadline_str}.\n\n"
             f"--{tenant_name}"
         )
         html = (
@@ -279,7 +283,7 @@ async def run_email_mon(session: AsyncSession) -> dict[str, Any]:
             "<a href='https://www.pigeonpool.com/picks-and-results'>https://www.pigeonpool.com/picks-and-results</a>.</p>"
             "<p>The year-to-date cumulative scores are available at "
             "<a href='https://www.pigeonpool.com/year-to-date'>https://www.pigeonpool.com/year-to-date</a>.</p>"
-            f"<p>Don't forget to enter your picks before the deadline: {deadline_str}.</p>"
+            f"<p>Don't forget to enter next weeks picks before the deadline: {deadline_str}.</p>"
             f"<p>--{tenant_name}</p>"
         )
 
