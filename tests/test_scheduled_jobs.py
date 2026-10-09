@@ -62,3 +62,53 @@ def test_monday_email_next_week_reminder(monkeypatch, tenant_id, lock_at, expect
     assert reminder in plain
     assert f"<p>{reminder}</p>" in html
     assert result["emails_sent"] == 1
+
+
+@pytest.mark.parametrize("week", [6, 18, None])
+def test_kickoff_refresh_uses_one_unfinished_week(monkeypatch, week):
+    session = AsyncMock(spec=AsyncSession)
+    session.execute.return_value = Mock(scalar=Mock(return_value=week))
+    syncer = Mock(refresh_kickoffs=AsyncMock(return_value=3))
+    factory = Mock(return_value=syncer)
+    monkeypatch.setattr(scheduled_jobs, "ScoreSync", factory)
+
+    result = asyncio.run(scheduled_jobs.run_kickoff_sync(session))
+
+    assert result["weeks"] == ([] if week is None else [week])
+    assert result["kickoffs_updated"] == (0 if week is None else 3)
+    if week is None:
+        factory.assert_not_called()
+    else:
+        syncer.refresh_kickoffs.assert_awaited_once_with(week)
+    assert str(session.execute.call_args.args[0]) == (
+        "SELECT MIN(week_number) FROM games WHERE status <> 'final'"
+    )
+
+
+@pytest.mark.parametrize("statuses, expected", [
+    (["final", "scheduled", "scheduled"], 7),
+    (["final", "in_progress", "scheduled"], 7),
+    (["final", "final", "scheduled"], 8),
+    (["final", "final", "final"], None),
+])
+def test_kickoff_week_selection_uses_game_completion(db_conn, monkeypatch, statuses, expected):
+    """Exercise the job's selection SQL on deterministic rows without editing shared games."""
+    session = AsyncMock(spec=AsyncSession)
+    syncer = Mock(refresh_kickoffs=AsyncMock(return_value=0))
+    monkeypatch.setattr(scheduled_jobs, "ScoreSync", Mock(return_value=syncer))
+    async def execute(query):
+        # Substitute a local CTE for games while retaining the actual selection query.
+        with db_conn.cursor() as cur:
+            cur.execute(
+                "WITH games(week_number, status) AS (VALUES (6, %s), (7, %s), (8, %s)) " + str(query),
+                tuple(statuses),
+            )
+            return Mock(scalar=Mock(return_value=cur.fetchone()[0]))
+
+    session.execute.side_effect = execute
+    result = asyncio.run(scheduled_jobs.run_kickoff_sync(session))
+    assert result["weeks"] == ([] if expected is None else [expected])
+    if expected is None:
+        syncer.refresh_kickoffs.assert_not_awaited()
+    else:
+        syncer.refresh_kickoffs.assert_awaited_once_with(expected)

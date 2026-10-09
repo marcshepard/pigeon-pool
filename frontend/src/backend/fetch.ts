@@ -5,6 +5,7 @@
 import {
   AdminPigeon,
   AdminWeekLock,
+  AdminWeekLockUpdate,
   Me,
   Ok,
   PlayerRename,
@@ -399,11 +400,11 @@ export async function adminGetWeeksLocks(): Promise<AdminWeekLock[]> {
 /**
  * Adjust the lock time for a week (admin only)
  */
-export async function adminAdjustWeekLock(week: number, lock_at: Date): Promise<void> {
-  await apiFetch(`/admin/weeks/${week}/lock`, {
+export async function adminAdjustWeekLock(week: number, lock_at: Date, applyToFutureWeeks = false): Promise<AdminWeekLockUpdate> {
+  return apiFetch(`/admin/weeks/${week}/lock`, {
     method: "PATCH",
-    body: JSON.stringify({ lock_at: lock_at.toISOString() }),
-    factory: () => undefined,
+    body: JSON.stringify({ lock_at: lock_at.toISOString(), apply_to_future_weeks: applyToFutureWeeks }),
+    factory: (data: unknown) => new AdminWeekLockUpdate(data),
   });
 }
 

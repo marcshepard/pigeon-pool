@@ -8,6 +8,9 @@ import {
   Box,
   Button,
   Chip,
+  FormControlLabel,
+  Radio,
+  RadioGroup,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -37,6 +40,7 @@ import {
 } from "../../backend/fetch";
 import {
     AdminWeekLock,
+    AdminWeekLockUpdate,
     Game,
     PickStatusRow,
     WeekPicksRow,
@@ -55,6 +59,49 @@ function formatDateTimeNoYear(dt: Date) {
     timeZone: "America/Los_Angeles",
   });
   return dateStr.replace(/^(\d{2})\/(\d{2})\/\d{4},\s*/, "$1/$2, ");
+}
+
+const PACIFIC_TIME_ZONE = "America/Los_Angeles";
+const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+function pacificDateTime(value: Date): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: PACIFIC_TIME_ZONE, year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+  }).formatToParts(value);
+  const part = (type: string) => parts.find((p) => p.type === type)?.value;
+  return part("year") + "-" + part("month") + "-" + part("day") + "T" + part("hour") + ":" + part("minute");
+}
+
+function fromPacificDateTime(value: string): Date | null {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) return null;
+  const clock = Date.parse(value + "Z");
+  if (!Number.isFinite(clock)) return null;
+  let instant = clock;
+  for (let pass = 0; pass < 3; pass++) {
+    const displayedClock = Date.parse(pacificDateTime(new Date(instant)) + "Z");
+    instant += clock - displayedClock;
+  }
+  const result = new Date(instant);
+  // Reject nonexistent local times during the spring DST transition.
+  return pacificDateTime(result) === value ? result : null;
+}
+
+function recurringLockTime(kickoff: Date | null, weekday: number, time: string): Date | null {
+  if (!kickoff) return null;
+  const date = new Date(pacificDateTime(kickoff).slice(0, 10) + "T00:00:00Z");
+  const daysSinceTuesday = (date.getUTCDay() - 2 + 7) % 7;
+  date.setUTCDate(date.getUTCDate() - daysSinceTuesday + (weekday - 2 + 7) % 7);
+  return fromPacificDateTime(date.toISOString().slice(0, 10) + "T" + time);
+}
+
+function deadlineMeaning(weekday: number, time: string): string {
+  const day = WEEKDAYS[weekday];
+  if (time === "00:00") return "Picks close at the start of " + day + "—" + WEEKDAYS[(weekday + 6) % 7] + " night.";
+  if (time === "12:00") return "Picks close " + day + " at noon.";
+  if (time === "23:59") return "Picks close at the end of " + day + ".";
+  const [hour, minute] = time.split(":").map(Number);
+  return "Picks close " + day + " at " + (hour % 12 || 12) + ":" + String(minute).padStart(2, "0") + " " + (hour < 12 ? "AM" : "PM") + ".";
 }
 
 function ViewPicks({ week }: { week: number }) {
@@ -256,13 +303,17 @@ function PickStatus({ week }: { week: number }) {
 export default function AdminLocksAndPicks() {
   const { me } = useAuth();
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [dialogValue, setDialogValue] = useState<Date | null>(null);
+  const [applyToFutureWeeks, setApplyToFutureWeeks] = useState(false);
+  const [dialogDateTime, setDialogDateTime] = useState("");
+  const [repeatWeekday, setRepeatWeekday] = useState(3);
+  const [repeatTime, setRepeatTime] = useState("23:59");
   const { currentWeek } = useSchedule();
   const [selectedWeek, setSelectedWeek] = useState<number | null>(null);
   const [weekLocks, setWeekLocks] = useState<AdminWeekLock[]>([]);
   const [games, setGames] = useState<Game[]>([]);
   const [lockError, setLockError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [lockUpdate, setLockUpdate] = useState<AdminWeekLockUpdate | null>(null);
 
   // Bulk Import Picks state
   const [importDialogOpen, setImportDialogOpen] = useState(false);
@@ -325,6 +376,18 @@ export default function AdminLocksAndPicks() {
   const eligible = isFutureWeek || isCurrentScheduled;
   const lockRow = weekLocks.find((l) => l.week_number === selectedWeek);
   const firstKickoff = games.length > 0 ? new Date(games[0].kickoff_at) : null;
+
+  const dialogValue = applyToFutureWeeks
+    ? recurringLockTime(firstKickoff, repeatWeekday, repeatTime)
+    : fromPacificDateTime(dialogDateTime);
+  const previewDateTime = dialogValue ? pacificDateTime(dialogValue) : null;
+  const previewWeekday = applyToFutureWeeks
+    ? repeatWeekday
+    : previewDateTime ? new Date(previewDateTime.slice(0, 10) + "T00:00:00Z").getUTCDay() : null;
+  const previewTime = applyToFutureWeeks ? repeatTime : previewDateTime?.slice(11);
+  const deadlineLabel = dialogValue?.toLocaleString("en-US", {
+    weekday: "long", hour: "numeric", minute: "2-digit", timeZone: PACIFIC_TIME_ZONE,
+  });
 
   // Before a week locks, players must not see each other's picks, so the
   // commissioner only gets submission status. Once locked, the full grid is safe.
@@ -415,53 +478,133 @@ export default function AdminLocksAndPicks() {
               variant="outlined"
               size="small"
               onClick={() => {
-                setDialogValue(new Date(lockRow.lock_at));
+                setApplyToFutureWeeks(false);
+                const initial = pacificDateTime(new Date(lockRow.lock_at));
+                setDialogDateTime(initial);
+                setRepeatWeekday(new Date(initial.slice(0, 10) + "T00:00:00Z").getUTCDay());
+                setRepeatTime(initial.slice(11));
+                setLockError(null);
                 setDialogOpen(true);
               }}
             >
               Change
             </Button>
           </Box>
-          {lockError && <Alert severity="error">{lockError}</Alert>}
-          <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)}>
-            <DialogTitle sx={{ textAlign: "center" }}>Set New Lock Time</DialogTitle>
+          {lockUpdate && lockUpdate.skipped_weeks.length > 0 && (
+            <Alert severity="warning" onClose={() => setLockUpdate(null)} sx={{ mb: 2 }}>
+              <Typography variant="body2" fontWeight={700}>
+                {lockUpdate.updated_weeks.length > 0
+                  ? "Lock times updated. These weeks were left unchanged:"
+                  : "No lock times changed."}
+              </Typography>
+              {lockUpdate.skipped_weeks.map((exception) => {
+                const format = (date: Date) => date.toLocaleString("en-US", {
+                  weekday: "long", month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
+                  timeZone: PACIFIC_TIME_ZONE,
+                });
+                return (
+                  <Typography key={exception.week_number} variant="body2" sx={{ mt: 1 }}>
+                    {exception.lock_at
+                      ? "Leaving week " + exception.week_number + " lock time as " + format(exception.lock_at) + " Pacific Time."
+                      : "Week " + exception.week_number + " still has no lock time set."}
+                    {exception.reason === "after_kickoff"
+                      ? " Its first game is at " + format(exception.first_kickoff) + " Pacific Time, before the requested deadline."
+                      : exception.reason === "started"
+                        ? " Its games have already started."
+                        : " The requested deadline would be in the past."}
+                  </Typography>
+                );
+              })}
+            </Alert>
+          )}
+          {!dialogOpen && lockError && <Alert severity="error">{lockError}</Alert>}
+          <Dialog open={dialogOpen} onClose={submitting ? undefined : () => setDialogOpen(false)} maxWidth="sm" fullWidth>
+            <DialogTitle>Set New Lock Time</DialogTitle>
             <DialogContent>
-              <Box sx={{ mt: 2 }}>
-                <TextField
-                  label="Lock Time"
-                  type="datetime-local"
-                  value={
-                    dialogValue
-                      ? (() => {
-                          const dt = new Date(dialogValue.getTime() - dialogValue.getTimezoneOffset() * 60000);
-                          return dt.toISOString().slice(0, 16);
-                        })()
-                      : ""
-                  }
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setDialogValue(val ? new Date(val) : null);
-                  }}
-                  slotProps={{
-                    input: {
-                      inputProps: {
-                        min: (() => {
-                          const base = new Date("2025-09-02T00:00:00-07:00");
-                          base.setDate(base.getDate() + 7 * ((selectedWeek ?? 1) - 1));
-                          return base.toISOString().slice(0, 16);
-                        })(),
-                        max: firstKickoff
-                          ? (() => {
-                              const dt = new Date(firstKickoff.getTime() - firstKickoff.getTimezoneOffset() * 60000);
-                              return dt.toISOString().slice(0, 16);
-                            })()
-                          : undefined,
-                      },
-                    },
-                  }}
-                  fullWidth
-                />
-              </Box>
+              <Stack spacing={2} sx={{ mt: 1 }}>
+                {lockError && <Alert severity="error">{lockError}</Alert>}
+                <RadioGroup
+                  aria-label="Apply lock time to"
+                  value={applyToFutureWeeks ? "future" : "single"}
+                  onChange={(e) => { setApplyToFutureWeeks(e.target.value === "future"); setLockError(null); }}
+                >
+                  <FormControlLabel value="single" control={<Radio disabled={submitting} />} label="This week only" />
+                  <FormControlLabel value="future" control={<Radio disabled={submitting} />} label="This and future weeks" />
+                </RadioGroup>
+                {applyToFutureWeeks ? (
+                  <Stack spacing={2}>
+                    <LabeledSelect
+                      label="Day of the week"
+                      value={String(repeatWeekday)}
+                      onChange={(e) => setRepeatWeekday(Number(e.target.value))}
+                      options={WEEKDAYS.map((day, index) => ({ value: String(index), label: day }))}
+                      disabled={submitting}
+                    />
+                    <Stack direction="row" spacing={1}>
+                      <LabeledSelect
+                        label="Hour"
+                        value={String(Number(repeatTime.slice(0, 2)) % 12 || 12)}
+                        onChange={(e) => {
+                          const hour = Number(e.target.value) % 12 + (Number(repeatTime.slice(0, 2)) >= 12 ? 12 : 0);
+                          setRepeatTime(String(hour).padStart(2, "0") + repeatTime.slice(2));
+                        }}
+                        options={Array.from({ length: 12 }, (_, i) => ({ value: String(i + 1), label: String(i + 1) }))}
+                        disabled={submitting}
+                        sx={{ flex: 1 }}
+                      />
+                      <LabeledSelect
+                        label="Minute"
+                        value={repeatTime.slice(3)}
+                        onChange={(e) => setRepeatTime(repeatTime.slice(0, 3) + e.target.value)}
+                        options={Array.from({ length: 60 }, (_, i) => ({ value: String(i).padStart(2, "0"), label: String(i).padStart(2, "0") }))}
+                        disabled={submitting}
+                        sx={{ flex: 1 }}
+                      />
+                      <LabeledSelect
+                        label="AM / PM"
+                        value={Number(repeatTime.slice(0, 2)) >= 12 ? "PM" : "AM"}
+                        onChange={(e) => {
+                          const hour = Number(repeatTime.slice(0, 2)) % 12 + (e.target.value === "PM" ? 12 : 0);
+                          setRepeatTime(String(hour).padStart(2, "0") + repeatTime.slice(2));
+                        }}
+                        options={[{ value: "AM", label: "AM" }, { value: "PM", label: "PM" }]}
+                        disabled={submitting}
+                        sx={{ flex: 1 }}
+                      />
+                    </Stack>
+                  </Stack>
+                ) : (
+                  <TextField
+                    label="Date and time"
+                    disabled={submitting}
+                    type="datetime-local"
+                    value={dialogDateTime}
+                    onChange={(e) => setDialogDateTime(e.target.value)}
+                    slotProps={{ input: { inputProps: { max: firstKickoff ? pacificDateTime(firstKickoff) : undefined } } }}
+                    fullWidth
+                  />
+                )}
+                <Typography variant="body2" color="text.secondary">All times are Pacific Time.</Typography>
+                {previewWeekday !== null && previewTime && (
+                  <Alert severity="info">
+                    <Typography variant="body2" fontWeight={700}>
+                      {deadlineMeaning(previewWeekday, previewTime)}
+                    </Typography>
+                    <Typography variant="body2">Pacific Time.</Typography>
+                    {applyToFutureWeeks ? (
+                      <Typography variant="body2" sx={{ mt: 1 }}>
+                        Applies to week {selectedWeek} and later
+                      </Typography>
+                    ) : (
+                      <Typography variant="body2" sx={{ mt: 1 }}>
+                        Applies to week {selectedWeek} only, on {dialogValue?.toLocaleDateString("en-US", {
+                          month: "long", day: "numeric", year: "numeric", timeZone: PACIFIC_TIME_ZONE,
+                        })}.
+                      </Typography>
+                    )}
+                  </Alert>
+                )}
+              </Stack>
             </DialogContent>
             <DialogActions>
               <Button onClick={() => setDialogOpen(false)} disabled={submitting}>
@@ -473,7 +616,8 @@ export default function AdminLocksAndPicks() {
                   setLockError(null);
                   setSubmitting(true);
                   try {
-                    await adminAdjustWeekLock(selectedWeek, dialogValue);
+                    const result = await adminAdjustWeekLock(selectedWeek, dialogValue, applyToFutureWeeks);
+                    setLockUpdate(result);
                     setDialogOpen(false);
                     setLockError(null);
                     const locks = await adminGetWeeksLocks();
@@ -487,12 +631,12 @@ export default function AdminLocksAndPicks() {
                 disabled={
                   submitting ||
                   !dialogValue ||
-                  (dialogValue && new Date(lockRow.lock_at).getTime() === dialogValue.getTime())
+                  (!applyToFutureWeeks && dialogValue && new Date(lockRow.lock_at).getTime() === dialogValue.getTime())
                 }
                 variant="contained"
                 color="primary"
               >
-                Confirm
+                {submitting ? "Saving…" : deadlineLabel ? "Set " + deadlineLabel : "Set lock time"}
               </Button>
             </DialogActions>
           </Dialog>

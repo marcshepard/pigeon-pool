@@ -43,6 +43,16 @@ React + TypeScript + Vite + MUI application.
   "Not submitted") — never the picks themselves, so the commissioner gains no preview of margins.
   Once a week has locked it shows the full picks grid from `/admin/weeks/{week}/picks`. See
   architecture.md "Pre-lock pick visibility".
+  “Set New Lock Time” defaults to “This week only,” with a Pacific date/time field. The optional
+  “This and future weeks” mode uses weekday, hour, minute, and AM/PM selectors instead of a date,
+  repeating that Pacific weekday/time for this week and later unstarted weeks in this season.
+  An inline preview explains midnight as the start of the selected day (the previous night),
+  12 PM as noon, and 11:59 PM as the end of the day. The save button names the chosen weekday/time.
+  The preview identifies the selected week and whether later weeks are included. Only the active
+  league is affected, existing future lock times are replaced, and backend validation runs before
+  saving any deadlines. Opening the dialog always resets to “This week only.” After a bulk save,
+  a dismissible notice lists every skipped week, its unchanged Pacific lock time, and why it was
+  skipped. Early-kickoff exceptions include the first game's Pacific day, date, and time.
 - **Roster people fields**: Owner and additional managers are edited together with free-text email
   autocomplete over people already visible in the league roster. The owner is optional; a pigeon
   with no assigned people is displayed as “Not using the app.” Email text can be copied and pasted

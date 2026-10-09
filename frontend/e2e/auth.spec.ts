@@ -10,8 +10,8 @@ test.describe("auth", () => {
     });
     const iosPage = await iosContext.newPage();
     await iosPage.goto("/login");
-    await expect(iosPage.getByText(/Tap Share/i)).toBeVisible();
-    await expect(iosPage.getByTitle("Share icon")).toBeVisible();
+    await expect(iosPage.getByText(/Tap the Share icon/i)).toBeVisible();
+    await expect(iosPage.getByRole("img", { name: "Share icon" })).toBeVisible();
     await expect(iosPage.getByText(/tap the app icon on your Home Screen/i)).toBeVisible();
     await iosContext.close();
 
@@ -21,8 +21,8 @@ test.describe("auth", () => {
     });
     const androidPage = await androidContext.newPage();
     await androidPage.goto("/login");
-    await expect(androidPage.getByText(/Tap Menu/i)).toBeVisible();
-    await expect(androidPage.getByTitle("Menu icon")).toBeVisible();
+    await expect(androidPage.getByText(/Tap the Menu icon/i)).toBeVisible();
+    await expect(androidPage.getByRole("img", { name: "Menu icon" })).toBeVisible();
     await androidContext.close();
 
     const installedIosContext = await browser.newContext({
@@ -34,13 +34,13 @@ test.describe("auth", () => {
     });
     const installedIosPage = await installedIosContext.newPage();
     await installedIosPage.goto("/login");
-    await expect(installedIosPage.getByText(/install this app on your Home Screen/i)).toHaveCount(0);
+    await expect(installedIosPage.getByText(/install this app to your Home Screen/i)).toHaveCount(0);
     await installedIosContext.close();
   });
 
   test("desktop browsers do not show Home Screen instructions", async ({ page }) => {
     await page.goto("/login");
-    await expect(page.getByText(/install this app on your Home Screen/i)).toHaveCount(0);
+    await expect(page.getByText(/install this app to your Home Screen/i)).toHaveCount(0);
   });
 
   test("login with valid credentials succeeds", async ({ page }) => {

@@ -102,33 +102,24 @@ async def get_all_player_emails(
 # Kickoff sync (global, no tenant scoping needed)
 # ---------------------------------------------------------------------
 async def run_kickoff_sync(session: AsyncSession) -> dict[str, Any]:
-    """
-    Daily task: refresh kickoff_at for current week and next week across all tenants.
-    Uses the minimum unlocked week across all tenant_weeks as the anchor.
-    """
+    """Refresh kickoff times for the earliest week with unfinished games."""
     res = await session.execute(
-        text("SELECT MIN(week_number) FROM tenant_weeks WHERE lock_at > now()")
+        text("SELECT MIN(week_number) FROM games WHERE status <> 'final'")
     )
-    row = res.first()
-    current_week = row[0] if row and row[0] is not None else None
+    week = res.scalar()
 
-    if current_week is None:
+    if week is None:
         info("component=jobs", job="kickoff_sync", weeks=[], kickoffs_updated=0,
-             note="no current week (nothing to refresh)")
-        return {"weeks": [], "kickoffs_updated": 0, "note": "no current week"}
+             note="no unfinished games (nothing to refresh)")
+        return {"weeks": [], "kickoffs_updated": 0, "note": "no unfinished games"}
 
-    weeks_to_touch: list[int] = [int(current_week)]
-    if current_week < 18:
-        weeks_to_touch.append(int(current_week) + 1)
-
+    week = int(week)
     syncer = ScoreSync(session)
-    changed = 0
-    for wk in weeks_to_touch:
-        changed += await syncer.refresh_kickoffs(wk)
+    changed = await syncer.refresh_kickoffs(week)
 
-    info("component=jobs", job="kickoff_sync", weeks=weeks_to_touch,
+    info("component=jobs", job="kickoff_sync", weeks=[week],
          kickoffs_updated=changed, message="kickoff refresh complete")
-    return {"weeks": weeks_to_touch, "kickoffs_updated": changed}
+    return {"weeks": [week], "kickoffs_updated": changed}
 
 
 # ---------------------------------------------------------------------

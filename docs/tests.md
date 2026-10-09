@@ -40,7 +40,7 @@ clicking through the login form.
 | `auth.spec.ts` | 5 | Login success/failure, redirect, tenant name in app bar, tenant switcher |
 | `picks.spec.ts` | 4 | Page loads, full submit via home-by-3 easter egg, lock rejection (API), alt-player (API) |
 | `results.spec.ts` | 5 | Page loads, locked week table, picks/leaderboard API, unlocked week privacy |
-| `admin.spec.ts` | 6 | Commissioner access, league rename, payouts, roster player, 401 on bad token, lock page |
+| `admin.spec.ts` | 7 | Commissioner access, league rename, payouts, roster player, 401 on bad token, lock page, recurring deadlines and exception notice |
 | `analytics.spec.ts` | 8 | Selectors, tabs, Your Picks table, Top 5 panel, pigeon selector, MNF/Top5 content, API |
 
 ## Design decisions
@@ -77,6 +77,7 @@ The backend test suite lives in `tests/` and uses pytest against the dev databas
 | `test_picks.py` | Pick submission, retrieval, lock enforcement, alt-player delegation |
 | `test_results.py` | Leaderboard ranking, scoring correctness, YTD aggregation |
 | `test_admin.py` | Aggregate roster management, primary/membership repair, league rename, payout config |
+| `test_admin_locks.py` | Opt-in bulk deadlines, DST, early-kickoff exceptions, validation, and tenant isolation |
 | `test_roster_validation.py` | Read-only roster integrity checks and orphan-user warning behavior |
 | `test_tenant_isolation.py` | Data from Tenant A never leaks into Tenant B responses |
 

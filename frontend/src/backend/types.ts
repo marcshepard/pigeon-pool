@@ -509,6 +509,42 @@ export class AdminWeekLock {
   }
 }
 
+export class AdminWeekLockUpdate {
+  updated_weeks: number[];
+  skipped_weeks: {
+    week_number: number;
+    lock_at: Date | null;
+    first_kickoff: Date;
+    reason: "after_kickoff" | "started" | "past";
+  }[];
+
+  constructor(data: unknown) {
+    // Single-week updates retain their existing no-content response.
+    if (data === undefined) {
+      this.updated_weeks = [];
+      this.skipped_weeks = [];
+      return;
+    }
+    if (!isRecord(data) || !Array.isArray(data.updated_weeks) || !data.updated_weeks.every(isNumber) || !Array.isArray(data.skipped_weeks)) {
+      throw new DataValidationError("Invalid lock update result");
+    }
+    this.updated_weeks = data.updated_weeks;
+    this.skipped_weeks = data.skipped_weeks.map((row: unknown) => {
+      if (!isRecord(row) || !isNumber(row.week_number) || !isString(row.first_kickoff) ||
+          (row.lock_at !== null && !isString(row.lock_at)) ||
+          (row.reason !== "after_kickoff" && row.reason !== "started" && row.reason !== "past")) {
+        throw new DataValidationError("Invalid unchanged week");
+      }
+      const lock = row.lock_at === null ? null : new Date(row.lock_at);
+      const kickoff = new Date(row.first_kickoff);
+      if ((lock && Number.isNaN(lock.getTime())) || Number.isNaN(kickoff.getTime())) {
+        throw new DataValidationError("Invalid unchanged week dates");
+      }
+      return { week_number: row.week_number, lock_at: lock, first_kickoff: kickoff, reason: row.reason };
+    });
+  }
+}
+
 export type PigeonSeasonStatus = "pending" | "active" | "out";
 
 /** A user assigned to a pigeon in the commissioner roster. */

@@ -30,6 +30,18 @@ the durable reference — for directory structure and frontend data flows see
   A missing `tenant_weeks` row is treated as *unlocked* by the pick-lock trigger, which is why
   "Activate Season" (copying `default_lock_at` → `tenant_weeks`) is a required step before a
   tenant's picks should be trusted as gated.
+  Commissioners can choose “This and future weeks” when changing a lock, selecting a weekday
+  and clock time instead of a specific date. This repeats the Pacific weekday/time through the current
+  season, including DST changes, and replaces later unstarted weeks' locks. Every target is
+  validated before any writes; a missing schedule rejects the entire change. Weeks whose repeated
+  deadline falls after their first kickoff are left unchanged while eligible weeks are updated.
+  Started weeks and weeks whose repeated deadline is in the past are also left unchanged.
+  Bulk updates return HTTP 200 with updated week numbers and exceptions, including each unchanged
+  tenant deadline, first kickoff, and reason; single-week updates retain HTTP 204. Exceptions are
+  logged and shown to the commissioner after saving. The authenticated tenant ID controls every
+  upsert, never a request-supplied tenant ID.
+  Global defaults and other tenants (including tenant 1) are untouched. This is a season bulk
+  edit, not a persistent default for next season.
 - **`players.season_status`** (`pending` / `active` / `out`) — tracks whether a returning
   pigeon is confirmed in for the season. Resets to `pending` for everyone on `reset-season`.
   **Purely informational and must stay that way**: it is only displayed/edited on the Roster
@@ -200,6 +212,15 @@ belong to the previous year's season), and the season type comes from configurat
 Responses must identify the requested season, type, and week before any games are
 written. Do not substitute `year=` (previously ignored by ESPN) or date ranges
 (observed returning HTTP 400 in September 2026).
+
+Kickoff times refresh once per Pacific calendar day after the configured kickoff-sync hour.
+The refresh covers exactly one week: the earliest week containing a game whose status is not
+final. Once all games in that week are final, the next run advances to the next unfinished week;
+if all games are final, it does nothing. Week selection uses global game completion, independent
+of tenant deadlines and local dates. Score polling
+and Sunday/Monday scheduler gates still use the latest locked week across tenants; deadlines
+remain bounded by each week's first kickoff. Tuesday warning emails remain Tuesday-only and
+only include tenants whose deadline falls on that Pacific date.
 
 The backend runs an in-process asyncio scheduler (1-minute heartbeat) for score sync, kickoff
 sync, and weekly emails, rather than an external trigger service:

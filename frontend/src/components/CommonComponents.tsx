@@ -82,6 +82,7 @@ export type LabeledSelectOption = {
 };
 
 export interface LabeledSelectProps {
+  disabled?: boolean;
   label: string;
   value: string;
   onChange: (event: SelectChangeEvent<string>) => void;
@@ -93,6 +94,7 @@ export interface LabeledSelectProps {
 }
 
 export function LabeledSelect({
+  disabled = false,
   label,
   value,
   onChange,
@@ -105,7 +107,7 @@ export function LabeledSelect({
   const selectId = id || `${label.replace(/\s+/g, "-").toLowerCase()}-select`;
   const selectLabelId = labelId || `${selectId}-label`;
   return (
-    <FormControl size={size} sx={sx}>
+    <FormControl size={size} sx={sx} disabled={disabled}>
       <InputLabel id={selectLabelId}>{label}</InputLabel>
       <Select<string>
         labelId={selectLabelId}

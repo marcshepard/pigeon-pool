@@ -11,6 +11,7 @@ import os
 import tempfile
 from datetime import UTC, datetime, timedelta
 from typing import Literal
+from zoneinfo import ZoneInfo
 
 from fastapi import (
     APIRouter,
@@ -23,6 +24,7 @@ from fastapi import (
     UploadFile,
     status,
 )
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
@@ -229,7 +231,7 @@ async def update_league(
 
 WEEK_EXISTS_SQL = text("SELECT 1 FROM weeks WHERE week_number = :week")
 
-FIRST_KICKOFF_SQL = text("SELECT MIN(kickoff_at) FROM games WHERE week_number = :week")
+FIRST_KICKOFF_SQL = text("SELECT MIN(kickoff_at), BOOL_AND(status = 'scheduled') FROM games WHERE week_number = :week")
 
 TENANT_WEEK_LOCK_SQL = text("""
     SELECT lock_at FROM tenant_weeks
@@ -251,9 +253,38 @@ TENANT_WEEKS_LOCKS_SQL = text("""
 """)
 
 
+FUTURE_WEEK_KICKOFFS_SQL = text("""
+    SELECT w.week_number, MIN(g.kickoff_at), BOOL_AND(g.status = 'scheduled')
+    FROM weeks w
+    LEFT JOIN games g ON g.week_number = w.week_number
+    WHERE w.week_number > :week
+    GROUP BY w.week_number
+    ORDER BY w.week_number
+""")
+
+PT = ZoneInfo("America/Los_Angeles")
+
+
+def _tuesday_before(first_kickoff: datetime) -> datetime:
+    midnight = first_kickoff.astimezone(PT).replace(hour=0, minute=0, second=0, microsecond=0)
+    return midnight - timedelta(days=(midnight.weekday() - 1) % 7)
+
+
 class WeekLockRow(BaseModel):
     week_number: int
     lock_at: datetime
+
+
+class WeekLockException(BaseModel):
+    week_number: int
+    lock_at: datetime | None
+    first_kickoff: datetime
+    reason: Literal["after_kickoff", "started", "past"]
+
+
+class WeekLockUpdateResult(BaseModel):
+    updated_weeks: list[int]
+    skipped_weeks: list[WeekLockException]
 
 
 @router.get(
@@ -275,19 +306,22 @@ async def get_weeks_locks(
     "/weeks/{week}/lock",
     status_code=204,
     summary="Adjust lock time for a week (commissioner only)",
+    responses={200: {"model": WeekLockUpdateResult}},
 )
 async def adjust_week_lock(
     week: int,
     db: AsyncSession = Depends(get_db),
     me=Depends(require_admin),
     lock_at: datetime = Body(..., embed=True, description="New lock time (RFC3339/ISO8601)"),
+    apply_to_future_weeks: bool = Body(False, description="Repeat the Pacific weekday/time for later unstarted weeks"),
 ):
     """
     Adjust the lock time for the given week within this tenant.
     Rules:
     - Only current or future weeks can be adjusted.
     - Current week can only be adjusted if still 'scheduled'.
-    - New lock time must be >= now and <= the first scheduled kickoff.
+    - Bulk changes repeat the Pacific weekday/time through this season, preserving DST.
+    - Validate every target before writing; all writes use the authenticated tenant.
     """
     debug("admin: adjust_week_lock called", user=me.pigeon_number, week=week)
 
@@ -316,17 +350,60 @@ async def adjust_week_lock(
         raise HTTPException(status_code=400, detail=f"No games scheduled for week {week}")
 
     tuesday_before = first_kickoff.astimezone(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
-    days_since_tuesday = (tuesday_before.weekday() - 1) % 7
-    tuesday_before = tuesday_before - timedelta(days=days_since_tuesday)
+    tuesday_before -= timedelta(days=(tuesday_before.weekday() - 1) % 7)
+    if apply_to_future_weeks:
+        tuesday_before = _tuesday_before(first_kickoff)
 
     if new_lock < tuesday_before:
         raise HTTPException(status_code=400, detail="Lock time must be no earlier than the Tuesday before the first kickoff")
-    if new_lock > first_kickoff:
+    if new_lock > first_kickoff and not apply_to_future_weeks:
         raise HTTPException(status_code=400, detail="Lock time must be no later than the first scheduled kickoff")
 
-    await db.execute(UPSERT_TENANT_WEEK_LOCK_SQL, {"tenant_id": me.tenant_id, "week": week, "lock_at": new_lock})
+    changes = [(week, new_lock)]
+    skipped: list[WeekLockException] = []
+    if apply_to_future_weeks:
+        now = datetime.now(UTC)
+        if new_lock < now or first_kickoff <= now or not first_row or not first_row[1]:
+            raise HTTPException(status_code=400, detail="Bulk lock changes must start with an unstarted week and a future lock time")
+        # Local calendar arithmetic keeps the same Pacific clock time across DST.
+        local_offset = new_lock.astimezone(PT) - tuesday_before
+        rows = (await db.execute(FUTURE_WEEK_KICKOFFS_SQL, {"week": week})).fetchall()
+        existing = {
+            r[0]: r[1] for r in (await db.execute(
+                TENANT_WEEKS_LOCKS_SQL, {"tenant_id": me.tenant_id}
+            )).fetchall()
+        }
+        changes = []
+        for future_week, kickoff, scheduled in [(week, first_kickoff, True), *rows]:
+            if kickoff is None:
+                raise HTTPException(status_code=400, detail=f"No games scheduled for week {future_week}; no lock times changed")
+            future_lock = (_tuesday_before(kickoff) + local_offset).astimezone(UTC)
+            reason = None
+            if kickoff <= now or not scheduled:
+                reason = "started"
+            elif future_lock > kickoff:
+                reason = "after_kickoff"
+            elif future_lock < now:
+                reason = "past"
+            if reason is not None:
+                skipped.append(WeekLockException(
+                    week_number=future_week, lock_at=existing.get(future_week),
+                    first_kickoff=kickoff, reason=reason,
+                ))
+                info("admin: bulk lock week unchanged", tenant_id=me.tenant_id, week=future_week,
+                     proposed_lock_at=future_lock.isoformat(), first_kickoff=kickoff.isoformat(), reason=reason)
+                continue
+            changes.append((future_week, future_lock))
+
+    for target_week, target_lock in changes:
+        await db.execute(UPSERT_TENANT_WEEK_LOCK_SQL, {
+            "tenant_id": me.tenant_id, "week": target_week, "lock_at": target_lock,
+        })
     await db.commit()
-    info("admin: week lock updated", week=week, lock_at=new_lock.isoformat(), tenant_id=me.tenant_id)
+    info("admin: week locks updated", weeks=[w for w, _ in changes], lock_at=new_lock.isoformat(), tenant_id=me.tenant_id)
+    if apply_to_future_weeks:
+        result = WeekLockUpdateResult(updated_weeks=[w for w, _ in changes], skipped_weeks=skipped)
+        return JSONResponse(status_code=200, content=result.model_dump(mode="json"))
     return Response(status_code=204)
 
 
