@@ -10,9 +10,11 @@ export default function AdminSettings() {
   const currentName = me?.activeTenant?.name ?? "";
   const currentPigeonsCanRename = me?.activeTenant?.pigeons_can_rename ?? true;
   const currentPicksOpen = me?.activeTenant?.picks_open ?? true;
+  const currentTuesdayReminders = me?.activeTenant?.tuesday_reminders_enabled ?? true;
   const [name, setName] = useState(currentName);
   const [pigeonsCanRename, setPigeonsCanRename] = useState(currentPigeonsCanRename);
   const [picksOpen, setPicksOpen] = useState(currentPicksOpen);
+  const [tuesdayReminders, setTuesdayReminders] = useState(currentTuesdayReminders);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -22,7 +24,7 @@ export default function AdminSettings() {
     setSaved(false);
     setError(null);
     try {
-      await adminUpdateLeague({ name: name.trim(), pigeons_can_rename: pigeonsCanRename, picks_open: picksOpen });
+      await adminUpdateLeague({ name: name.trim(), pigeons_can_rename: pigeonsCanRename, picks_open: picksOpen, tuesday_reminders_enabled: tuesdayReminders });
       await refresh();
       setSaved(true);
     } catch (e) {
@@ -65,13 +67,23 @@ export default function AdminSettings() {
           }
           label="Pool is open for entering picks"
         />
+        <FormControlLabel
+          control={
+            <Switch
+              checked={tuesdayReminders}
+              onChange={(e) => { setTuesdayReminders(e.target.checked); setSaved(false); }}
+              disabled={saving}
+            />
+          }
+          label="Send Tuesday pick reminder emails"
+        />
         {saved && <Alert severity="success">Saved.</Alert>}
         {error && <Alert severity="error">{error}</Alert>}
         <Box>
           <Button
             variant="contained"
             onClick={handleSave}
-            disabled={saving || !name.trim() || (name.trim() === currentName && pigeonsCanRename === currentPigeonsCanRename && picksOpen === currentPicksOpen)}
+            disabled={saving || !name.trim() || (name.trim() === currentName && pigeonsCanRename === currentPigeonsCanRename && picksOpen === currentPicksOpen && tuesdayReminders === currentTuesdayReminders)}
           >
             {saving ? "Saving…" : "Save"}
           </Button>

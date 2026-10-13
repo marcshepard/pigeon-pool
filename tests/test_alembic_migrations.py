@@ -72,7 +72,7 @@ def _database_config(database_name: str) -> dict[str, Any]:
     return config
 
 
-def _upgrade_to_head(database_name: str) -> None:
+def _upgrade(database_name: str, revision: str = "head") -> None:
     settings = get_settings()
     engine = create_engine(
         URL.create(
@@ -89,7 +89,7 @@ def _upgrade_to_head(database_name: str) -> None:
         config = Config(str(_CONFIG_PATH))
         with engine.begin() as connection:
             config.attributes["connection"] = connection
-            command.upgrade(config, "head")
+            command.upgrade(config, revision)
     finally:
         engine.dispose()
 
@@ -99,8 +99,17 @@ def test_empty_database_upgrades_to_baseline_and_accepts_relational_data(
 ):
     database_name = empty_migration_database
 
-    _upgrade_to_head(database_name)
-    _upgrade_to_head(database_name)  # A current database is a no-op.
+    _upgrade(database_name, "0002")
+    with psycopg.connect(**_database_config(database_name)) as conn, conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO tenants (name, pigeons_can_rename, picks_open) "
+            "VALUES ('Existing League', false, false) RETURNING tenant_id"
+        )
+        existing_tenant = cur.fetchone()
+        assert existing_tenant is not None
+
+    _upgrade(database_name)
+    _upgrade(database_name)  # A current database is a no-op.
 
     with psycopg.connect(**_database_config(database_name)) as conn:
         report = verify_schema_baseline(conn)
@@ -109,6 +118,11 @@ def test_empty_database_upgrades_to_baseline_and_accepts_relational_data(
         assert not report.reset_table_present
 
         with conn.cursor() as cur:
+            cur.execute(
+                "SELECT name, pigeons_can_rename, picks_open, tuesday_reminders_enabled "
+                "FROM tenants WHERE tenant_id = %s", existing_tenant,
+            )
+            assert cur.fetchone() == ("Existing League", False, False, True)
             cur.execute("SELECT version_num FROM alembic_version")
             expected_head = ScriptDirectory.from_config(
                 Config(str(_CONFIG_PATH))

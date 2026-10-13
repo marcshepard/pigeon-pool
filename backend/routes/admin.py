@@ -183,11 +183,16 @@ UPDATE_TENANT_PICKS_OPEN_SQL = text("""
     UPDATE tenants SET picks_open = :picks_open WHERE tenant_id = :tenant_id
 """)
 
+UPDATE_TENANT_TUESDAY_REMINDERS_SQL = text("""
+    UPDATE tenants SET tuesday_reminders_enabled = :tuesday_reminders_enabled WHERE tenant_id = :tenant_id
+""")
+
 
 class LeagueUpdate(BaseModel):
     name: str | None = None
     pigeons_can_rename: bool | None = None
     picks_open: bool | None = None
+    tuesday_reminders_enabled: bool | None = None
 
 
 @router.patch(
@@ -220,6 +225,14 @@ async def update_league(
             "tenant_id": me.tenant_id,
         })
         info("admin: picks_open updated", tenant_id=me.tenant_id, value=update.picks_open)
+
+    if update.tuesday_reminders_enabled is not None:
+        await db.execute(UPDATE_TENANT_TUESDAY_REMINDERS_SQL, {
+            "tuesday_reminders_enabled": update.tuesday_reminders_enabled,
+            "tenant_id": me.tenant_id,
+        })
+        info("admin: tuesday_reminders_enabled updated", tenant_id=me.tenant_id,
+             value=update.tuesday_reminders_enabled)
 
     await db.commit()
     return Response(status_code=204)

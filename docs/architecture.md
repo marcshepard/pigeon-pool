@@ -63,6 +63,11 @@ the durable reference — for directory structure and frontend data flows see
 - **`tenants.picks_open`** (default `true`) — whether members can enter picks. Commissioners
   control it from League Settings; when closed, the picks UI is replaced by a warning and
   pick submissions are rejected by the API.
+- **`tenants.tuesday_reminders_enabled`** (default `true`) — whether the league receives
+  Tuesday missing-picks reminder emails. Commissioners can turn it off in League Settings;
+  Sunday and Monday emails and pick deadlines are unaffected. Existing and new leagues start
+  enabled. To suppress Andy's reminders, select tenant 1, turn off “Send Tuesday pick reminder
+  emails,” and save.
 - **Legacy Andy/CrowdSignal survey sync** — tenant 1's CrowdSignal site is the official source
   of truth for picks; this app is an optional entry point and local cache. The app deliberately
   commits local picks first, then submits them to CrowdSignal. If that external submission fails,
@@ -220,7 +225,7 @@ if all games are final, it does nothing. Week selection uses global game complet
 of tenant deadlines and local dates. Score polling
 and Sunday/Monday scheduler gates still use the latest locked week across tenants; deadlines
 remain bounded by each week's first kickoff. Tuesday warning emails remain Tuesday-only and
-only include tenants whose deadline falls on that Pacific date.
+only include tenants with reminders enabled whose deadline falls on that Pacific date.
 
 The backend runs an in-process asyncio scheduler (1-minute heartbeat) for score sync, kickoff
 sync, and weekly emails, rather than an external trigger service:

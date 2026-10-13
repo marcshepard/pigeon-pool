@@ -449,7 +449,7 @@ export function adminDeletePigeon(playerId: number): Promise<void> {
 }
 
 /** Update league settings (commissioner only). */
-export function adminUpdateLeague(patch: { name?: string; pigeons_can_rename?: boolean; picks_open?: boolean }): Promise<void> {
+export function adminUpdateLeague(patch: { name?: string; pigeons_can_rename?: boolean; picks_open?: boolean; tuesday_reminders_enabled?: boolean }): Promise<void> {
   return apiFetch("/admin/league", {
     method: "PATCH",
     body: JSON.stringify(patch),

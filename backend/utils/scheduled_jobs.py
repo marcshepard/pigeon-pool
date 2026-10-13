@@ -38,9 +38,14 @@ def _format_lock_pt(lock_utc: datetime) -> str:
 # Helpers
 # ---------------------------------------------------------------------
 
-async def _get_all_tenants(session: AsyncSession) -> list[tuple[int, str]]:
-    """Return [(tenant_id, name), ...] for all tenants."""
-    rows = await session.execute(text("SELECT tenant_id, name FROM tenants ORDER BY tenant_id"))
+async def _get_all_tenants(
+    session: AsyncSession, *, tuesday_reminders_only: bool = False,
+) -> list[tuple[int, str]]:
+    """Return tenants, optionally limited to leagues with Tuesday reminders enabled."""
+    query = "SELECT tenant_id, name FROM tenants"
+    if tuesday_reminders_only:
+        query += " WHERE tuesday_reminders_enabled = true"
+    rows = await session.execute(text(query + " ORDER BY tenant_id"))
     return [(r[0], r[1]) for r in rows.fetchall()]
 
 
@@ -294,9 +299,9 @@ async def run_email_mon(session: AsyncSession) -> dict[str, Any]:
 async def run_email_tue_warn(session: AsyncSession) -> dict[str, Any]:
     """
     Send a Tuesday warning email to players who haven't submitted all picks
-    for the upcoming week, one pass per tenant.
+    for the upcoming week, one pass per tenant with reminders enabled.
     """
-    tenants = await _get_all_tenants(session)
+    tenants = await _get_all_tenants(session, tuesday_reminders_only=True)
     total_recipients = 0
     total_sent = 0
 

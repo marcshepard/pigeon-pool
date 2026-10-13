@@ -520,6 +520,37 @@ def test_update_pigeons_can_rename_setting(client, comm_headers, test_data, db_c
 
 # ── pigeon name validation ───────────────────────────────────────────────────
 
+def test_tuesday_reminder_setting_is_commissioner_only_and_tenant_scoped(
+    client, comm_headers, member_headers, test_data,
+):
+    def settings():
+        me = client.get("/auth/me", headers=comm_headers)
+        assert me.status_code == 200
+        return {t["tenant_id"]: t["tuesday_reminders_enabled"] for t in me.json()["available_tenants"]}
+
+    before = settings()
+    tenant_a = test_data["tenant_a_id"]
+    tenant_b = test_data["tenant_b_id"]
+    assert before[tenant_a] is True
+    assert before[tenant_b] is True
+    patch = {"tuesday_reminders_enabled": False}
+    assert client.patch("/admin/league", json=patch, headers=member_headers).status_code == 403
+    assert settings() == before
+    try:
+        assert client.patch("/admin/league", json=patch, headers=comm_headers).status_code == 204
+        after = settings()
+        assert after[tenant_a] is False
+        assert after[tenant_b] is True
+        # Editing another setting must preserve the reminder preference.
+        assert client.patch("/admin/league", json={"picks_open": True}, headers=comm_headers).status_code == 204
+        assert settings()[tenant_a] is False
+    finally:
+        assert client.patch(
+            "/admin/league", json={"tuesday_reminders_enabled": True}, headers=comm_headers,
+        ).status_code == 204
+    assert settings() == before
+
+
 def test_create_pigeon_name_too_long_rejected(client, comm_headers):
     resp = client.post(
         "/admin/pigeons",

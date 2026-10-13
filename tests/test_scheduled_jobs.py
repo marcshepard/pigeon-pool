@@ -26,6 +26,43 @@ def test_empty_player_scope_returns_no_email_recipients():
     assert recipients == []
 
 
+def test_disabled_tuesday_reminders_skip_email_work(db_conn, test_data, monkeypatch):
+    """Use the real tenant selection SQL and prove disabled leagues never reach email work."""
+    db_conn.rollback()
+    session = AsyncMock(spec=AsyncSession)
+
+    async def execute(query):
+        with db_conn.cursor() as cur:
+            cur.execute(str(query))
+            return Mock(fetchall=Mock(return_value=cur.fetchall()))
+
+    session.execute.side_effect = execute
+    recipients = AsyncMock()
+    send = Mock()
+    monkeypatch.setattr(scheduled_jobs, "get_all_player_emails", recipients)
+    monkeypatch.setattr(scheduled_jobs, "send_bulk_email_bcc", send)
+    try:
+        # Transactional change rolls back, including preferences in non-test leagues.
+        with db_conn.cursor() as cur:
+            cur.execute("UPDATE tenants SET tuesday_reminders_enabled = false")
+        all_tenants = asyncio.run(scheduled_jobs._get_all_tenants(session))
+        assert test_data["tenant_a_id"] in {tid for tid, _ in all_tenants}
+        assert test_data["tenant_b_id"] in {tid for tid, _ in all_tenants}
+        result = asyncio.run(scheduled_jobs.run_email_tue_warn(session))
+        assert result["recipients"] == 0
+        recipients.assert_not_awaited()
+        send.assert_not_called()
+        with db_conn.cursor() as cur:
+            cur.execute(
+                "UPDATE tenants SET tuesday_reminders_enabled = true WHERE tenant_id = %s",
+                (test_data["tenant_b_id"],),
+            )
+        enabled = asyncio.run(scheduled_jobs._get_all_tenants(session, tuesday_reminders_only=True))
+        assert enabled == [(test_data["tenant_b_id"], "_Test League B")]
+    finally:
+        db_conn.rollback()
+
+
 @pytest.mark.parametrize(
     "tenant_id, lock_at, expected_deadline",
     [

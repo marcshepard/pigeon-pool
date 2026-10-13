@@ -133,6 +133,7 @@ _BASELINE_COLUMNS: dict[str, dict[str, ColumnSpec]] = {
         "name": _column("text"),
         "pigeons_can_rename": _column("boolean", default="true"),
         "picks_open": _column("boolean", default="true"),
+        "tuesday_reminders_enabled": _column("boolean", default="true"),
     },
     "tenant_weeks": {
         "tenant_id": _column("bigint"),
