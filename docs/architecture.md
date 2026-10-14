@@ -63,10 +63,10 @@ the durable reference — for directory structure and frontend data flows see
 - **`tenants.picks_open`** (default `true`) — whether members can enter picks. Commissioners
   control it from League Settings; when closed, the picks UI is replaced by a warning and
   pick submissions are rejected by the API.
-- **`tenants.tuesday_reminders_enabled`** (default `true`) — whether the league receives
-  Tuesday missing-picks reminder emails. Commissioners can turn it off in League Settings;
+- **`tenants.tuesday_reminders_enabled`** (default `true`, legacy column name) — whether the league receives
+  missing-picks reminder emails on its deadline day. Commissioners can turn it off in League Settings;
   Sunday and Monday emails and pick deadlines are unaffected. Existing and new leagues start
-  enabled. To suppress Andy's reminders, select tenant 1, turn off “Send Tuesday pick reminder
+  enabled. To suppress Andy's reminders, select tenant 1, turn off “Send pick deadline reminder
   emails,” and save.
 - **Legacy Andy/CrowdSignal survey sync** — tenant 1's CrowdSignal site is the official source
   of truth for picks; this app is an optional entry point and local cache. The app deliberately
@@ -224,8 +224,13 @@ final. Once all games in that week are final, the next run advances to the next 
 if all games are final, it does nothing. Week selection uses global game completion, independent
 of tenant deadlines and local dates. Score polling
 and Sunday/Monday scheduler gates still use the latest locked week across tenants; deadlines
-remain bounded by each week's first kickoff. Tuesday warning emails remain Tuesday-only and
-only include tenants with reminders enabled whose deadline falls on that Pacific date.
+remain bounded by each week's first kickoff. Pick warning emails run at 5 PM Pacific on each
+league's deadline day and only include tenants with reminders enabled whose deadline is still
+in the future on that Pacific date. A Wednesday deadline therefore receives a Wednesday reminder,
+not a Tuesday reminder. Completed jobs are gated by Pacific calendar day, so Tuesday's run does
+not suppress Wednesday's run; repeat heartbeats on the same day do not resend. Deadlines at or
+before 5 PM receive no reminder. The legacy `email_tue_warn`, `PP_TUE_WARNING_HOUR`, and
+`tuesday_reminders_enabled` names remain for CLI/configuration and schema compatibility.
 
 The backend runs an in-process asyncio scheduler (1-minute heartbeat) for score sync, kickoff
 sync, and weekly emails, rather than an external trigger service:

@@ -31,8 +31,8 @@ React + TypeScript + Vite + MUI application.
 - **YTD leaderboard**: `useYtd` fetches `/results/leaderboard` (all locked weeks concatenated)
 - **Schedule/games**: `useSchedule` and `useAppCache` fetch from `/schedule`
 - **League administration**: `/admin` opens Settings by default, followed by Roster and Picks.
-  Settings includes “Send Tuesday pick reminder emails,” saved per active league through
-  `/admin/league`. Turning it off suppresses only Tuesday reminders for missing picks.
+  Settings includes “Send pick deadline reminder emails,” saved per active league through
+  `/admin/league`. Turning it off suppresses only deadline-day reminders for missing picks.
   The Roster page fetches the aggregate `/admin/pigeons` collection and renders a read-only table
   (responsive cards on small screens). New and Edit submit one complete pigeon aggregate; Delete
   uses a confirmation dialog. Successful POST/PUT responses replace the affected row locally,

@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.utils import scheduled_jobs
+from backend.utils import scheduled_jobs, scheduler
 from backend.utils.scheduled_jobs import get_all_player_emails
 
 
@@ -61,6 +61,96 @@ def test_disabled_tuesday_reminders_skip_email_work(db_conn, test_data, monkeypa
         assert enabled == [(test_data["tenant_b_id"], "_Test League B")]
     finally:
         db_conn.rollback()
+
+
+@pytest.mark.parametrize("day, expected_player", [(13, 101), (14, 102), (15, None)])
+def test_reminders_only_include_todays_unlocked_deadlines(db_conn, monkeypatch, day, expected_player):
+    """Run both real SQL filters for Tuesday/Wednesday leagues without touching shared rows."""
+    now = datetime(2026, 10, day, 17, tzinfo=scheduler.PST)
+    session = AsyncMock(spec=AsyncSession)
+
+    async def execute(query, params=None):
+        sql = str(query).strip()
+        assert sql.startswith("WITH ")
+        # Deterministic input rows shadow the real tables/view for this query only.
+        fixture = """
+            WITH tenant_weeks(tenant_id, week_number, lock_at) AS (VALUES
+                (101, 6, TIMESTAMPTZ '2026-10-14 06:59:00+00'),
+                (102, 6, TIMESTAMPTZ '2026-10-15 06:59:00+00'),
+                (101, 7, TIMESTAMPTZ '2026-10-21 06:59:00+00'),
+                (102, 7, TIMESTAMPTZ '2026-10-22 06:59:00+00')),
+            games(game_id, week_number) AS (VALUES (1, 6), (2, 7)),
+            v_picks_filled(tenant_id, player_id, game_id, is_made) AS (VALUES
+                (101, 101, 1, false), (102, 102, 1, false),
+                (102, 103, 1, true), (101, 101, 2, false), (102, 102, 2, false)),
+        """
+        sql = sql[5:].replace("now()", f"TIMESTAMPTZ '{now.isoformat()}'")
+        sql = sql.replace(":tid", "%(tid)s")
+        with db_conn.cursor() as cur:
+            cur.execute(fixture + sql, params)
+            rows = cur.fetchall()
+        return Mock(all=Mock(return_value=rows), first=Mock(return_value=rows[0] if rows else None))
+
+    session.execute.side_effect = execute
+    monkeypatch.setattr(scheduled_jobs, "_get_all_tenants", AsyncMock(return_value=[
+        (101, "Tuesday Pool"), (102, "Hawk Pool"),
+    ]))
+
+    async def emails(_session, player_ids):
+        return [f"{pid}@test.invalid" for pid in player_ids]
+
+    monkeypatch.setattr(scheduled_jobs, "get_all_player_emails", emails)
+    send = Mock(return_value=True)
+    monkeypatch.setattr(scheduled_jobs, "send_bulk_email_bcc", send)
+
+    assert asyncio.run(scheduler._missing_picks_exist(session)) == (expected_player is not None)
+    result = asyncio.run(scheduled_jobs.run_email_tue_warn(session))
+
+    if expected_player is None:
+        send.assert_not_called()
+        assert result["recipients"] == 0
+    else:
+        send.assert_called_once()
+        recipients, _, plain, html = send.call_args.args
+        assert recipients == [f"{expected_player}@test.invalid"]
+        expected_day = "Tuesday, Oct 13" if day == 13 else "Wednesday, Oct 14"
+        assert f"{expected_day} at 11:59 PM PDT" in plain
+        assert f"{expected_day} at 11:59 PM PDT" in html
+
+
+@pytest.mark.parametrize("day, hour, last_day, expected", [
+    (13, 16, None, False),  # Before the reminder hour.
+    (13, 17, None, True),
+    (14, 16, 13, False),
+    (14, 17, 13, True),  # Tuesday's completion must not suppress Wednesday.
+    (14, 18, 14, False),  # Repeated heartbeat/restart must not resend today.
+])
+def test_reminder_scheduler_runs_once_per_deadline_day(monkeypatch, day, hour, last_day, expected):
+    now = datetime(2026, 10, day, hour, tzinfo=scheduler.PST)
+    last = datetime(2026, 10, last_day, 17, tzinfo=scheduler.PST).astimezone(UTC) if last_day else None
+    session = AsyncMock(spec=AsyncSession)
+    context = AsyncMock()
+    context.__aenter__.return_value = session
+    monkeypatch.setattr(scheduler, "AsyncSessionLocal", lambda: context)
+    monkeypatch.setattr(scheduler, "_now_pst", lambda: now)
+    monkeypatch.setattr(scheduler, "_now_utc", lambda: now.astimezone(UTC))
+    monkeypatch.setattr(scheduler, "TUE_WARNING_HOUR", 17)
+
+    async def last_run(_session, job):
+        return last if job == "email_tue_warn" else now
+
+    monkeypatch.setattr(scheduler, "_get_last_run", last_run)
+    run = AsyncMock()
+    monkeypatch.setattr(scheduler, "_maybe_run", run)
+    # Cancel after exactly one coordinator heartbeat.
+    monkeypatch.setattr(scheduler.asyncio, "sleep", AsyncMock(side_effect=asyncio.CancelledError))
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(scheduler._coordinator_loop())
+
+    reminders = [call for call in run.await_args_list if call.args[1] == "email_tue_warn"]
+    assert len(reminders) == int(expected)
+    if expected:
+        assert reminders[0].args[3:] == (scheduled_jobs.run_email_tue_warn, scheduler._missing_picks_exist)
 
 
 @pytest.mark.parametrize(

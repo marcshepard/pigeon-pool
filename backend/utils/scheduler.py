@@ -67,10 +67,6 @@ def _local_monday_start(dt: datetime) -> datetime:
     return _start_of_local_week_sun(dt) + timedelta(days=1)
 
 
-def _local_tuesday_start(dt: datetime) -> datetime:
-    return _start_of_local_week_sun(dt) + timedelta(days=2)
-
-
 def _job_key(job_name: str) -> int:
     """Stable integer for advisory locking."""
     return abs(hash(job_name)) % (2**31)
@@ -288,10 +284,10 @@ async def _coordinator_loop():
                     if not last_mon or last_mon.astimezone(PST) < gate:
                         await _maybe_run(session, "email_mon", True, run_email_mon, _all_games_final)
 
-                # email_tue_warn
-                if now_loc.weekday() == 1 and now_loc.hour >= TUE_WARNING_HOUR:
+                # Deadline-day reminders. Retain the legacy job/config names.
+                if now_loc.hour >= TUE_WARNING_HOUR:
                     last_warn = await _get_last_run(session, "email_tue_warn")
-                    gate = _local_tuesday_start(now_loc)
+                    gate = now_loc.replace(hour=0, minute=0, second=0, microsecond=0)
                     if not last_warn or last_warn.astimezone(PST) < gate:
                         await _maybe_run(
                             session,

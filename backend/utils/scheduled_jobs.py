@@ -41,7 +41,7 @@ def _format_lock_pt(lock_utc: datetime) -> str:
 async def _get_all_tenants(
     session: AsyncSession, *, tuesday_reminders_only: bool = False,
 ) -> list[tuple[int, str]]:
-    """Return tenants, optionally limited to leagues with Tuesday reminders enabled."""
+    """Return tenants, optionally limited to leagues with pick reminders enabled."""
     query = "SELECT tenant_id, name FROM tenants"
     if tuesday_reminders_only:
         query += " WHERE tuesday_reminders_enabled = true"
@@ -294,12 +294,12 @@ async def run_email_mon(session: AsyncSession) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------
-# Tuesday reminder email — one pass per tenant
+# Deadline-day reminder email — one pass per tenant (legacy job name)
 # ---------------------------------------------------------------------
 async def run_email_tue_warn(session: AsyncSession) -> dict[str, Any]:
     """
-    Send a Tuesday warning email to players who haven't submitted all picks
-    for the upcoming week, one pass per tenant with reminders enabled.
+    Remind players with missing picks for a deadline later today (Pacific Time),
+    one pass per tenant with reminders enabled. Keep the legacy callable name.
     """
     tenants = await _get_all_tenants(session, tuesday_reminders_only=True)
     total_recipients = 0
@@ -379,7 +379,7 @@ async def run_email_tue_warn(session: AsyncSession) -> dict[str, Any]:
 
     if total_recipients == 0:
         info("component=jobs", job="email_tue_warn", recipients=0, sent=True,
-             note="no missing picks across any tenant")
-        return {"recipients": 0, "sent": True, "note": "no missing picks"}
+             note="no eligible reminder recipients for today's deadlines")
+        return {"recipients": 0, "sent": True, "note": "no eligible reminder recipients"}
 
     return {"tenants": len(tenants), "total_recipients": total_recipients, "emails_sent": total_sent}

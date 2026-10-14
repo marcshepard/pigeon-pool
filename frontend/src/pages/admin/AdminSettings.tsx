@@ -75,7 +75,7 @@ export default function AdminSettings() {
               disabled={saving}
             />
           }
-          label="Send Tuesday pick reminder emails"
+          label="Send pick deadline reminder emails"
         />
         {saved && <Alert severity="success">Saved.</Alert>}
         {error && <Alert severity="error">{error}</Alert>}

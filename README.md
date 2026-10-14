@@ -268,8 +268,9 @@ These scheduled jobs are implemented in backend/utils/scheduler:
 ** The FE auto-refreshed from the BE when it has the focus every VITE_AUTO_REFRESH_INTERVAL_MINUTES
 * Sunday emails, right after SNF completes, letting them know the monday-night "what ifs" anaytics are ready
 * Monday emails, right after MNF completes, congratulating the winner and reminding them to enter next weeks picks
-* Tuesday emails at 5pm to any pigeon who hasn't yet entered their picks; commissioners can
-  disable these per league in League Settings → “Send Tuesday pick reminder emails” → Save
+* Pick reminders at 5pm Pacific on each league's deadline day to pigeons with missing picks
+  (only while that day's deadline is still in the future); commissioners can disable these
+  per league in League Settings → “Send pick deadline reminder emails” → Save
 * Note: Picks lock at midnight on Tuesday unless the admin changes that
 
 There is currently a fair bit of code needed for interop with Andy's current system, which bloats the BE,
