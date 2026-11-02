@@ -251,11 +251,9 @@ function OneGameTable(props: {
             // Build the outcome label; if only one row, use '<TEAM> any' without '+'
             let outcome = singleRowAnyLabel ?? formatOutcome(r.actual);
             if (!singleRowAnyLabel) {
-              const firstSide = displayRows.length ? (displayRows[0].actual === 0 ? 'tie' : (displayRows[0].actual > 0 ? 'home' : 'away')) : null;
-              const lastSide = displayRows.length ? (displayRows[displayRows.length - 1].actual === 0 ? 'tie' : (displayRows[displayRows.length - 1].actual > 0 ? 'home' : 'away')) : null;
-              const bottomSuffix = firstSide && lastSide && firstSide === lastSide ? '-' : '+';
-              if (idx === 0) outcome += '+';
-              if (idx === displayRows.length - 1) outcome += bottomSuffix;
+              // Signed margins ascend: away wins shrink, then home wins grow.
+              if (idx === 0) outcome += r.actual < 0 ? '+' : '-';
+              if (idx === displayRows.length - 1) outcome += r.actual > 0 ? '+' : '-';
             }
             // Build rank columns 1..5 from groups, leaving blanks for skipped ranks when a tie spans multiple positions
             const ranks = r.top5Ranks ?? (() => {
@@ -447,10 +445,10 @@ function TwoGameGrid(props: {
                 let label = singleCol
                   ? formatAny(x, xTeams.home, xTeams.away)
                   : formatOutcome(x, xTeams.home, xTeams.away);
-                // Add '+' to first and last column only when more than one column
+                // Signed margins ascend: away wins shrink, then home wins grow.
                 if (!singleCol) {
-                  if (xi === 0) label += '+';
-                  if (xi === displayXBuckets.length - 1) label += '+';
+                  if (xi === 0) label += x < 0 ? '+' : '-';
+                  if (xi === displayXBuckets.length - 1) label += x > 0 ? '+' : '-';
                 }
                 return (
                   <TableCell key={x} align="center" sx={{ fontWeight: 600, whiteSpace: "nowrap" }}>
@@ -466,13 +464,10 @@ function TwoGameGrid(props: {
               let label = singleRow
                 ? formatAny(y, yTeams.home, yTeams.away)
                 : formatOutcome(y, yTeams.home, yTeams.away);
-              // Add '+' to first and last row only when more than one row
+              // Signed margins ascend: away wins shrink, then home wins grow.
               if (!singleRow) {
-                const firstSide = displayYBuckets.length ? (displayYBuckets[0] === 0 ? 'tie' : (displayYBuckets[0] > 0 ? 'home' : 'away')) : null;
-                const lastSide = displayYBuckets.length ? (displayYBuckets[displayYBuckets.length - 1] === 0 ? 'tie' : (displayYBuckets[displayYBuckets.length - 1] > 0 ? 'home' : 'away')) : null;
-                const bottomSuffix = firstSide && lastSide && firstSide === lastSide ? '-' : '+';
-                if (yi === 0) label += '+';
-                if (yi === displayYBuckets.length - 1) label += bottomSuffix;
+                if (yi === 0) label += y < 0 ? '+' : '-';
+                if (yi === displayYBuckets.length - 1) label += y > 0 ? '+' : '-';
               }
               return (
                 <TableRow key={y}>
